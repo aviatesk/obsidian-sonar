@@ -1,0 +1,14 @@
+{
+  "id": "obsidian-sonar",
+  "name": "Sonar",
+  "version": "0.0.0",
+  "minAppVersion": "1.9.0",
+  "description": "Deep semantic search for your Obsidian notes, completely offline",
+  "author": "Shuhei Kadowaki",
+  "authorUrl": "https://github.com/aviatesk",
+  "isDesktopOnly": true,
+  "fundingUrl": {
+    "Buy Me a Coffee": "https://buymeacoffee.com/aviatesk",
+    "Ko-fi": "https://ko-fi.com/aviatesk"
+  }
+}

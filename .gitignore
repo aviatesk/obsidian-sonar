@@ -1,0 +1,13 @@
+# Node
+node_modules/
+
+# Obsidian
+out/
+data.json
+main.js
+
+# CLI
+db/
+.config.json
+
+notes
