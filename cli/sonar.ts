@@ -27,7 +27,7 @@ function expandTilde(filePath: string): string {
 
 async function indexCommand(targetPath?: string, options?: any) {
   const config: CLIConfig = await loadConfig(DEFAULT_CLI_CONFIG);
-  if (options?.model) config.embeddingModel = options.model;
+  if (options?.embeddingModel) config.embeddingModel = options.embeddingModel;
   if (options?.tokenizerModel) config.tokenizerModel = options.tokenizerModel;
   if (options?.db) config.dbPath = options.db;
   if (options?.chunkSize) config.maxChunkSize = parseInt(options.chunkSize);
@@ -275,10 +275,10 @@ async function configCommand(options?: any) {
     return;
   }
 
-  if (options?.model) {
-    config.embeddingModel = options.model;
+  if (options?.embeddingModel) {
+    config.embeddingModel = options.embeddingModel;
     await saveConfig(config);
-    console.log(`✅ Updated embeddingModel = ${options.model}`);
+    console.log(`✅ Updated embeddingModel = ${options.embeddingModel}`);
   }
 
   if (options?.tokenizerModel) {
@@ -306,7 +306,7 @@ async function configCommand(options?: any) {
   }
 
   if (
-    !options?.model &&
+    !options?.embeddingModel &&
     !options?.tokenizerModel &&
     !options?.url &&
     !options?.path &&
@@ -330,7 +330,7 @@ program
 program
   .command('index [path]')
   .description('Index markdown files in the specified path')
-  .option('-m, --model <model>', 'Embedding model name')
+  .option('-e, --embedding-model <model>', 'Embedding model name')
   .option('-t, --tokenizer-model <model>', 'Tokenizer model name (optional)')
   .option('-d, --db <path>', 'Database path')
   .option('-c, --chunk-size <size>', 'Maximum chunk size')
@@ -357,7 +357,7 @@ program
   .command('config')
   .description('Manage configuration')
   .option('-l, --list', 'List current configuration')
-  .option('-m, --model <model>', 'Set embedding model')
+  .option('-e, --embedding-model <model>', 'Set embedding model')
   .option('-t, --tokenizer-model <model>', 'Set tokenizer model')
   .option('-u, --url <url>', 'Set Ollama URL')
   .option('-p, --path <path>', 'Set default index path')

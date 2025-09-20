@@ -36,7 +36,7 @@ program
 
       const content = fs.readFileSync(fullPath, 'utf-8');
       const fileName = path.basename(filepath);
-      const model = options.model || config.embeddingModel;
+      const model = options.embeddingModel || config.embeddingModel;
 
       console.log('🧪 Testing tokenizer with file:', fileName);
       console.log(`📊 Model: ${model}`);
@@ -97,7 +97,7 @@ program
   .action(async (text, options) => {
     try {
       const config: CLIConfig = await loadConfig(DEFAULT_CLI_CONFIG);
-      const model = options.model || config.embeddingModel;
+      const model = options.embeddingModel || config.embeddingModel;
 
       console.log(`\n📝 Counting tokens for provided text...`);
       console.log(`Model: ${model}\n`);
@@ -139,7 +139,7 @@ program
   .action(async (filepath, options) => {
     try {
       const config: CLIConfig = await loadConfig(DEFAULT_CLI_CONFIG);
-      const model = options.model || config.embeddingModel;
+      const model = options.embeddingModel || config.embeddingModel;
       const fullPath = path.resolve(filepath);
 
       if (!fs.existsSync(fullPath)) {

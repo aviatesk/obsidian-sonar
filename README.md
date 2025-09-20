@@ -4,7 +4,7 @@
 
 Obsidian Sonar is a plugin that brings AI-powered semantic search to your
 Obsidian vault. Detecting hidden objects in the deep, it discovers meaningful
-connections between your notes using local embeddings and lightweight LLMs - all
+connections between your notes using local embeddings and lightweight LLMs. All
 running privately on your device.
 
 ## Requirements
@@ -15,6 +15,8 @@ running privately on your device.
 
 ## Installation
 
+### Build
+
 ```bash
 git clone https://github.com/aviatesk/obsidian-sonar.git
 cd obsidian-sonar
@@ -24,16 +26,19 @@ npm run build
 
 ## Usage
 
-### As Obsidian Plugin
+### Install as Obsidian plugin
 
-1. Copy `main.js`, `manifest.json` and `styles.css` to
-   `.obsidian/plugins/obsidian-sonar/`
-2. Enable the plugin in Obsidian settings
-3. Configure your embedding model (default: `bge-m3`)
+1. Build the plugin: `npm run build`
+2. Copy to your vault:
+   ```bash
+   cp main.js manifest.json styles.css /path/to/vault/.obsidian/plugins/obsidian-sonar/
+   ```
+3. Reload Obsidian and enable the plugin in Settings → Community plugins
+4. Configure your embedding model (default: `bge-m3`)
 
 ### CLI Tools
 
-#### Index Your Notes
+#### Index your notes
 
 ```bash
 # Index current directory
@@ -43,7 +48,7 @@ npm run sonar:index
 npm run sonar:index /path/to/notes
 
 # With options
-npm run sonar:index /path/to/docs --model bge-m3:latest --db ./db/sonar-index.json
+npm run sonar:index /path/to/docs --embedding-model bge-m3:latest --db ./db/sonar-index.json
 ```
 
 #### Semantic search
@@ -56,10 +61,33 @@ npm run sonar:search "your search query"
 npm run sonar:search "machine learning concepts" -- --top 10
 ```
 
-#### View Statistics
+#### View statistics
 
 ```bash
 npm run sonar:stats
+```
+
+#### Configuration
+
+```bash
+npm run sonar:config -- --list
+npm run sonar:config -- --embedding-model nomic-embed-text
+```
+
+### Testing Tools
+
+#### Tokenizer
+
+```bash
+npm run tokenizer:test        # Test tokenizer functionality
+npm run tokenizer:benchmark   # Benchmark tokenizer performance
+npm run tokenizer:models      # List available models
+```
+
+#### Extraction
+
+```bash
+npm run extraction            # Test extraction latency
 ```
 
 ## Configuration
@@ -70,21 +98,11 @@ Configure via Obsidian settings:
 
 - Ollama URL (default: `http://localhost:11434`)
 - Embedding model (default: `bge-m3:latest`)
-- Max chunk size (default: 512 tokens)
-- Chunk overlap (default: 64 tokens)
-- Max query tokens (default: 128 tokens)
-- Auto-indexing (default: disabled)
-- Excluded paths (for selective indexing)
-
-### CLI Configuration
-
-```bash
-# View config
-npm run sonar:config -- --list
-
-# Set model
-npm run sonar:config -- --model nomic-embed-text
-```
+- Max chunk size (default: `512` tokens)
+- Chunk overlap (default: `64` tokens)
+- Max query tokens (default: `128` tokens)
+- Auto-indexing (default: `disabled`)
+- Excluded paths (default: none)
 
 ## Development
 
@@ -93,12 +111,13 @@ npm run sonar:config -- --model nomic-embed-text
 npm run dev
 
 # Code quality checks
-npm run check  # Format + lint + type check
-npm run build  # Quick build
+npm run check  # Format check + lint check + type check
+npm run build  # Quick build with type checking
 
-# Format and fix
-npm run format
-npm run lint
+# Auto-fix issues
+npm run fix    # Auto-format + auto-fix linting (combined)
+npm run format # Auto-format code only
+npm run lint   # Auto-fix linting only
 ```
 
 ## Technical Details
@@ -110,12 +129,6 @@ npm run lint
 - **Token-aware Processing**: Respects model token limits for optimal
   performance
 - **Auto-indexing**: Automatically indexes new and modified files
-
-### Supported Models
-
-Tested with:
-
-- **Embeddings**: BGE-M3, Nomic-Embed, mxbai-embed-large, Snowflake-Arctic
 
 ## License
 

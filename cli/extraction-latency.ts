@@ -142,7 +142,7 @@ ${content}`;
 
 async function runTest(filePath: string, options: any) {
   const config: CLIConfig = await loadConfig(DEFAULT_CLI_CONFIG);
-  const model = options.model || config.summaryModel;
+  const model = options.summaryModel || config.summaryModel;
   const ollamaUrl = options.url || config.ollamaUrl;
   const maxInputTokens = options.tokens ? parseInt(options.tokens) : undefined;
   const tokenizerModel = options.tokenizerModel || config.tokenizerModel;
@@ -194,7 +194,7 @@ async function runTest(filePath: string, options: any) {
 async function runBenchmark(filePath: string, options: any) {
   const iterations = parseInt(options.iterations || '3');
   const config: CLIConfig = await loadConfig(DEFAULT_CLI_CONFIG);
-  const model = options.model || config.summaryModel;
+  const model = options.summaryModel || config.summaryModel;
   const ollamaUrl = options.url || config.ollamaUrl;
   const maxInputTokens = options.tokens ? parseInt(options.tokens) : undefined;
   const tokenizerModel = options.tokenizerModel || config.tokenizerModel;
@@ -258,7 +258,10 @@ program
 program
   .command('test <file>')
   .description('Test extraction query generation latency for a single file')
-  .option('-m, --model <model>', `Ollama model to use (default: from config)`)
+  .option(
+    '-s, --summary-model <model>',
+    `Ollama summary model to use (default: from config)`
+  )
   .option('-u, --url <url>', `Ollama server URL (default: from config)`)
   .option('-t, --tokens <n>', 'Maximum input tokens to send to the model')
   .option(
@@ -271,7 +274,10 @@ program
   .command('benchmark <file>')
   .description('Run multiple iterations and calculate statistics')
   .option('-i, --iterations <n>', 'Number of iterations (default: 3)', '3')
-  .option('-m, --model <model>', `Ollama model to use (default: from config)`)
+  .option(
+    '-s, --summary-model <model>',
+    `Ollama summary model to use (default: from config)`
+  )
   .option('-u, --url <url>', `Ollama server URL (default: from config)`)
   .option('-t, --tokens <n>', 'Maximum input tokens to send to the model')
   .option(

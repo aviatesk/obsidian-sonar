@@ -17,17 +17,10 @@ This ensures:
 When implementing new features, prioritize creating shared modules in
 `./src/core` that can be used by both applications rather than duplicating code.
 
-## Prerequisites
+## Prerequisites & Installation
 
-- Node.js 18+
-- Ollama running locally (`ollama serve`)
-- BGE-M3 model installed (`ollama pull bge-m3`)
-
-## Install
-
-```bash
-npm install
-```
+See [README.md](./README.md#requirements) for prerequisites and installation
+instructions.
 
 ## Build
 
@@ -35,106 +28,39 @@ npm install
 npm run build         # Quick build with type checking (`skipLibCheck` enabled)
 ```
 
-(Creates `main.js` for Obsidian plugin only).
-
-## Code quality fixes
+### Deploy to Local Vaults
 
 ```bash
-npm run format        # Auto-format code with Prettier
-npm run lint          # Auto-fix ESLint errors
+npm run deploy
 ```
+
+Deploys built plugin to configured vaults (see `deploy.sh` for vault paths).
 
 ## Code quality checks
 
 ```bash
 npm run check         # Comprehensive check: format + lint + strict type checking
-npm run format:check  # Auto-format code with Prettier -- included in `npm run check`
+npm run format:check  # Check formatting -- included in `npm run check`
 npm run lint:check    # Check for ESLint errors -- included in `npm run check`
 npx tsc --noEmit      # Strict type checking (no `skipLibCheck`) -- included in `npm run check`
 ```
 
-## Deploy to local vaults
+## Code quality fixes
 
 ```bash
-npm run deploy
-# or
-./deploy.sh
+npm run fix           # Auto-format + auto-fix linting (combined)
+npm run format        # Auto-format code with Prettier -- included in `npm run fix`
+npm run lint          # Auto-fix ESLint errors -- included in `npm run fix`
 ```
 
-Deploys built plugin to configured vaults (see `deploy.sh` for vault paths).
+## Testing with CLI Commands
 
-## Testing with the Obsidian plugin
+See [README.md](./README.md#cli-tools) for available CLI commands and testing
+tools.
 
-- Manual install for testing: copy `main.js`, `manifest.json`, `styles.css` (if
-  any) to:
-  ```
-  <Vault>/.obsidian/plugins/sonar/
-  ```
-- Reload Obsidian and enable the plugin in **Settings → Community plugins**.
-
-## Tests with CLI Commands
-
-The behavior of these CLI commands is configured by `config.json` unless options
-are explicitly specified. For testing, make sure to provide explicit options
-when running tests.
-
-### Index documents
-
-```bash
-# Index current directory
-npm run sonar:index
-
-# Index specific directory
-npm run sonar:index /path/to/documents
-
-# With options
-npm run sonar:index /path/to/docs --model bge-m3:latest --db ./db/sonar-index.json
-```
-
-The default indexing (`npm run sonar:index`) may target a folder containing
-numerous files. Indexing such folders may time some time and may not be suitable
-for testing, so for simple functionality verification, create a test folder and
-explicitly specify it for testing.
-
-### Search
-
-```bash
-npm run sonar:search "your query here"
-
-# With options
-npm run sonar:search "query" --top 10 --db ./db/sonar-index.json
-```
-
-### View statistics
-
-```bash
-npm run sonar:stats
-```
-
-### Configuration
-
-```bash
-npm run sonar:config
-```
-
-### Tokenizer testing
-
-```bash
-# Test tokenizer
-npm run tokenizer:test
-
-# Benchmark tokenizer performance
-npm run tokenizer:benchmark
-
-# List available models
-npm run tokenizer:models
-```
-
-### Extraction testing
-
-```bash
-npm run extraction
-```
+**Note for testing**: The default indexing (`npm run sonar:index`) may target a
+folder containing numerous files. For simple functionality verification, create
+a test folder and explicitly specify it for testing.
 
 ## Development
 
@@ -145,8 +71,8 @@ npm run extraction
   - Before finalizing/committing: Run `npm run check` for comprehensive
     validation. This runs format check, ESLint (0 warnings) and strict
     TypeScript type checking (no `skipLibCheck`)
-  - To fix issues: Use `npm run format` to auto-format code and `npm run lint`
-    for auto-fixable lint errors
+  - To fix issues: Use `npm run fix` to auto-format and fix linting in one
+    command (or use `npm run format` and `npm run lint` separately)
 - After writing or modifying code, run `npm run format` to ensure consistent
   formatting
   - TypeScript files: maximum line length 80 characters
