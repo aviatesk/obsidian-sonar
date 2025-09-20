@@ -1,10 +1,10 @@
-export interface CommonRAGConfig {
-  // Ollama関連
+export interface CommonConfig {
+  // Ollama
   ollamaUrl: string;
   embeddingModel: string;
   summaryModel: string;
 
-  // Tokenizer関連
+  // Transformer.js
   tokenizerModel: string; // Empty string means auto-detection
 
   maxChunkSize: number;
@@ -14,22 +14,27 @@ export interface CommonRAGConfig {
   defaultTopK: number;
 }
 
-export interface CLIConfig extends CommonRAGConfig {
+export interface CLIConfig extends CommonConfig {
   indexPath: string;
   dbPath: string;
   parallelServers: number;
   parallelPort: number;
 }
 
-export interface ObsidianConfig extends CommonRAGConfig {
+export interface ObsidianSettings extends CommonConfig {
   indexPath: string;
   debugMode: boolean;
   followCursor: boolean;
   withExtraction: boolean;
   excludedPaths: string[]; // Array of paths/patterns to ignore
+  autoOpenRelatedNotes: boolean;
+  autoIndex: boolean;
+  indexDebounceMs: number;
+  showIndexNotifications: boolean;
+  statusBarMaxLength: number;
 }
 
-export const DEFAULT_COMMON_CONFIG: CommonRAGConfig = {
+export const DEFAULT_COMMON_CONFIG: CommonConfig = {
   ollamaUrl: 'http://localhost:11434',
   embeddingModel: 'bge-m3:latest',
   summaryModel: 'gemma3n:e4b',
@@ -48,16 +53,21 @@ export const DEFAULT_CLI_CONFIG: CLIConfig = {
   parallelPort: 11435,
 };
 
-export const DEFAULT_OBSIDIAN_CONFIG: ObsidianConfig = {
+export const DEFAULT_SETTINGS: ObsidianSettings = {
   ...DEFAULT_COMMON_CONFIG,
   indexPath: '/', // Root of vault
   debugMode: false,
   followCursor: false,
   withExtraction: false,
   excludedPaths: [], // Default to no ignored paths
+  autoOpenRelatedNotes: true,
+  autoIndex: false,
+  indexDebounceMs: 10000, // 10s
+  showIndexNotifications: true,
+  statusBarMaxLength: 40,
 };
 
-export function isCommonConfig(config: any): config is CommonRAGConfig {
+export function isCommonConfig(config: any): config is CommonConfig {
   return (
     typeof config === 'object' &&
     typeof config.ollamaUrl === 'string' &&
@@ -69,7 +79,7 @@ export function isCommonConfig(config: any): config is CommonRAGConfig {
   );
 }
 
-export function mergeWithDefaults<T extends CommonRAGConfig>(
+export function mergeWithDefaults<T extends CommonConfig>(
   userConfig: Partial<T>,
   defaultConfig: T
 ): T {

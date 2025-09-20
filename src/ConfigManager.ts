@@ -1,33 +1,27 @@
 import { EventEmitter } from 'events';
-import { ObsidianConfig } from './core/config';
+import { ObsidianSettings } from './core/config';
 
-export interface ObsidianSonarSettings extends ObsidianConfig {
-  autoOpenRelatedNotes: boolean;
-  autoIndex: boolean;
-  indexDebounceMs: number;
-  showIndexNotifications: boolean;
-  statusBarMaxLength: number;
-}
+export type { ObsidianSettings };
 
 export type ConfigChangeListener = (
-  key: keyof ObsidianSonarSettings,
+  key: keyof ObsidianSettings,
   value: any,
   oldValue: any
 ) => void;
 
 export type ConfigBatchChangeListener = (
-  changes: Partial<ObsidianSonarSettings>
+  changes: Partial<ObsidianSettings>
 ) => void;
 
 export class ConfigManager extends EventEmitter {
-  private settings: ObsidianSonarSettings;
-  private saveCallback: (settings: ObsidianSonarSettings) => Promise<void>;
+  private settings: ObsidianSettings;
+  private saveCallback: (settings: ObsidianSettings) => Promise<void>;
   private changeListeners: Map<string, Set<ConfigChangeListener>> = new Map();
   private batchChangeListeners: Set<ConfigBatchChangeListener> = new Set();
 
   private constructor(
-    initialSettings: ObsidianSonarSettings,
-    saveCallback: (settings: ObsidianSonarSettings) => Promise<void>
+    initialSettings: ObsidianSettings,
+    saveCallback: (settings: ObsidianSettings) => Promise<void>
   ) {
     super();
     this.settings = { ...initialSettings };
@@ -40,7 +34,7 @@ export class ConfigManager extends EventEmitter {
   static async initialize(
     loadData: () => Promise<any>,
     saveData: (data: any) => Promise<void>,
-    defaultSettings: ObsidianSonarSettings
+    defaultSettings: ObsidianSettings
   ): Promise<ConfigManager> {
     const loadedData = await loadData();
     const settings = Object.assign({}, defaultSettings, loadedData);
@@ -50,23 +44,23 @@ export class ConfigManager extends EventEmitter {
   /**
    * Get the current value of a setting
    */
-  get<K extends keyof ObsidianSonarSettings>(key: K): ObsidianSonarSettings[K] {
+  get<K extends keyof ObsidianSettings>(key: K): ObsidianSettings[K] {
     return this.settings[key];
   }
 
   /**
    * Get all settings
    */
-  getAll(): Readonly<ObsidianSonarSettings> {
+  getAll(): Readonly<ObsidianSettings> {
     return { ...this.settings };
   }
 
   /**
    * Update a single setting
    */
-  async set<K extends keyof ObsidianSonarSettings>(
+  async set<K extends keyof ObsidianSettings>(
     key: K,
-    value: ObsidianSonarSettings[K]
+    value: ObsidianSettings[K]
   ): Promise<void> {
     const oldValue = this.settings[key];
 
@@ -93,13 +87,13 @@ export class ConfigManager extends EventEmitter {
   /**
    * Update multiple settings at once
    */
-  async update(changes: Partial<ObsidianSonarSettings>): Promise<void> {
-    const oldValues: Partial<ObsidianSonarSettings> = {};
+  async update(changes: Partial<ObsidianSettings>): Promise<void> {
+    const oldValues: Partial<ObsidianSettings> = {};
     let hasChanges = false;
 
     // Check for actual changes
     for (const [key, value] of Object.entries(changes)) {
-      const k = key as keyof ObsidianSonarSettings;
+      const k = key as keyof ObsidianSettings;
       if (this.settings[k] !== value) {
         (oldValues as any)[k] = this.settings[k];
         (this.settings as any)[k] = value;
@@ -113,7 +107,7 @@ export class ConfigManager extends EventEmitter {
 
     // Notify individual listeners for each changed key
     for (const [key, value] of Object.entries(changes)) {
-      const k = key as keyof ObsidianSonarSettings;
+      const k = key as keyof ObsidianSettings;
       if (oldValues[k] !== undefined) {
         this.notifyListeners(k, value, oldValues[k]);
       }
@@ -132,7 +126,7 @@ export class ConfigManager extends EventEmitter {
   /**
    * Subscribe to changes for a specific setting key
    */
-  subscribe<K extends keyof ObsidianSonarSettings>(
+  subscribe<K extends keyof ObsidianSettings>(
     key: K,
     listener: ConfigChangeListener
   ): () => void {
@@ -213,14 +207,14 @@ export class ConfigManager extends EventEmitter {
   /**
    * Reload settings from external source
    */
-  reload(newSettings: ObsidianSonarSettings): void {
+  reload(newSettings: ObsidianSettings): void {
     const oldSettings = { ...this.settings };
     this.settings = { ...newSettings };
 
     // Find all changes
-    const changes: Partial<ObsidianSonarSettings> = {};
+    const changes: Partial<ObsidianSettings> = {};
     for (const key in newSettings) {
-      const k = key as keyof ObsidianSonarSettings;
+      const k = key as keyof ObsidianSettings;
       if (oldSettings[k] !== newSettings[k]) {
         (changes as any)[k] = newSettings[k];
         this.notifyListeners(k, newSettings[k], oldSettings[k]);
@@ -233,10 +227,10 @@ export class ConfigManager extends EventEmitter {
     }
   }
 
-  private notifyListeners<K extends keyof ObsidianSonarSettings>(
+  private notifyListeners<K extends keyof ObsidianSettings>(
     key: K,
-    value: ObsidianSonarSettings[K],
-    oldValue: ObsidianSonarSettings[K]
+    value: ObsidianSettings[K],
+    oldValue: ObsidianSettings[K]
   ): void {
     const listeners = this.changeListeners.get(String(key));
     if (listeners) {
@@ -250,7 +244,7 @@ export class ConfigManager extends EventEmitter {
     }
   }
 
-  private notifyBatchListeners(changes: Partial<ObsidianSonarSettings>): void {
+  private notifyBatchListeners(changes: Partial<ObsidianSettings>): void {
     this.batchChangeListeners.forEach(listener => {
       try {
         listener(changes);

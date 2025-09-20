@@ -1,6 +1,6 @@
 import { Notice, Plugin, WorkspaceLeaf, debounce } from 'obsidian';
 import { ObsidianEmbeddingSearch } from './src/embeddingSearch';
-import { DEFAULT_OBSIDIAN_CONFIG } from './src/core/config';
+import { DEFAULT_SETTINGS } from './src/core/config';
 import {
   RelatedNotesView,
   RELATED_NOTES_VIEW_TYPE,
@@ -8,18 +8,8 @@ import {
 import { SearchModal } from './src/ui/SearchModal';
 import { SonarTokenizer } from './src/core/tokenizer';
 import { IndexManager } from './src/IndexManager';
-import { ConfigManager, ObsidianSonarSettings } from './src/ConfigManager';
+import { ConfigManager } from './src/ConfigManager';
 import { ObsidianSonarSettingTab } from './src/ui/SettingsTab';
-
-const DEFAULT_SETTINGS: ObsidianSonarSettings = {
-  ...DEFAULT_OBSIDIAN_CONFIG,
-  autoOpenRelatedNotes: true,
-  excludedPaths: [],
-  autoIndex: false,
-  indexDebounceMs: 10000, // 10s
-  showIndexNotifications: true,
-  statusBarMaxLength: 40,
-};
 
 export default class ObsidianSonarPlugin extends Plugin {
   configManager!: ConfigManager;
