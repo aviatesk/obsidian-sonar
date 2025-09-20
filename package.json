@@ -1,6 +1,6 @@
 {
   "name": "obsidian-sonar",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "Deep semantic search for your Obsidian notes, completely offline",
   "main": "main.js",
   "type": "module",
