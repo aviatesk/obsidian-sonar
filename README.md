@@ -74,22 +74,6 @@ npm run sonar:config -- --list
 npm run sonar:config -- --embedding-model nomic-embed-text
 ```
 
-### Testing Tools
-
-#### Tokenizer
-
-```bash
-npm run tokenizer:test        # Test tokenizer functionality
-npm run tokenizer:benchmark   # Benchmark tokenizer performance
-npm run tokenizer:models      # List available models
-```
-
-#### Extraction
-
-```bash
-npm run extraction            # Test extraction latency
-```
-
 ## Configuration
 
 ### Plugin Settings
