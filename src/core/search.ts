@@ -7,71 +7,61 @@ import { SonarTokenizer } from './tokenizer';
 import { DocumentMetadata } from './document';
 
 export interface QueryOptions {
-  fileName?: string;
-  cursorLine?: number;
-  followCursor?: boolean;
-  withExtraction?: boolean;
-  maxTokens?: number;
-  embeddingModel?: string;
-  tokenizerModel?: string;
-  ollamaUrl?: string;
-  summaryModel?: string;
+  fileName: string;
+  cursorLine: number;
+  followCursor: boolean;
+  withExtraction: boolean;
+  maxTokens: number;
+  embeddingModel: string;
+  tokenizerModel: string | undefined;
+  ollamaUrl: string;
+  summaryModel: string;
 }
 
 /**
- * Unified query processor with configurable options
+ * Unified query processor with static functions
  */
 export class QueryProcessor {
-  constructor(
-    private defaultMaxTokens: number = 128,
-    private defaultEmbeddingModel?: string,
-    private defaultTokenizerModel?: string
-  ) {}
-
-  async process(content: string, options: QueryOptions = {}): Promise<string> {
-    const maxTokens = options.maxTokens ?? this.defaultMaxTokens;
-    const fileName = options.fileName || 'Untitled';
-    const embeddingModel = options.embeddingModel ?? this.defaultEmbeddingModel;
-    const tokenizerModel = options.tokenizerModel ?? this.defaultTokenizerModel;
-    const followCursor = options.followCursor ?? false;
-    const withExtraction = options.withExtraction ?? false;
-
+  static async process(
+    content: string,
+    options: QueryOptions
+  ): Promise<string> {
     // Calculate tokens for filename
     const fileNameTokens = await SonarTokenizer.estimateTokens(
-      fileName,
-      embeddingModel,
-      tokenizerModel
+      options.fileName,
+      options.embeddingModel,
+      options.tokenizerModel
     );
-    const remainingTokens = Math.max(10, maxTokens - fileNameTokens);
+    const remainingTokens = Math.max(10, options.maxTokens - fileNameTokens);
 
     // Extract content based on followCursor setting
     let extractedContent: string;
-    if (followCursor && options.cursorLine !== undefined) {
-      extractedContent = await this.extractTokenBasedContent(
+    if (options.followCursor) {
+      extractedContent = await QueryProcessor.extractTokenBasedContent(
         content,
         options.cursorLine,
         remainingTokens,
         false,
-        embeddingModel,
-        tokenizerModel
+        options.embeddingModel,
+        options.tokenizerModel
       );
     } else {
-      extractedContent = await this.extractTokenBasedContent(
+      extractedContent = await QueryProcessor.extractTokenBasedContent(
         content,
         0,
         remainingTokens,
         true,
-        embeddingModel,
-        tokenizerModel
+        options.embeddingModel,
+        options.tokenizerModel
       );
     }
 
     // Combine filename and content
-    let query = `${fileName}\n\n${extractedContent}`;
+    let query = `${options.fileName}\n\n${extractedContent}`;
 
     // Apply LLM extraction if requested
-    if (withExtraction && options.ollamaUrl && options.summaryModel) {
-      query = await this.generateLLMExtraction(
+    if (options.withExtraction) {
+      query = await QueryProcessor.generateLLMExtraction(
         query,
         options.ollamaUrl,
         options.summaryModel
@@ -81,13 +71,13 @@ export class QueryProcessor {
     return query;
   }
 
-  private async extractTokenBasedContent(
+  private static async extractTokenBasedContent(
     content: string,
     startLine: number,
     remainingTokens: number,
     expandFromStart: boolean = true,
-    embeddingModel?: string,
-    tokenizerModel?: string
+    embeddingModel: string,
+    tokenizerModel: string | undefined
   ): Promise<string> {
     const lines = content.split('\n');
 
@@ -113,7 +103,7 @@ export class QueryProcessor {
           // Add partial line if it fits
           const remainingSpace = remainingTokens - currentTokens;
           if (remainingSpace > 10) {
-            const partialLine = await this.truncateToTokens(
+            const partialLine = await QueryProcessor.truncateToTokens(
               lines[i],
               remainingSpace,
               embeddingModel,
@@ -141,7 +131,7 @@ export class QueryProcessor {
           result.push(lines[startLine]);
           currentTokens += cursorLineTokens;
         } else {
-          return await this.truncateToTokens(
+          return await QueryProcessor.truncateToTokens(
             lines[startLine],
             remainingTokens,
             embeddingModel,
@@ -195,11 +185,11 @@ export class QueryProcessor {
     }
   }
 
-  private async truncateToTokens(
+  private static async truncateToTokens(
     text: string,
     maxTokens: number,
-    embeddingModel?: string,
-    tokenizerModel?: string
+    embeddingModel: string,
+    tokenizerModel: string | undefined
   ): Promise<string> {
     const words = text.split(/\s+/);
     let result: string[] = [];
@@ -222,7 +212,7 @@ export class QueryProcessor {
     return result.join(' ');
   }
 
-  private async generateLLMExtraction(
+  private static async generateLLMExtraction(
     input: string,
     ollamaUrl: string,
     summaryModel: string
@@ -283,15 +273,5 @@ export class SearchCoordinator {
       score: result.score,
       metadata: result.document.metadata,
     }));
-  }
-
-  async searchWithProcessor(
-    content: string,
-    processor: QueryProcessor,
-    topK: number = 5,
-    options?: QueryOptions
-  ): Promise<any[]> {
-    const query = await processor.process(content, options);
-    return this.search(query, topK);
   }
 }

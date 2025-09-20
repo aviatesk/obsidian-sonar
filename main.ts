@@ -120,18 +120,7 @@ export default class ObsidianSonarPlugin extends Plugin {
 
   private registerViews(embeddingSearch: ObsidianEmbeddingSearch): void {
     this.registerView(RELATED_NOTES_VIEW_TYPE, leaf => {
-      return new RelatedNotesView(
-        this,
-        leaf,
-        embeddingSearch,
-        this.configManager.get('ollamaUrl'),
-        this.configManager.get('embeddingModel'),
-        this.configManager.get('summaryModel'),
-        this.configManager.get('maxQueryTokens'),
-        this.configManager.get('tokenizerModel'),
-        this.configManager.get('followCursor'),
-        this.configManager.get('withExtraction')
-      );
+      return new RelatedNotesView(leaf, embeddingSearch, this.configManager);
     });
   }
 

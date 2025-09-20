@@ -7,20 +7,19 @@ import {
   debounce,
 } from 'obsidian';
 import { ObsidianEmbeddingSearch } from '../embeddingSearch';
-import { QueryProcessor } from '../core/search';
+import { QueryProcessor, QueryOptions } from '../core/search';
 import { SonarTokenizer } from '../core/tokenizer';
 import { SearchResultsComponent } from './SearchResultsComponent';
-import ObsidianSonarPlugin from '../../main';
+import { ConfigManager } from '../ConfigManager';
 
 export const RELATED_NOTES_VIEW_TYPE = 'related-notes-view';
 
 export class RelatedNotesView extends ItemView {
-  private plugin: ObsidianSonarPlugin;
   private embeddingSearch: ObsidianEmbeddingSearch;
-  private queryProcessor: QueryProcessor;
+  private configManager: ConfigManager;
   private resultsComponent: SearchResultsComponent;
-  private followCursor: boolean = false;
-  private withExtraction: boolean = false;
+  private followCursor: boolean;
+  private withExtraction: boolean;
   private isProcessing = false;
   private lastQuery = '';
   private lastActiveFile: TFile | null = null;
@@ -30,43 +29,58 @@ export class RelatedNotesView extends ItemView {
   private statusEl!: HTMLElement;
   private debouncedRefresh: () => void;
   private debouncedRefreshLong: () => void;
-  private embeddingModel: string;
-  private tokenizerModel?: string;
-  private ollamaUrl: string;
-  private summaryModel: string;
-  private maxQueryTokens: number;
 
   constructor(
-    plugin: ObsidianSonarPlugin,
     leaf: WorkspaceLeaf,
     embeddingSearch: ObsidianEmbeddingSearch,
-    ollamaUrl: string,
-    embeddingModel: string,
-    summaryModel: string,
-    maxQueryTokens: number = 128,
-    tokenizerModel?: string,
-    defaultFollowCursor: boolean = false,
-    defaultwithExtraction: boolean = false
+    configManager: ConfigManager
   ) {
     super(leaf);
-    this.plugin = plugin;
     this.embeddingSearch = embeddingSearch;
-    this.embeddingModel = embeddingModel;
-    this.tokenizerModel = tokenizerModel;
-    this.ollamaUrl = ollamaUrl;
-    this.summaryModel = summaryModel;
-    this.maxQueryTokens = maxQueryTokens;
-    this.followCursor = defaultFollowCursor;
-    this.withExtraction = defaultwithExtraction;
-    this.queryProcessor = new QueryProcessor(
-      maxQueryTokens,
-      embeddingModel,
-      tokenizerModel
-    );
+    this.configManager = configManager;
+    this.followCursor = configManager.get('followCursor');
+    this.withExtraction = configManager.get('withExtraction');
     this.resultsComponent = new SearchResultsComponent(this.app);
 
     this.debouncedRefresh = debounce(this.refresh.bind(this), 500, true);
     this.debouncedRefreshLong = debounce(this.refresh.bind(this), 10000, true);
+
+    // Subscribe to config changes
+    this.setupConfigListeners();
+  }
+
+  private setupConfigListeners(): void {
+    // Refresh when relevant configs change
+    this.configManager.subscribe('maxQueryTokens', () => {
+      this.debouncedRefresh();
+    });
+
+    this.configManager.subscribe('embeddingModel', () => {
+      this.debouncedRefresh();
+    });
+
+    this.configManager.subscribe('tokenizerModel', () => {
+      this.debouncedRefresh();
+    });
+
+    // Update local state when config changes externally
+    this.configManager.subscribe('followCursor', (_, value) => {
+      this.followCursor = value;
+      // Update UI if needed
+      const btn = this.containerEl.querySelector('.follow-cursor-btn');
+      if (btn) {
+        btn.classList.toggle('active', value);
+      }
+    });
+
+    this.configManager.subscribe('withExtraction', (_, value) => {
+      this.withExtraction = value;
+      // Update UI if needed
+      const btn = this.containerEl.querySelector('.with-llm-extraction-btn');
+      if (btn) {
+        btn.classList.toggle('active', value);
+      }
+    });
   }
 
   getViewType(): string {
@@ -207,11 +221,8 @@ export class RelatedNotesView extends ItemView {
   }
 
   private saveToggleSettings(): void {
-    const configManager = this.plugin.configManager;
-    if (configManager) {
-      configManager.set('followCursor', this.followCursor);
-      configManager.set('withExtraction', this.withExtraction);
-    }
+    this.configManager.set('followCursor', this.followCursor);
+    this.configManager.set('withExtraction', this.withExtraction);
   }
 
   private async onActiveLeafChange(): Promise<void> {
@@ -262,19 +273,19 @@ export class RelatedNotesView extends ItemView {
         cursorLine = cursor.line;
       }
 
-      const options = {
+      const options: QueryOptions = {
         fileName: activeFile.basename,
         cursorLine: cursorLine,
         followCursor: this.followCursor,
         withExtraction: this.withExtraction,
-        maxTokens: this.maxQueryTokens,
-        embeddingModel: this.embeddingModel,
-        tokenizerModel: this.tokenizerModel,
-        ollamaUrl: this.ollamaUrl,
-        summaryModel: this.summaryModel,
+        maxTokens: this.configManager.get('maxQueryTokens'),
+        embeddingModel: this.configManager.get('embeddingModel'),
+        tokenizerModel: this.configManager.get('tokenizerModel') || undefined,
+        ollamaUrl: this.configManager.get('ollamaUrl'),
+        summaryModel: this.configManager.get('summaryModel'),
       };
 
-      const query = await this.queryProcessor.process(content, options);
+      const query = await QueryProcessor.process(content, options);
 
       if (query && query !== this.lastQuery) {
         this.lastQuery = query;
@@ -299,8 +310,8 @@ export class RelatedNotesView extends ItemView {
       // Use async tokenizer for accurate count
       SonarTokenizer.estimateTokens(
         query,
-        this.embeddingModel,
-        this.tokenizerModel
+        this.configManager.get('embeddingModel'),
+        this.configManager.get('tokenizerModel') || undefined
       ).then(tokens => {
         queryLength.setText(SonarTokenizer.formatTokenCount(tokens));
       });
