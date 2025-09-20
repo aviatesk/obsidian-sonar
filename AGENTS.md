@@ -140,14 +140,13 @@ npm run extraction
 
 ### General guidelines
 
-- **IMPORTANT: Code quality checks:**
-  - **During development**: Run `npm run build` to verify compilation succeeds
-  - **Before finalizing/committing**: Run `npm run check` for comprehensive
-    validation
-    - This runs: format check, ESLint (0 warnings), and strict TypeScript type
-      checking
-  - **To fix issues**: Use `npm run format` to auto-format code and
-    `npm run lint` for auto-fixable lint errors
+- **Make sure to run the code quality checks after making changes**
+  - During development: Run `npm run build` to verify compilation succeeds
+  - Before finalizing/committing: Run `npm run check` for comprehensive
+    validation. This runs format check, ESLint (0 warnings) and strict
+    TypeScript type checking (no `skipLibCheck`)
+  - To fix issues: Use `npm run format` to auto-format code and `npm run lint`
+    for auto-fixable lint errors
 - After writing or modifying code, run `npm run format` to ensure consistent
   formatting
   - TypeScript files: maximum line length 80 characters
@@ -160,21 +159,24 @@ npm run extraction
 
 ### Coding style
 
-[IMPORTANT]
+**[!IMPORTANT]: ALWAYS REMEMBER WITH HIGH PRIORITY**
 
 - All code, documentation and comments should be written in English
   - If instructions are given in a language other than English, you may respond
     in that language
   - But code/documentation/comments must be written in English unless explicitly
     requested in the instructions
-- **DO NOT LEAVE UNNECESSARY COMMENTS IN CODE**
+- **Do not leave unnecessary comments in code**
   - Instead prefer self-documenting code with clear variable, function names,
     and data/control flows
-- **Keep `main.ts` minimal**: Focus only on plugin lifecycle (onload, onunload,
+- **When writing documentation, avoid excessive decoration**. For example, avoid
+  scattering emojis or overusing `**` bold formatting. Use these only where
+  truly necessary.
+- Keep `main.ts` minimal: Focus only on plugin lifecycle (onload, onunload,
   addCommand calls). Delegate all feature logic to separate modules.
-- **Split large files**: If any file exceeds ~200-300 lines, consider breaking
-  it into smaller, focused modules.
-- **Use clear module boundaries**: Each file should have a single, well-defined
+- Split large files: If any file exceeds ~200-300 lines, consider breaking it
+  into smaller, focused modules.
+- Use clear module boundaries: Each file should have a single, well-defined
   responsibility.
 - Prefer `async/await` over promise chains; handle errors gracefully.
 - Generally, **efforts to maintain backward compatibility are not necessary
@@ -210,9 +212,6 @@ npm run extraction
 - **Always verify code quality before finalizing changes:**
   - During development: Use `npm run build` for quick compilation checks
   - Before completing work: Run `npm run check` for comprehensive validation
-    - Ensures formatting is correct (prettier)
-    - Ensures no lint errors or warnings (ESLint)
-    - Ensures strict type checking passes (TypeScript without `skipLibCheck`)
 - Add commands with stable IDs (don't rename once released).
 - Provide defaults and validation in settings.
 - Write idempotent code paths so `reload`/`unload` doesn't leak listeners or
