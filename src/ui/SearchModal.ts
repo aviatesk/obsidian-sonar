@@ -3,9 +3,11 @@ import { SearchResult } from '../core/search';
 import { ObsidianEmbeddingSearch } from '../embeddingSearch';
 import { SearchResultsComponent } from './SearchResultsComponent';
 import { MarkdownRenderingManager } from './MarkdownRenderingManager';
+import { ConfigManager } from '../ConfigManager';
 
 export class SearchModal extends Modal {
   private embeddingSearch: ObsidianEmbeddingSearch;
+  private configManager: ConfigManager;
   private resultsComponent: SearchResultsComponent;
   private markdownManager: MarkdownRenderingManager;
   private inputEl!: HTMLInputElement;
@@ -16,9 +18,14 @@ export class SearchModal extends Modal {
   private selectedIndex: number = -1;
   private resultItems: HTMLElement[] = [];
 
-  constructor(app: App, embeddingSearch: ObsidianEmbeddingSearch) {
+  constructor(
+    app: App,
+    embeddingSearch: ObsidianEmbeddingSearch,
+    configManager: ConfigManager
+  ) {
     super(app);
     this.embeddingSearch = embeddingSearch;
+    this.configManager = configManager;
     this.resultsComponent = new SearchResultsComponent(app);
     this.markdownManager = new MarkdownRenderingManager(app);
     this.debouncedSearch = debounce(this.performSearch.bind(this), 1000, true);
@@ -136,7 +143,10 @@ export class SearchModal extends Modal {
     this.updateStatus('searching');
 
     try {
-      const results = await this.embeddingSearch.search(query, 10);
+      const results = await this.embeddingSearch.search(
+        query,
+        this.configManager.get('topK')
+      );
       this.displayResults(results);
       this.updateStatus(`${results.length} results`);
     } catch (error) {

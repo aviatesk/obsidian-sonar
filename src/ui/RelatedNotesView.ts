@@ -296,7 +296,10 @@ export class RelatedNotesView extends ItemView {
       });
 
     try {
-      const results = await this.embeddingSearch.search(query, 10);
+      const results = await this.embeddingSearch.search(
+        query,
+        this.configManager.get('topK')
+      );
       if (results.length === 0) {
         this.resultsComponent.clearResults(
           this.resultsEl,

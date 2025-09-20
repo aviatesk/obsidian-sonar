@@ -244,7 +244,11 @@ export default class ObsidianSonarPlugin extends Plugin {
       return;
     }
 
-    const modal = new SearchModal(this.app, this.embeddingSearch!);
+    const modal = new SearchModal(
+      this.app,
+      this.embeddingSearch!,
+      this.configManager
+    );
     modal.open();
   }
 
