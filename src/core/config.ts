@@ -29,6 +29,7 @@ export interface ObsidianSettings extends CommonConfig {
   autoOpenRelatedNotes: boolean;
   autoIndex: boolean;
   indexDebounceMs: number;
+  relatedNotesDebounceMs: number;
   showIndexNotifications: boolean;
   statusBarMaxLength: number;
 }
@@ -61,7 +62,8 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   excludedPaths: [], // Default to no ignored paths
   autoOpenRelatedNotes: true,
   autoIndex: false,
-  indexDebounceMs: 10000, // 10s
+  indexDebounceMs: 10000, // 10s for auto-indexing
+  relatedNotesDebounceMs: 10000, // 10s for related notes view updates
   showIndexNotifications: true,
   statusBarMaxLength: 40,
 };

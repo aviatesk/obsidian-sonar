@@ -34,7 +34,6 @@ export class RelatedNotesView extends ItemView {
   private resultsEl!: HTMLElement;
   private statusEl!: HTMLElement;
   private debouncedRefresh: () => void;
-  private debouncedRefreshLong: () => void;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -48,14 +47,27 @@ export class RelatedNotesView extends ItemView {
     this.withExtraction = configManager.get('withExtraction');
     this.resultsComponent = new SearchResultsComponent(this.app);
 
-    this.debouncedRefresh = debounce(this.refresh.bind(this), 500, true);
-    this.debouncedRefreshLong = debounce(this.refresh.bind(this), 10000, true);
+    // Use trailing edge (false) for editor changes, configurable delay
+    this.debouncedRefresh = debounce(
+      this.refresh.bind(this),
+      configManager.get('relatedNotesDebounceMs'),
+      false // trailing edge - waits until after the delay
+    );
 
     // Subscribe to config changes
     this.setupConfigListeners();
   }
 
   private setupConfigListeners(): void {
+    // Recreate debounced function when delay changes
+    this.configManager.subscribe('relatedNotesDebounceMs', (_, value) => {
+      this.debouncedRefresh = debounce(
+        this.refresh.bind(this),
+        value,
+        false // trailing edge
+      );
+    });
+
     // Refresh when relevant configs change
     this.configManager.subscribe('maxQueryTokens', () => {
       this.debouncedRefresh();
@@ -130,7 +142,7 @@ export class RelatedNotesView extends ItemView {
       this.followCursor = !this.followCursor;
       followCursorBtn.classList.toggle('active', this.followCursor);
       this.saveToggleSettings();
-      this.debouncedRefresh();
+      this.refresh();
     });
 
     // With LLM Extraction toggle button
@@ -149,12 +161,7 @@ export class RelatedNotesView extends ItemView {
       this.withExtraction = !this.withExtraction;
       withExtractionBtn.classList.toggle('active', this.withExtraction);
       this.saveToggleSettings();
-      // Use longer debounce for LLM extraction as it's more expensive
-      if (this.withExtraction) {
-        this.debouncedRefreshLong();
-      } else {
-        this.debouncedRefresh();
-      }
+      this.refresh();
     });
 
     // Refresh button
@@ -190,9 +197,7 @@ export class RelatedNotesView extends ItemView {
 
     this.registerEvent(
       this.app.workspace.on('editor-change', () => {
-        if (this.followCursor) {
-          this.debouncedRefresh();
-        }
+        this.debouncedRefresh();
       })
     );
 
@@ -215,14 +220,7 @@ export class RelatedNotesView extends ItemView {
     ) {
       this.lastActiveFile = activeFile;
 
-      // Don't refresh in cursor mode on file change
-      if (!this.followCursor) {
-        if (this.withExtraction) {
-          this.debouncedRefreshLong();
-        } else {
-          this.debouncedRefresh();
-        }
-      }
+      this.refresh();
     } else if (!activeFile) {
       this.lastActiveFile = null;
       this.clearResults();

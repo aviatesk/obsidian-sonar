@@ -315,7 +315,7 @@ export class ObsidianSonarSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('Related notes update delay')
       .setDesc(
-        'Delay in milliseconds before updating related notes view after typing (default: 1000ms = 1s)'
+        'Delay in milliseconds before updating related notes view after typing (default: 10000ms = 10s)'
       )
       .addSlider(slider =>
         slider
