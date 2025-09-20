@@ -306,7 +306,7 @@ export default class ObsidianSonarPlugin extends Plugin {
       this.updateStatusBar(
         `Sonar: Indexed ${stats.totalFiles}/${indexableCount} files`
       );
-    } catch (error) {
+    } catch {
       this.updateStatusBar('Sonar: Vector store errored');
     }
   }

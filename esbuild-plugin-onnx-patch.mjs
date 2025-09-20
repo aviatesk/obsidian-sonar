@@ -33,7 +33,8 @@ export const onnxRedirectPlugin = {
   setup(build) {
     // Redirect onnxruntime-node to onnxruntime-web for browser compatibility
     // This handles any imports that slip through despite the process.release fix
-    build.onResolve({ filter: /^onnxruntime-node$/ }, args => {
+    build.onResolve({ filter: /^onnxruntime-node$/ }, () => {
+      // eslint-disable-next-line no-undef
       console.log(
         '[onnx-redirect] Redirecting onnxruntime-nodew to onnxruntime-web'
       );

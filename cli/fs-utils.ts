@@ -20,7 +20,7 @@ export async function getMarkdownFiles(dir: string): Promise<string[]> {
           files.push(fullPath);
         }
       }
-    } catch (error) {
+    } catch {
       // Skip directories we can't read
     }
   }
@@ -44,7 +44,7 @@ export async function loadIndex(dbPath: string): Promise<IndexData> {
   try {
     const data = await fs.readFile(dbPath, 'utf-8');
     return JSON.parse(data);
-  } catch (error) {
+  } catch {
     return { documents: [] };
   }
 }

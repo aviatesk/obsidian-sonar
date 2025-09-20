@@ -131,8 +131,8 @@ export class OllamaUtils {
       try {
         await tempClient.list();
         return true;
-      } catch (error) {
-        // サーバーがまだ起動していない
+      } catch {
+        // Server not started yet
       }
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
@@ -171,8 +171,9 @@ export class OllamaUtils {
         stream: true,
       });
 
-      for await (const _progress of stream) {
+      for await (const _ of stream) {
         // Progress is handled by the stream
+        void _; // Explicitly mark as intentionally unused
       }
     } catch (error: any) {
       throw new Error(`Failed to pull model: ${error.message}`);

@@ -241,7 +241,6 @@ export class IndexManager {
       );
     }
 
-    let successCount = 0;
     let errorCount = 0;
     const totalOperations = operations.length;
 
@@ -256,7 +255,6 @@ export class IndexManager {
           total: totalOperations,
         });
         await this.processOperation(operation);
-        successCount++;
       } catch (error) {
         const filePath = operation.file?.path || operation.oldPath || 'unknown';
         console.error(

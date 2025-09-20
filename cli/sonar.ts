@@ -62,7 +62,7 @@ async function indexCommand(targetPath?: string, options?: any) {
       );
       process.exit(1);
     }
-  } catch (error) {
+  } catch {
     console.error(`❌ Failed to connect to Ollama at ${config.ollamaUrl}`);
     console.error(`   Please make sure Ollama is running with: ollama serve`);
     process.exit(1);

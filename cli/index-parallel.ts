@@ -74,7 +74,7 @@ export async function processParallel(
         : '0';
 
     const serverLines: string[] = [];
-    for (const [_url, status] of serverStatus.entries()) {
+    for (const [, status] of serverStatus.entries()) {
       const progress =
         status.total > 0 ? `[${status.processed}/${status.total}]` : '[done]';
 
