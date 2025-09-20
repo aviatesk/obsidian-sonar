@@ -197,46 +197,42 @@ export class ObsidianSonarSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Max chunk size')
-      .setDesc('Maximum tokens per chunk')
-      .addText(text =>
-        text
-          .setPlaceholder('512')
-          .setValue(String(this.configManager.get('maxChunkSize')))
+      .setDesc('Maximum tokens per chunk (recommended: 512)')
+      .addSlider(slider =>
+        slider
+          .setLimits(64, 2048, 64)
+          .setValue(this.configManager.get('maxChunkSize'))
+          .setDynamicTooltip()
           .onChange(async value => {
-            const num = parseInt(value);
-            if (!isNaN(num) && num > 0) {
-              await this.configManager.set('maxChunkSize', num);
-            }
+            await this.configManager.set('maxChunkSize', value);
           })
       );
 
     new Setting(containerEl)
       .setName('Chunk overlap')
-      .setDesc('Number of overlapping tokens between chunks')
-      .addText(text =>
-        text
-          .setPlaceholder('64')
-          .setValue(String(this.configManager.get('chunkOverlap')))
+      .setDesc(
+        'Number of overlapping tokens between chunks (recommended: 64 ~10% of chunk size)'
+      )
+      .addSlider(slider =>
+        slider
+          .setLimits(0, 256, 8)
+          .setValue(this.configManager.get('chunkOverlap'))
+          .setDynamicTooltip()
           .onChange(async value => {
-            const num = parseInt(value);
-            if (!isNaN(num) && num >= 0) {
-              await this.configManager.set('chunkOverlap', num);
-            }
+            await this.configManager.set('chunkOverlap', value);
           })
       );
 
     new Setting(containerEl)
       .setName('Max query tokens')
       .setDesc('Maximum number of tokens for search queries (recommended: 128)')
-      .addText(text =>
-        text
-          .setPlaceholder('128')
-          .setValue(String(this.configManager.get('maxQueryTokens')))
+      .addSlider(slider =>
+        slider
+          .setLimits(32, 512, 16)
+          .setValue(this.configManager.get('maxQueryTokens'))
+          .setDynamicTooltip()
           .onChange(async value => {
-            const num = parseInt(value);
-            if (!isNaN(num) && num > 0) {
-              await this.configManager.set('maxQueryTokens', num);
-            }
+            await this.configManager.set('maxQueryTokens', value);
           })
       );
 
@@ -293,17 +289,15 @@ export class ObsidianSonarSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('Index debounce time (ms)')
       .setDesc(
-        'Wait time before processing file changes (reduces frequent updates)'
+        'Wait time before processing file changes (default: 10000ms = 10s)'
       )
-      .addText(text =>
-        text
-          .setPlaceholder('10000')
-          .setValue(String(this.configManager.get('indexDebounceMs')))
+      .addSlider(slider =>
+        slider
+          .setLimits(1000, 60000, 1000)
+          .setValue(this.configManager.get('indexDebounceMs'))
+          .setDynamicTooltip()
           .onChange(async value => {
-            const num = parseInt(value);
-            if (!isNaN(num) && num >= 100) {
-              await this.configManager.set('indexDebounceMs', num);
-            }
+            await this.configManager.set('indexDebounceMs', value);
           })
       );
 
@@ -319,15 +313,32 @@ export class ObsidianSonarSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Status bar max length')
-      .setDesc('Maximum number of characters in status bar (0 = no padding)')
-      .addText(text =>
-        text
-          .setPlaceholder('40')
-          .setValue(String(this.configManager.get('statusBarMaxLength')))
+      .setName('Related notes update delay')
+      .setDesc(
+        'Delay in milliseconds before updating related notes view after typing (default: 1000ms = 1s)'
+      )
+      .addSlider(slider =>
+        slider
+          .setLimits(100, 60000, 100)
+          .setValue(this.configManager.get('relatedNotesDebounceMs'))
+          .setDynamicTooltip()
           .onChange(async value => {
-            const length = parseInt(value) || 0;
-            await this.configManager.set('statusBarMaxLength', length);
+            await this.configManager.set('relatedNotesDebounceMs', value);
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Status bar max length')
+      .setDesc(
+        'Maximum number of characters in status bar (default: 40, 0 = no padding)'
+      )
+      .addSlider(slider =>
+        slider
+          .setLimits(0, 100, 5)
+          .setValue(this.configManager.get('statusBarMaxLength'))
+          .setDynamicTooltip()
+          .onChange(async value => {
+            await this.configManager.set('statusBarMaxLength', value);
           })
       );
   }
