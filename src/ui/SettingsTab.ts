@@ -241,17 +241,15 @@ export class ObsidianSonarSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Default search results')
-      .setDesc('Number of results to return by default')
-      .addText(text =>
-        text
-          .setPlaceholder('5')
-          .setValue(String(this.configManager.get('defaultTopK')))
+      .setName('Search results count')
+      .setDesc('Number of search results to return (default: 10)')
+      .addSlider(slider =>
+        slider
+          .setLimits(1, 20, 1)
+          .setValue(this.configManager.get('topK'))
+          .setDynamicTooltip()
           .onChange(async value => {
-            const num = parseInt(value);
-            if (!isNaN(num) && num > 0) {
-              await this.configManager.set('defaultTopK', num);
-            }
+            await this.configManager.set('topK', value);
           })
       );
 

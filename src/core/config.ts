@@ -10,8 +10,7 @@ export interface CommonConfig {
   maxChunkSize: number;
   chunkOverlap: number;
   maxQueryTokens: number; // Maximum tokens for search queries
-
-  defaultTopK: number;
+  topK: number; // Number of search results to return
 }
 
 export interface CLIConfig extends CommonConfig {
@@ -42,7 +41,7 @@ export const DEFAULT_COMMON_CONFIG: CommonConfig = {
   maxChunkSize: 512, // tokens
   chunkOverlap: 64, // tokens (roughly 10% of chunk size)
   maxQueryTokens: 128, // tokens for search queries
-  defaultTopK: 5,
+  topK: 10, // default number of search results
 };
 
 export const DEFAULT_CLI_CONFIG: CLIConfig = {
@@ -75,7 +74,7 @@ export function isCommonConfig(config: any): config is CommonConfig {
     typeof config.summaryModel === 'string' &&
     typeof config.maxChunkSize === 'number' &&
     typeof config.chunkOverlap === 'number' &&
-    typeof config.defaultTopK === 'number'
+    typeof config.topK === 'number'
   );
 }
 

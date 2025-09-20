@@ -163,7 +163,7 @@ async function searchCommand(query?: string, options?: any) {
     process.exit(1);
   }
 
-  const topK = options?.top ? parseInt(options.top) : config.defaultTopK || 5;
+  const topK = options?.top ? parseInt(options.top) : config.topK;
 
   console.log('🔎 Semantic Search\n');
   console.log(`📝 Query: "${query}"`);
