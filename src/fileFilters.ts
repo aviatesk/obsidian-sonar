@@ -1,4 +1,4 @@
-import { TFile } from 'obsidian';
+import { TFile, normalizePath } from 'obsidian';
 import { ConfigManager } from './ConfigManager';
 
 /**
@@ -6,17 +6,19 @@ import { ConfigManager } from './ConfigManager';
  */
 
 /**
- * Normalize index path by removing leading slash if present
+ * Normalize index path using Obsidian's normalizePath
+ * (which already removes leading/trailing slashes)
  */
 export function normalizeIndexPath(path: string): string {
-  return path.startsWith('/') ? path.slice(1) : path;
+  return normalizePath(path);
 }
 
 /**
  * Check if a file path matches an exclusion pattern
  */
 function matchesExclusionPattern(filePath: string, pattern: string): boolean {
-  const cleanPattern = pattern.startsWith('/') ? pattern.slice(1) : pattern;
+  // normalizePath already removes leading slashes
+  const cleanPattern = normalizePath(pattern);
 
   // Check if it's a glob pattern (contains *, ?, [, ])
   if (

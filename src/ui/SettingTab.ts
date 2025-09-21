@@ -1,4 +1,11 @@
-import { App, Notice, PluginSettingTab, Setting, Modal } from 'obsidian';
+import {
+  App,
+  Notice,
+  PluginSettingTab,
+  Setting,
+  Modal,
+  normalizePath,
+} from 'obsidian';
 import { ConfigManager } from '../ConfigManager';
 import { Tokenizer } from '../Tokenizer';
 import type ObsidianSonarPlugin from '../../main';
@@ -18,7 +25,7 @@ export class SettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h3', { text: 'Obsidian Sonar Actions' });
+    new Setting(containerEl).setName('Actions').setHeading();
 
     new Setting(containerEl)
       .setName('Rebuild entire index')
@@ -88,14 +95,14 @@ export class SettingTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl('h3', { text: 'Obsidian Sonar Statistics' });
+    new Setting(containerEl).setName('Statistics').setHeading();
     const statsDiv = containerEl.createDiv({
       cls: 'sonar-stats-in-settings',
     });
     this.statsDiv = statsDiv;
     this.updateStats();
 
-    containerEl.createEl('h2', { text: 'Obsidian Sonar Settings' });
+    new Setting(containerEl).setName('Settings').setHeading();
 
     new Setting(containerEl)
       .setName('Ollama URL')
@@ -120,7 +127,8 @@ export class SettingTab extends PluginSettingTab {
           .setPlaceholder('/')
           .setValue(this.configManager.get('indexPath'))
           .onChange(async value => {
-            await this.configManager.set('indexPath', value || '/');
+            const normalized = value ? normalizePath(value) : '/';
+            await this.configManager.set('indexPath', normalized);
             await this.updateStats();
             await this.plugin.updateStatusBarWithFileCount();
           })
@@ -140,7 +148,8 @@ export class SettingTab extends PluginSettingTab {
             const paths = value
               .split('\n')
               .map(line => line.trim())
-              .filter(line => line.length > 0);
+              .filter(line => line.length > 0)
+              .map(path => normalizePath(path));
             await this.configManager.set('excludedPaths', paths);
             await this.updateStats();
             await this.plugin.updateStatusBarWithFileCount();
@@ -271,7 +280,7 @@ export class SettingTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl('h3', { text: 'Auto-indexing Settings' });
+    new Setting(containerEl).setName('Auto-indexing').setHeading();
 
     new Setting(containerEl)
       .setName('Enable auto-indexing')
@@ -346,7 +355,7 @@ export class SettingTab extends PluginSettingTab {
   async confirmClearIndex(): Promise<boolean> {
     return new Promise(resolve => {
       const modal = new Modal(this.app);
-      modal.titleEl.setText('Clear Index');
+      modal.titleEl.setText('Clear index');
       modal.contentEl.setText(
         'Are you sure you want to clear all indexed data? This action cannot be undone.'
       );
