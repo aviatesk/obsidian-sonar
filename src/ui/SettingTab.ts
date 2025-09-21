@@ -9,6 +9,7 @@ import {
 import { ConfigManager } from '../ConfigManager';
 import { Tokenizer } from '../Tokenizer';
 import type ObsidianSonarPlugin from '../../main';
+import { getIndexableFilesCount } from 'src/fileFilters';
 
 export class SettingTab extends PluginSettingTab {
   plugin: ObsidianSonarPlugin;
@@ -391,8 +392,10 @@ export class SettingTab extends PluginSettingTab {
 
     try {
       const stats = await this.plugin.embeddingSearch.getStats();
-      const indexableCount =
-        await this.plugin.embeddingSearch.getIndexableFilesCount();
+      const indexableCount = getIndexableFilesCount(
+        this.plugin.app.vault,
+        this.plugin.configManager
+      );
       this.statsDiv.empty();
       this.statsDiv.createEl('p', {
         text: `Files indexed: ${stats.totalFiles} / ${indexableCount}`,

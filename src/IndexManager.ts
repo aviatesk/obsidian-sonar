@@ -8,7 +8,8 @@ import {
 } from 'obsidian';
 import { EmbeddingSearch } from './EmbeddingSearch';
 import { ConfigManager } from './ConfigManager';
-import { shouldIndexFile, getIndexableFiles } from './fileFilters';
+import { shouldIndexFile, getFilesToIndex } from './fileFilters';
+import { DocumentMetadata } from './VectorStore';
 
 interface FileOperation {
   type: 'create' | 'modify' | 'delete' | 'rename';
@@ -51,23 +52,18 @@ export class IndexManager {
     );
 
     this.setupConfigListeners();
-
-    this.loadIndexedFiles()
-      .then(() => {
-        console.log(
-          `IndexManager: Loaded ${this.indexedFiles.size} indexed files`
-        );
-      })
-      .catch(error => {
-        console.error('IndexManager: Failed to load indexed files:', error);
-        this.indexedFiles = new Set();
-      });
   }
 
   /**
    * Initialize after layout is ready to avoid startup event spam
    */
-  onLayoutReady(): void {
+  async onLayoutReady(): Promise<void> {
+    // First, perform smart sync to detect changes made while Obsidian was closed
+    await this.syncOnLoad();
+
+    // Load indexed files after sync
+    await this.loadIndexedFiles();
+
     this.isInitialized = true;
 
     if (this.configManager.get('autoIndex')) {
@@ -126,11 +122,119 @@ export class IndexManager {
   }
 
   private async loadIndexedFiles(): Promise<void> {
-    this.indexedFiles = await this.embeddingSearch.getIndexedFiles();
+    const allDocs = await this.embeddingSearch.getIndexedFiles();
+    const filesSet = new Set<string>();
+    for (const doc of allDocs) {
+      if (doc.metadata && doc.metadata.filePath) {
+        filesSet.add(doc.metadata.filePath);
+      }
+    }
+    this.indexedFiles = filesSet;
   }
 
   async reloadIndexedFiles(): Promise<void> {
     await this.loadIndexedFiles();
+  }
+
+  private async syncOnLoad(): Promise<void> {
+    console.log('IndexManager: Starting smart sync on load...');
+
+    const allDocs = await this.embeddingSearch.getIndexedFiles();
+
+    const vaultFiles = getFilesToIndex(this.vault, this.configManager);
+
+    // Group documents by file path and get metadata from first chunk
+    const dbFileMap = new Map<string, DocumentMetadata>();
+    for (const doc of allDocs) {
+      const filePath = doc.metadata.filePath;
+      if (!dbFileMap.has(filePath)) {
+        dbFileMap.set(filePath, doc.metadata);
+      }
+    }
+
+    const vaultFileMap = new Map(vaultFiles.map(f => [f.path, f]));
+
+    const newFiles = vaultFiles.filter(f => !dbFileMap.has(f.path));
+
+    const deletedPaths = Array.from(dbFileMap.keys()).filter(
+      path => !vaultFileMap.has(path)
+    );
+
+    const modifiedFiles = vaultFiles.filter(f => {
+      const meta = dbFileMap.get(f.path);
+      if (!meta) return false;
+      return f.stat.mtime !== meta.mtime || f.stat.size !== meta.size;
+    });
+
+    console.log(
+      `IndexManager: Smart sync detected - New: ${newFiles.length}, Modified: ${modifiedFiles.length}, Deleted: ${deletedPaths.length}`
+    );
+
+    // Process new files
+    if (newFiles.length > 0) {
+      console.log(`IndexManager: Indexing ${newFiles.length} new files...`);
+      for (let i = 0; i < newFiles.length; i++) {
+        const file = newFiles[i];
+        try {
+          this.updateStatus({
+            file: file.basename,
+            current: i + 1,
+            total: newFiles.length,
+          });
+          await this.embeddingSearch.indexFile(file);
+          this.indexedFiles.add(file.path);
+        } catch (error) {
+          console.error(
+            `IndexManager: Failed to index new file ${file.path}:`,
+            error
+          );
+        }
+      }
+    }
+
+    // Process modified files
+    if (modifiedFiles.length > 0) {
+      console.log(
+        `IndexManager: Re-indexing ${modifiedFiles.length} modified files...`
+      );
+      for (let i = 0; i < modifiedFiles.length; i++) {
+        const file = modifiedFiles[i];
+        try {
+          this.updateStatus({
+            file: file.basename,
+            current: i + 1,
+            total: modifiedFiles.length,
+          });
+          await this.embeddingSearch.indexFile(file);
+        } catch (error) {
+          console.error(
+            `IndexManager: Failed to re-index modified file ${file.path}:`,
+            error
+          );
+        }
+      }
+    }
+
+    // Process deleted files
+    if (deletedPaths.length > 0) {
+      console.log(
+        `IndexManager: Removing ${deletedPaths.length} deleted files from index...`
+      );
+      for (const path of deletedPaths) {
+        try {
+          await this.deleteFromIndex(path);
+          this.indexedFiles.delete(path);
+        } catch (error) {
+          console.error(
+            `IndexManager: Failed to delete ${path} from index:`,
+            error
+          );
+        }
+      }
+    }
+
+    console.log('IndexManager: Smart sync completed');
+    this.onProcessingCompleteCallback();
   }
 
   private registerEventHandlers(): void {
@@ -337,7 +441,7 @@ export class IndexManager {
     ) => void | Promise<void>
   ): Promise<void> {
     console.log('IndexManager: Starting full index rebuild...');
-    const allFiles = await this.getFilesToIndex();
+    const allFiles = getFilesToIndex(this.vault, this.configManager);
     const totalFiles = allFiles.length;
     let successCount = 0;
     let errorCount = 0;
@@ -462,19 +566,6 @@ export class IndexManager {
       unsubscribe();
     }
     this.configUnsubscribers = [];
-  }
-
-  getStats(): { indexed: number; pending: number; processing: boolean } {
-    return {
-      indexed: this.indexedFiles.size,
-      pending: this.pendingOperations.size,
-      processing: this.isProcessing,
-    };
-  }
-
-  private async getFilesToIndex(): Promise<TFile[]> {
-    const allFiles = this.vault.getMarkdownFiles();
-    return getIndexableFiles(allFiles, this.configManager);
   }
 
   private updateStatus(progress: {

@@ -1,4 +1,4 @@
-import { TFile, normalizePath } from 'obsidian';
+import { TFile, Vault, normalizePath } from 'obsidian';
 import { ConfigManager } from './ConfigManager';
 
 /**
@@ -83,12 +83,27 @@ export function shouldIndexFile(
   return true;
 }
 
-/**
- * Get all markdown files that should be indexed
- */
-export function getIndexableFiles(
+function getIndexableFiles(
   allFiles: TFile[],
   configManager: ConfigManager
 ): TFile[] {
   return allFiles.filter(file => shouldIndexFile(file, configManager));
+}
+
+/**
+ * Get all markdown files that should be indexed
+ */
+export function getFilesToIndex(
+  vault: Vault,
+  configManager: ConfigManager
+): TFile[] {
+  const allFiles = vault.getMarkdownFiles();
+  return getIndexableFiles(allFiles, configManager);
+}
+
+export function getIndexableFilesCount(
+  vault: Vault,
+  configManager: ConfigManager
+): number {
+  return getFilesToIndex(vault, configManager).length;
 }

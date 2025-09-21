@@ -10,6 +10,7 @@ import { Tokenizer } from './src/Tokenizer';
 import { IndexManager } from './src/IndexManager';
 import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
+import { getIndexableFilesCount } from 'src/fileFilters';
 
 export default class ObsidianSonarPlugin extends Plugin {
   configManager!: ConfigManager;
@@ -38,9 +39,7 @@ export default class ObsidianSonarPlugin extends Plugin {
     this.setupNotificationHandler();
 
     // Defer heavy initialization to avoid blocking plugin load
-    this.app.workspace.onLayoutReady(() => {
-      this.initializeAsync();
-    });
+    this.app.workspace.onLayoutReady(() => this.initializeAsync());
   }
 
   private async initializeAsync(): Promise<void> {
@@ -83,7 +82,10 @@ export default class ObsidianSonarPlugin extends Plugin {
       if (this.configManager.get('autoOpenRelatedNotes')) {
         this.activateRelatedNotesView();
       }
-      this.setupEventHandlers(this.indexManager);
+      this.setupEventHandlers();
+
+      // Initialize IndexManager's event handlers and smart sync
+      await this.indexManager.onLayoutReady();
     } catch {
       this.updateStatusBar('Sonar: Failed to initialize');
       new Notice(
@@ -121,8 +123,7 @@ export default class ObsidianSonarPlugin extends Plugin {
     });
   }
 
-  private setupEventHandlers(indexManager: IndexManager): void {
-    // Register vault events for status bar updates
+  private setupEventHandlers(): void {
     const debouncedStatusUpdate = debounce(
       () => this.updateStatusBarWithFileCount(),
       500,
@@ -131,9 +132,6 @@ export default class ObsidianSonarPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('create', debouncedStatusUpdate));
     this.registerEvent(this.app.vault.on('delete', debouncedStatusUpdate));
     this.registerEvent(this.app.vault.on('rename', debouncedStatusUpdate));
-
-    // Initialize IndexManager's event handlers
-    indexManager.onLayoutReady();
   }
 
   private registerCommands(): void {
@@ -287,8 +285,10 @@ export default class ObsidianSonarPlugin extends Plugin {
 
     try {
       const stats = await this.embeddingSearch.getStats();
-      const indexableCount =
-        await this.embeddingSearch.getIndexableFilesCount();
+      const indexableCount = getIndexableFilesCount(
+        this.app.vault,
+        this.configManager
+      );
       this.updateStatusBar(
         `Sonar: Indexed ${stats.totalFiles}/${indexableCount} files`
       );

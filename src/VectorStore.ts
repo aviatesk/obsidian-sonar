@@ -7,9 +7,9 @@ export interface DocumentMetadata {
   filePath: string;
   title: string;
   headings: string[];
-  chunkIndex: number;
-  totalChunks: number;
-  timestamp?: number; // Optional for backward compatibility
+  mtime: number; // File modification time in milliseconds
+  size: number; // File size in bytes
+  indexedAt: number; // When the file was indexed
 }
 
 /**
@@ -43,17 +43,17 @@ export function cosineSimilarity(vec1: number[], vec2: number[]): number {
 }
 
 const STORE_NAME = 'vectors';
-const META_STORE_NAME = 'metadata';
 const DB_NAME = 'sonar-embedding-vectors';
+const DB_VERSION = 1;
 
 export class VectorStore {
-  private db: IDBDatabase;
+  private db!: IDBDatabase;
   private constructor(db: IDBDatabase) {
     this.db = db;
   }
   static async initialize(): Promise<VectorStore> {
     return new Promise((resolve, reject) => {
-      const request = window.indexedDB.open(DB_NAME, 1);
+      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
       request.onerror = () => {
         reject(new Error('Failed to open IndexedDB'));
       };
@@ -61,9 +61,10 @@ export class VectorStore {
         console.log('Vector store initialized');
         resolve(new VectorStore(request.result));
       };
-      // TODO Revisit
-      request.onupgradeneeded = event => {
-        const db = (event.target as any).result;
+      request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+        const db = (event.target as any).result as IDBDatabase;
+
+        // Create vector store if it doesn't exist
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           const vectorStore = db.createObjectStore(STORE_NAME, {
             keyPath: 'id',
@@ -71,12 +72,6 @@ export class VectorStore {
           vectorStore.createIndex('filePath', 'metadata.filePath', {
             unique: false,
           });
-          vectorStore.createIndex('timestamp', 'metadata.timestamp', {
-            unique: false,
-          });
-        }
-        if (!db.objectStoreNames.contains(META_STORE_NAME)) {
-          db.createObjectStore(META_STORE_NAME, { keyPath: 'key' });
         }
       };
     });
@@ -92,21 +87,18 @@ export class VectorStore {
   async addDocument(
     content: string,
     embedding: number[],
-    metadata: any
+    metadata: DocumentMetadata
   ): Promise<void> {
     const id = this.generateId(content, metadata);
     const document: IndexedDocument = {
       id,
       content,
       embedding,
-      metadata: {
-        ...metadata,
-        timestamp: Date.now(),
-      },
+      metadata,
     };
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
+      const transaction = this.db.transaction([STORE_NAME], 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
       const request = store.put(document);
 
@@ -119,11 +111,11 @@ export class VectorStore {
     documents: Array<{
       content: string;
       embedding: number[];
-      metadata: any;
+      metadata: DocumentMetadata;
     }>
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
+      const transaction = this.db.transaction([STORE_NAME], 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
 
       documents.forEach(doc => {
@@ -132,10 +124,7 @@ export class VectorStore {
           id,
           content: doc.content,
           embedding: doc.embedding,
-          metadata: {
-            ...doc.metadata,
-            timestamp: Date.now(),
-          },
+          metadata: doc.metadata,
         };
         store.put(document);
       });
@@ -150,7 +139,7 @@ export class VectorStore {
     topK: number
   ): Promise<SearchResult[]> {
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readonly');
+      const transaction = this.db.transaction([STORE_NAME], 'readonly');
       const store = transaction.objectStore(STORE_NAME);
       const request = store.getAll();
       request.onsuccess = () => {
@@ -168,7 +157,7 @@ export class VectorStore {
 
   async getDocumentsByFile(filePath: string): Promise<IndexedDocument[]> {
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readonly');
+      const transaction = this.db.transaction([STORE_NAME], 'readonly');
       const store = transaction.objectStore(STORE_NAME);
       const index = store.index('filePath');
       const request = index.getAll(filePath);
@@ -181,7 +170,7 @@ export class VectorStore {
   async deleteDocumentsByFile(filePath: string): Promise<void> {
     const documents = await this.getDocumentsByFile(filePath);
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
+      const transaction = this.db.transaction([STORE_NAME], 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
       documents.forEach(doc => {
         store.delete(doc.id);
@@ -194,7 +183,7 @@ export class VectorStore {
 
   async clearAll(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
+      const transaction = this.db.transaction([STORE_NAME], 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
       const request = store.clear();
       request.onsuccess = () => resolve();
@@ -204,7 +193,7 @@ export class VectorStore {
 
   async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readonly');
+      const transaction = this.db.transaction([STORE_NAME], 'readonly');
       const store = transaction.objectStore(STORE_NAME);
       const countRequest = store.count();
 
@@ -235,7 +224,7 @@ export class VectorStore {
 
   async getAllDocuments(): Promise<IndexedDocument[]> {
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORE_NAME], 'readonly');
+      const transaction = this.db.transaction([STORE_NAME], 'readonly');
       const store = transaction.objectStore(STORE_NAME);
       const request = store.getAll();
       request.onsuccess = () => resolve(request.result as IndexedDocument[]);

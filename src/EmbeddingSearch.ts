@@ -1,8 +1,7 @@
 import { VectorStore, DocumentMetadata } from './VectorStore';
-import { Chunker } from './Chunker';
+import { createChunks } from './chunker';
 import { TFile, Vault } from 'obsidian';
 import { ConfigManager } from './ConfigManager';
-import { getIndexableFiles } from './fileFilters';
 import { OllamaClient } from './OllamaClient';
 
 export interface SearchResult {
@@ -14,22 +13,28 @@ export interface SearchResult {
 export class EmbeddingSearch {
   private ollamaClient: OllamaClient;
   private vectorStore: VectorStore;
-  private chunker: Chunker;
   private vault: Vault;
-  private configManager: ConfigManager;
+  private maxChunkSize: number;
+  private chunkOverlap: number;
+  private embeddingModel: string;
+  private tokenizerModel?: string;
 
   private constructor(
     ollamaClient: OllamaClient,
     vectorStore: VectorStore,
-    chunker: Chunker,
     vault: Vault,
-    configManager: ConfigManager
+    maxChunkSize: number,
+    chunkOverlap: number,
+    embeddingModel: string,
+    tokenizerModel?: string
   ) {
     this.ollamaClient = ollamaClient;
     this.vectorStore = vectorStore;
-    this.chunker = chunker;
     this.vault = vault;
-    this.configManager = configManager;
+    this.maxChunkSize = maxChunkSize;
+    this.chunkOverlap = chunkOverlap;
+    this.embeddingModel = embeddingModel;
+    this.tokenizerModel = tokenizerModel;
   }
 
   static async initialize(
@@ -59,9 +64,11 @@ export class EmbeddingSearch {
     const embeddingSearch = new EmbeddingSearch(
       ollamaClient,
       vectorStore,
-      new Chunker(maxChunkSize, chunkOverlap, embeddingModel, tokenizerModel),
       vault,
-      configManager
+      maxChunkSize,
+      chunkOverlap,
+      embeddingModel,
+      tokenizerModel
     );
     console.log('Semantic search system initialized with Ollama');
     return embeddingSearch;
@@ -71,22 +78,35 @@ export class EmbeddingSearch {
     try {
       await this.vectorStore.deleteDocumentsByFile(file.path);
       const content = await this.vault.cachedRead(file);
-      const chunks = await this.chunker.chunk(content, {
-        filePath: file.path,
-        title: file.basename,
-      });
+      const chunks = await createChunks(
+        content,
+        this.maxChunkSize,
+        this.chunkOverlap,
+        this.embeddingModel,
+        this.tokenizerModel
+      );
       if (chunks.length === 0) {
         console.log(`No chunks created for file: ${file.path}`);
         return 0;
       }
-      const embeddings = await this.ollamaClient.getEmbeddings(
-        chunks.map(c => c.content)
-      );
+      const chunkContents = chunks.map(c => c.content);
+      const embeddings = await this.ollamaClient.getEmbeddings(chunkContents);
+
+      // Create metadata for each chunk
+      const indexedAt = Date.now();
       for (let i = 0; i < chunks.length; i++) {
+        const metadata: DocumentMetadata = {
+          filePath: file.path,
+          title: file.basename,
+          headings: chunks[i].headings,
+          mtime: file.stat.mtime,
+          size: file.stat.size,
+          indexedAt,
+        };
         await this.vectorStore.addDocument(
           chunks[i].content,
           embeddings[i],
-          chunks[i].metadata
+          metadata
         );
       }
       return chunks.length;
@@ -112,14 +132,6 @@ export class EmbeddingSearch {
     return await this.vectorStore.getStats();
   }
 
-  async getIndexableFilesCount(): Promise<number> {
-    const files = getIndexableFiles(
-      this.vault.getMarkdownFiles(),
-      this.configManager
-    );
-    return files.length;
-  }
-
   async close(): Promise<void> {
     await this.vectorStore.close();
   }
@@ -132,14 +144,7 @@ export class EmbeddingSearch {
     await this.vectorStore.deleteDocumentsByFile(filePath);
   }
 
-  async getIndexedFiles(): Promise<Set<string>> {
-    const allDocs = await this.vectorStore.getAllDocuments();
-    const filesSet = new Set<string>();
-    for (const doc of allDocs) {
-      if (doc.metadata && doc.metadata.filePath) {
-        filesSet.add(doc.metadata.filePath);
-      }
-    }
-    return filesSet;
+  async getIndexedFiles() {
+    return this.vectorStore.getAllDocuments();
   }
 }
