@@ -47,25 +47,18 @@ export class RelatedNotesView extends ItemView {
     this.withExtraction = configManager.get('withExtraction');
     this.resultsComponent = new SearchResultsComponent(this.app);
 
-    // Use trailing edge (false) for editor changes, configurable delay
     this.debouncedRefresh = debounce(
       this.refresh.bind(this),
       configManager.get('relatedNotesDebounceMs'),
-      false // trailing edge - waits until after the delay
+      true
     );
 
-    // Subscribe to config changes
     this.setupConfigListeners();
   }
 
   private setupConfigListeners(): void {
-    // Recreate debounced function when delay changes
     this.configManager.subscribe('relatedNotesDebounceMs', (_, value) => {
-      this.debouncedRefresh = debounce(
-        this.refresh.bind(this),
-        value,
-        false // trailing edge
-      );
+      this.debouncedRefresh = debounce(this.refresh.bind(this), value, true);
     });
 
     // Refresh when relevant configs change
@@ -84,7 +77,6 @@ export class RelatedNotesView extends ItemView {
     // Update local state when config changes externally
     this.configManager.subscribe('followCursor', (_, value) => {
       this.followCursor = value;
-      // Update UI if needed
       const btn = this.containerEl.querySelector('.follow-cursor-btn');
       if (btn) {
         btn.classList.toggle('active', value);
@@ -93,7 +85,6 @@ export class RelatedNotesView extends ItemView {
 
     this.configManager.subscribe('withExtraction', (_, value) => {
       this.withExtraction = value;
-      // Update UI if needed
       const btn = this.containerEl.querySelector('.with-llm-extraction-btn');
       if (btn) {
         btn.classList.toggle('active', value);

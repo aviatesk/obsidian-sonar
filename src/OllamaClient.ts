@@ -61,26 +61,6 @@ export class OllamaClient {
     }
   }
 
-  // Get single embedding (for compatibility)
-  async getEmbedding(text: string): Promise<number[]> {
-    try {
-      const response = await this.ollama.embed({
-        model: this.model,
-        input: text,
-      });
-
-      // For single input, embeddings array contains one embedding
-      if (response.embeddings && response.embeddings.length > 0) {
-        return response.embeddings[0];
-      }
-
-      throw new Error('No embedding in response');
-    } catch (error: any) {
-      throw new Error(`Failed to generate embedding: ${error.message}`);
-    }
-  }
-
-  // Generate text completion (useful for RAG responses)
   async generate(prompt: string, system?: string): Promise<string> {
     try {
       const response = await this.ollama.generate({
@@ -113,36 +93,6 @@ export class OllamaClient {
       return response.message.content;
     } catch (error: any) {
       throw new Error(`Failed to chat: ${error.message}`);
-    }
-  }
-
-  // List available models
-  async listModels(): Promise<string[]> {
-    try {
-      const response = await this.ollama.list();
-      return response.models.map(m => m.name);
-    } catch (error: any) {
-      throw new Error(`Failed to list models: ${error.message}`);
-    }
-  }
-
-  // Pull a model if not available
-  async pullModel(modelName?: string): Promise<void> {
-    const model = modelName || this.model;
-    try {
-      // Pull model with progress tracking
-      const stream = await this.ollama.pull({
-        model,
-        stream: true,
-      });
-
-      for await (const progress of stream) {
-        if (progress.status) {
-          console.log(`Pulling ${model}: ${progress.status}`);
-        }
-      }
-    } catch (error: any) {
-      throw new Error(`Failed to pull model ${model}: ${error.message}`);
     }
   }
 }

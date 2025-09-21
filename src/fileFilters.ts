@@ -58,8 +58,14 @@ export function shouldIndexFile(
   const normalizedIndexPath = normalizePath(indexPath);
 
   // Check if file is within index path
-  if (normalizedIndexPath && normalizedIndexPath !== '') {
-    console.log(indexPath, ' vs. ', normalizedIndexPath);
+  if (normalizedIndexPath && normalizedIndexPath !== '/') {
+    console.log(
+      indexPath,
+      ' vs. ',
+      normalizedIndexPath,
+      ' vs. ',
+      normalizePath(file.path)
+    );
     if (!file.path.startsWith(normalizedIndexPath)) {
       return false;
     }

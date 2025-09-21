@@ -231,37 +231,16 @@ export class IndexManager {
       `IndexManager: Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
     );
 
-    // Process all operations
-    let errorCount = 0;
-    for (let i = 0; i < operations.length; i++) {
-      const operation = operations[i];
-      const filePath = operation.file?.path || operation.oldPath || 'unknown';
-
-      if (progressCallback) {
-        await progressCallback(i + 1, operations.length, filePath);
-      }
-
-      try {
-        const fileName =
-          operation.file?.basename ||
-          operation.oldPath?.split('/').pop() ||
-          'unknown';
-        this.updateStatus({
-          file: fileName,
-          current: i + 1,
-          total: operations.length,
-        });
-        await this.processOperation(operation, true); // Skip change check in sync
-      } catch (error) {
-        console.error(
-          `IndexManager: Failed to ${operation.type} ${filePath}:`,
-          error
-        );
-        errorCount++;
-      }
+    // Schedule all operations through the queue without triggering debounce
+    for (const operation of operations) {
+      this.scheduleOperation(operation, true);
     }
 
-    if (operations.length > 0) this.clearMetadataCache();
+    // Process all scheduled operations synchronously
+    const errorCount = await this.processPendingOperations(
+      true,
+      progressCallback
+    );
 
     // Update indexedFiles to reflect the current DB state
     // Add unchanged files that are still in the DB
@@ -348,7 +327,10 @@ export class IndexManager {
     );
   }
 
-  private scheduleOperation(operation: FileOperation): void {
+  private scheduleOperation(
+    operation: FileOperation,
+    skipDebounce = false
+  ): void {
     const key = operation.oldPath || operation.file?.path || '';
 
     if (!key) return;
@@ -368,12 +350,28 @@ export class IndexManager {
       this.pendingOperations.set(key, operation);
     }
 
-    this.debouncedProcess();
+    if (!skipDebounce) {
+      this.debouncedProcess();
+    }
   }
 
-  private async processPendingOperations(): Promise<void> {
-    if (this.isProcessing || this.pendingOperations.size === 0) {
-      return;
+  private async processPendingOperations(
+    isSync: boolean = false,
+    progressCallback?: (
+      current: number,
+      total: number,
+      filePath: string
+    ) => void | Promise<void>
+  ): Promise<number> {
+    if (this.pendingOperations.size === 0) {
+      return 0;
+    }
+
+    // Prevent concurrent processing but allow sync to override
+    const wasProcessing = this.isProcessing;
+    if (wasProcessing && !isSync) {
+      // Regular event-driven call, skip if already processing
+      return 0;
     }
 
     this.isProcessing = true;
@@ -382,7 +380,7 @@ export class IndexManager {
 
     if (operations.length > 0) {
       console.log(
-        `IndexManager: Processing ${operations.length} file operation(s)`
+        `IndexManager: Processing ${operations.length} file operation(s)${isSync ? ' synchronously' : ''}`
       );
     }
 
@@ -391,17 +389,25 @@ export class IndexManager {
 
     for (let i = 0; i < operations.length; i++) {
       const operation = operations[i];
+      const filePath = operation.file?.path || operation.oldPath || 'unknown';
+
+      if (progressCallback) {
+        await progressCallback(i + 1, totalOperations, filePath);
+      }
+
       try {
         const fileName =
-          operation.file?.basename || operation.oldPath || 'unknown';
+          operation.file?.basename ||
+          operation.oldPath?.split('/').pop() ||
+          'unknown';
         this.updateStatus({
           file: fileName,
           current: i + 1,
           total: totalOperations,
         });
-        await this.processOperation(operation); // Check changes for event-driven operations
+        // Skip change check if called from sync
+        await this.processOperation(operation, isSync);
       } catch (error) {
-        const filePath = operation.file?.path || operation.oldPath || 'unknown';
         console.error(
           `IndexManager: Failed to ${operation.type} ${filePath}:`,
           error
@@ -415,13 +421,18 @@ export class IndexManager {
       this.clearMetadataCache();
     }
 
-    if (errorCount > 0) {
+    if (errorCount > 0 && !isSync) {
+      // Only show notice for event-driven operations, not sync
       new Notice(`Sonar index failed to update ${errorCount} files`);
     }
 
-    this.isProcessing = false;
+    // Restore processing state if it wasn't already processing
+    if (!wasProcessing) {
+      this.isProcessing = false;
+    }
 
     this.onProcessingCompleteCallback();
+    return errorCount;
   }
 
   private async processOperation(
@@ -489,30 +500,36 @@ export class IndexManager {
       this.configManager.get('tokenizerModel')
     );
 
-    if (chunks.length === 0) {
-      console.log(`No chunks created for file: ${file.path}`);
-      return;
-    }
-
     const chunkContents = chunks.map(c => c.content);
     const embeddings = await this.ollamaClient.getEmbeddings(chunkContents);
 
     // Create metadata for each chunk
     const indexedAt = Date.now();
-    for (let i = 0; i < chunks.length; i++) {
-      const metadata: DocumentMetadata = {
+    if (chunks.length == 0) {
+      await this.vectorStore.addDocument('', [], {
         filePath: file.path,
         title: file.basename,
-        headings: chunks[i].headings,
+        headings: [],
         mtime: file.stat.mtime,
         size: file.stat.size,
         indexedAt,
-      };
-      await this.vectorStore.addDocument(
-        chunks[i].content,
-        embeddings[i],
-        metadata
-      );
+      });
+    } else {
+      for (let i = 0; i < chunks.length; i++) {
+        const metadata: DocumentMetadata = {
+          filePath: file.path,
+          title: file.basename,
+          headings: chunks[i].headings,
+          mtime: file.stat.mtime,
+          size: file.stat.size,
+          indexedAt,
+        };
+        await this.vectorStore.addDocument(
+          chunks[i].content,
+          embeddings[i],
+          metadata
+        );
+      }
     }
 
     this.indexedFiles.add(file.path);
