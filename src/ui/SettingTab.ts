@@ -1,9 +1,9 @@
 import { App, Notice, PluginSettingTab, Setting, Modal } from 'obsidian';
 import { ConfigManager } from '../ConfigManager';
-import { SonarTokenizer } from '../core/tokenizer';
+import { Tokenizer } from '../Tokenizer';
 import type ObsidianSonarPlugin from '../../main';
 
-export class ObsidianSonarSettingTab extends PluginSettingTab {
+export class SettingTab extends PluginSettingTab {
   plugin: ObsidianSonarPlugin;
   statsDiv: HTMLDivElement | null = null;
   private configManager: ConfigManager;
@@ -177,7 +177,7 @@ export class ObsidianSonarSettingTab extends PluginSettingTab {
             await this.configManager.set('tokenizerModel', value || '');
             // Reinitialize tokenizer with new model
             try {
-              await SonarTokenizer.initialize(
+              await Tokenizer.initialize(
                 this.configManager.get('embeddingModel'),
                 value || undefined
               );

@@ -72,7 +72,7 @@ export type FallbackNotification = (
 /**
  * Transformers.js based tokenizer for accurate token counting
  */
-export class SonarTokenizer {
+export class Tokenizer {
   private static tokenizers: Map<string, PreTrainedTokenizer> = new Map();
   private static defaultModel = 'Xenova/bert-base-uncased';
   private static fallbackNotification: FallbackNotification | undefined;

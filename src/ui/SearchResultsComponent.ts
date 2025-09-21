@@ -1,5 +1,5 @@
 import { App, TFile } from 'obsidian';
-import { SearchResult } from '../core/search';
+import { SearchResult } from '../EmbeddingSearch';
 import { MarkdownRenderingManager } from './MarkdownRenderingManager';
 
 export class SearchResultsComponent {

@@ -1,20 +1,57 @@
 import { createHash } from 'crypto';
-import { cosineSimilarity } from './core/chunking';
-import { IndexedDocument, SearchResult } from './core/document';
 
-// Deprecated: Use IndexedDocument from './core/document' instead
-export type VectorDocument = IndexedDocument;
+/**
+ * Metadata associated with a document chunk
+ */
+export interface DocumentMetadata {
+  filePath: string;
+  title: string;
+  headings: string[];
+  chunkIndex: number;
+  totalChunks: number;
+  timestamp?: number; // Optional for backward compatibility
+}
+
+/**
+ * An indexed document chunk with its content and metadata
+ */
+export interface IndexedDocument {
+  id: string;
+  content: string;
+  embedding: number[];
+  metadata: DocumentMetadata;
+}
+
+/**
+ * Search result with similarity score
+ */
+export interface SearchResult {
+  document: IndexedDocument;
+  score: number;
+}
+
+export function cosineSimilarity(vec1: number[], vec2: number[]): number {
+  let dotProduct = 0;
+  let norm1 = 0;
+  let norm2 = 0;
+  for (let i = 0; i < vec1.length; i++) {
+    dotProduct += vec1[i] * vec2[i];
+    norm1 += vec1[i] * vec1[i];
+    norm2 += vec2[i] * vec2[i];
+  }
+  return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+}
 
 const STORE_NAME = 'vectors';
 const META_STORE_NAME = 'metadata';
 const DB_NAME = 'sonar-embedding-vectors';
 
-export class ObsidianVectorStore {
+export class VectorStore {
   private db: IDBDatabase;
   private constructor(db: IDBDatabase) {
     this.db = db;
   }
-  static async initialize(): Promise<ObsidianVectorStore> {
+  static async initialize(): Promise<VectorStore> {
     return new Promise((resolve, reject) => {
       const request = window.indexedDB.open(DB_NAME, 1);
       request.onerror = () => {
@@ -22,7 +59,7 @@ export class ObsidianVectorStore {
       };
       request.onsuccess = () => {
         console.log('Vector store initialized');
-        resolve(new ObsidianVectorStore(request.result));
+        resolve(new VectorStore(request.result));
       };
       // TODO Revisit
       request.onupgradeneeded = event => {

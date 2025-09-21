@@ -13,9 +13,9 @@ import {
 } from './fs-utils';
 import { processSequential } from './index-sequential';
 import { processParallel } from './index-parallel';
-import { cosineSimilarity } from '../src/core/chunking';
 import { OllamaUtils } from './ollama-utils';
-import { DEFAULT_CLI_CONFIG, CLIConfig } from '../src/core/config';
+import { DEFAULT_SCRIPT_CONFIG, ScriptConfig } from '../src/config';
+import { cosineSimilarity } from '../src/VectorStore';
 
 // Expand tilde (~) to home directory
 function expandTilde(filePath: string): string {
@@ -26,7 +26,7 @@ function expandTilde(filePath: string): string {
 }
 
 async function indexCommand(targetPath?: string, options?: any) {
-  const config: CLIConfig = await loadConfig(DEFAULT_CLI_CONFIG);
+  const config: ScriptConfig = await loadConfig(DEFAULT_SCRIPT_CONFIG);
   if (options?.embeddingModel) config.embeddingModel = options.embeddingModel;
   if (options?.tokenizerModel) config.tokenizerModel = options.tokenizerModel;
   if (options?.db) config.dbPath = options.db;
@@ -154,7 +154,7 @@ async function indexCommand(targetPath?: string, options?: any) {
 }
 
 async function searchCommand(query?: string, options?: any) {
-  const config: CLIConfig = await loadConfig(DEFAULT_CLI_CONFIG);
+  const config: ScriptConfig = await loadConfig(DEFAULT_SCRIPT_CONFIG);
   if (options?.db) config.dbPath = expandTilde(options.db);
   const dbPath = expandTilde(config.dbPath);
 
@@ -239,7 +239,7 @@ async function searchCommand(query?: string, options?: any) {
 }
 
 async function statsCommand(options?: any) {
-  const config: CLIConfig = await loadConfig(DEFAULT_CLI_CONFIG);
+  const config: ScriptConfig = await loadConfig(DEFAULT_SCRIPT_CONFIG);
   if (options?.db) config.dbPath = expandTilde(options.db);
   const dbPath = expandTilde(config.dbPath);
 
@@ -259,7 +259,7 @@ async function statsCommand(options?: any) {
 }
 
 async function configCommand(options?: any) {
-  const config: CLIConfig = await loadConfig(DEFAULT_CLI_CONFIG);
+  const config: ScriptConfig = await loadConfig(DEFAULT_SCRIPT_CONFIG);
 
   if (options?.list) {
     console.log('📋 Current Configuration:\n');

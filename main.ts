@@ -1,20 +1,20 @@
 import { Notice, Plugin, WorkspaceLeaf, debounce } from 'obsidian';
-import { ObsidianEmbeddingSearch } from './src/embeddingSearch';
-import { DEFAULT_SETTINGS } from './src/core/config';
+import { EmbeddingSearch } from './src/EmbeddingSearch';
+import { DEFAULT_SETTINGS } from './src/config';
 import {
   RelatedNotesView,
   RELATED_NOTES_VIEW_TYPE,
 } from './src/ui/RelatedNotesView';
-import { SearchModal } from './src/ui/SearchModal';
-import { SonarTokenizer } from './src/core/tokenizer';
+import { SemanticNoteFinder } from './src/ui/SemanticNoteFinder';
+import { Tokenizer } from './src/Tokenizer';
 import { IndexManager } from './src/IndexManager';
 import { ConfigManager } from './src/ConfigManager';
-import { ObsidianSonarSettingTab } from './src/ui/SettingsTab';
+import { SettingTab } from './src/ui/SettingTab';
 
 export default class ObsidianSonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
-  embeddingSearch: ObsidianEmbeddingSearch | null = null;
+  embeddingSearch: EmbeddingSearch | null = null;
   indexManager: IndexManager | null = null;
 
   async onload() {
@@ -31,7 +31,7 @@ export default class ObsidianSonarPlugin extends Plugin {
 
     // Register commands immediately (lightweight)
     this.registerCommands();
-    const settingTab = new ObsidianSonarSettingTab(this.app, this);
+    const settingTab = new SettingTab(this.app, this);
     this.addSettingTab(settingTab);
 
     // Setup notification handler (lightweight)
@@ -47,10 +47,7 @@ export default class ObsidianSonarPlugin extends Plugin {
     try {
       const embeddingModel = this.configManager.get('embeddingModel');
       const tokenizerModel = this.configManager.get('tokenizerModel');
-      await SonarTokenizer.initialize(
-        embeddingModel,
-        tokenizerModel || undefined
-      );
+      await Tokenizer.initialize(embeddingModel, tokenizerModel || undefined);
       if (tokenizerModel) {
         console.log('Tokenizer initialized with custom model:', tokenizerModel);
       } else {
@@ -65,7 +62,7 @@ export default class ObsidianSonarPlugin extends Plugin {
     }
 
     try {
-      this.embeddingSearch = await ObsidianEmbeddingSearch.initialize(
+      this.embeddingSearch = await EmbeddingSearch.initialize(
         this.app.vault,
         this.configManager
       );
@@ -96,7 +93,7 @@ export default class ObsidianSonarPlugin extends Plugin {
   }
 
   private setupNotificationHandler(): void {
-    SonarTokenizer.setFallbackNotification((message, type) => {
+    Tokenizer.setFallbackNotification((message, type) => {
       if (type === 'error') {
         console.error(message);
         new Notice(message);
@@ -118,7 +115,7 @@ export default class ObsidianSonarPlugin extends Plugin {
     return this.embeddingSearch !== null && this.indexManager !== null;
   }
 
-  private registerViews(embeddingSearch: ObsidianEmbeddingSearch): void {
+  private registerViews(embeddingSearch: EmbeddingSearch): void {
     this.registerView(RELATED_NOTES_VIEW_TYPE, leaf => {
       return new RelatedNotesView(leaf, embeddingSearch, this.configManager);
     });
@@ -191,7 +188,7 @@ export default class ObsidianSonarPlugin extends Plugin {
       id: 'semantic-search-notes',
       name: 'Semantic search notes',
       callback: () => {
-        this.openSearchModal();
+        this.openSemanticNoteFinder();
       },
     });
 
@@ -238,13 +235,13 @@ export default class ObsidianSonarPlugin extends Plugin {
     }
   }
 
-  openSearchModal(): void {
+  openSemanticNoteFinder(): void {
     if (!this.isInitialized()) {
       new Notice('Sonar is still initializing. Please wait...');
       return;
     }
 
-    const modal = new SearchModal(
+    const modal = new SemanticNoteFinder(
       this.app,
       this.embeddingSearch!,
       this.configManager

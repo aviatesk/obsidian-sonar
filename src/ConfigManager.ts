@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { ObsidianSettings } from './core/config';
+import { ObsidianSettings } from './config';
 
 export type { ObsidianSettings };
 

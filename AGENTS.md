@@ -1,21 +1,7 @@
 # Development guide
 
-This repository contains two applications:
-
-- **Obsidian plugin** (`./src`): Main application for Obsidian integration
-- **CLI application** (`./cli`): Command-line tool primarily for testing the
-  Obsidian plugin
-
-Since the CLI app serves as a testing tool for the Obsidian plugin, both
-applications should share common routines and implementations wherever possible.
-This ensures:
-
-- Consistency in behavior between the plugin and CLI
-- Easier maintenance and debugging
-- More reliable testing of core functionality
-
-When implementing new features, prioritize creating shared modules in
-`./src/core` that can be used by both applications rather than duplicating code.
+This repository contains an Obsidian plugin for semantic search using local
+embeddings.
 
 ## Prerequisites & Installation
 
@@ -53,14 +39,15 @@ npm run format        # Auto-format code with Prettier -- included in `npm run f
 npm run lint          # Auto-fix ESLint errors -- included in `npm run fix`
 ```
 
-## Testing with CLI Commands
+## Testing
 
-See [README.md](./README.md#cli-tools) for available CLI commands and testing
-tools.
+Currently, there are no agent-executable tests available, as testing typically
+requires manual intervention. If instructed to create testable scripts, use them
+for testing purposes.
 
-**Note for testing**: The default indexing (`npm run sonar:index`) may target a
-folder containing numerous files. For simple functionality verification, create
-a test folder and explicitly specify it for testing.
+1. Build the plugin: `npm run build`
+2. Use `npm run deploy` to copy to test vaults
+3. Test directly within Obsidian
 
 ## Development
 

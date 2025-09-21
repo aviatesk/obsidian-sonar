@@ -13,7 +13,7 @@ export interface CommonConfig {
   topK: number; // Number of search results to return
 }
 
-export interface CLIConfig extends CommonConfig {
+export interface ScriptConfig extends CommonConfig {
   indexPath: string;
   dbPath: string;
   parallelServers: number;
@@ -45,7 +45,7 @@ export const DEFAULT_COMMON_CONFIG: CommonConfig = {
   topK: 10, // default number of search results
 };
 
-export const DEFAULT_CLI_CONFIG: CLIConfig = {
+export const DEFAULT_SCRIPT_CONFIG: ScriptConfig = {
   ...DEFAULT_COMMON_CONFIG,
   indexPath: process.cwd(),
   dbPath: './db/sonar-index.json',
@@ -67,25 +67,3 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   showIndexNotifications: true,
   statusBarMaxLength: 40,
 };
-
-export function isCommonConfig(config: any): config is CommonConfig {
-  return (
-    typeof config === 'object' &&
-    typeof config.ollamaUrl === 'string' &&
-    typeof config.embeddingModel === 'string' &&
-    typeof config.summaryModel === 'string' &&
-    typeof config.maxChunkSize === 'number' &&
-    typeof config.chunkOverlap === 'number' &&
-    typeof config.topK === 'number'
-  );
-}
-
-export function mergeWithDefaults<T extends CommonConfig>(
-  userConfig: Partial<T>,
-  defaultConfig: T
-): T {
-  return {
-    ...defaultConfig,
-    ...userConfig,
-  };
-}

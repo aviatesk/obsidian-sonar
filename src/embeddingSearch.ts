@@ -1,31 +1,33 @@
-import { ObsidianEmbedder } from './embedder';
-import { ObsidianVectorStore } from './vectorStore';
-import { ObsidianChunker } from './chunker';
-import { SearchCoordinator, SearchResult } from './core/search';
+import { VectorStore, DocumentMetadata } from './VectorStore';
+import { Chunker } from './Chunker';
 import { TFile, Vault } from 'obsidian';
 import { ConfigManager } from './ConfigManager';
 import { getIndexableFiles } from './fileFilters';
+import { OllamaClient } from './OllamaClient';
 
-export class ObsidianEmbeddingSearch {
-  private embedder: ObsidianEmbedder;
-  private vectorStore: ObsidianVectorStore;
-  private chunker: ObsidianChunker;
-  private searchCoordinator: SearchCoordinator;
+export interface SearchResult {
+  content: string;
+  score: number;
+  metadata: DocumentMetadata;
+}
+
+export class EmbeddingSearch {
+  private ollamaClient: OllamaClient;
+  private vectorStore: VectorStore;
+  private chunker: Chunker;
   private vault: Vault;
   private configManager: ConfigManager;
 
   private constructor(
-    embedder: ObsidianEmbedder,
-    vectorStore: ObsidianVectorStore,
-    chunker: ObsidianChunker,
-    searchCoordinator: SearchCoordinator,
+    ollamaClient: OllamaClient,
+    vectorStore: VectorStore,
+    chunker: Chunker,
     vault: Vault,
     configManager: ConfigManager
   ) {
-    this.embedder = embedder;
+    this.ollamaClient = ollamaClient;
     this.vectorStore = vectorStore;
     this.chunker = chunker;
-    this.searchCoordinator = searchCoordinator;
     this.vault = vault;
     this.configManager = configManager;
   }
@@ -33,28 +35,31 @@ export class ObsidianEmbeddingSearch {
   static async initialize(
     vault: Vault,
     configManager: ConfigManager
-  ): Promise<ObsidianEmbeddingSearch> {
+  ): Promise<EmbeddingSearch> {
     const ollamaUrl = configManager.get('ollamaUrl');
     const embeddingModel = configManager.get('embeddingModel');
     const maxChunkSize = configManager.get('maxChunkSize');
     const chunkOverlap = configManager.get('chunkOverlap');
     const tokenizerModel = configManager.get('tokenizerModel');
 
-    const embedder = await ObsidianEmbedder.initialize(
+    const ollamaClient = new OllamaClient({
       ollamaUrl,
-      embeddingModel
-    );
-    const vectorStore = await ObsidianVectorStore.initialize();
-    const embeddingSearch = new ObsidianEmbeddingSearch(
-      embedder,
+      model: embeddingModel,
+    });
+
+    try {
+      await ollamaClient.checkModel();
+      console.log(`Ollama initialized with model: ${embeddingModel}`);
+    } catch (error) {
+      console.error('Failed to initialize Ollama:', error);
+      throw error;
+    }
+
+    const vectorStore = await VectorStore.initialize();
+    const embeddingSearch = new EmbeddingSearch(
+      ollamaClient,
       vectorStore,
-      new ObsidianChunker(
-        maxChunkSize,
-        chunkOverlap,
-        embeddingModel,
-        tokenizerModel
-      ),
-      new SearchCoordinator(embedder, vectorStore),
+      new Chunker(maxChunkSize, chunkOverlap, embeddingModel, tokenizerModel),
       vault,
       configManager
     );
@@ -74,7 +79,9 @@ export class ObsidianEmbeddingSearch {
         console.log(`No chunks created for file: ${file.path}`);
         return 0;
       }
-      const embeddings = await this.embedder.embed(chunks.map(c => c.content));
+      const embeddings = await this.ollamaClient.getEmbeddings(
+        chunks.map(c => c.content)
+      );
       for (let i = 0; i < chunks.length; i++) {
         await this.vectorStore.addDocument(
           chunks[i].content,
@@ -90,7 +97,15 @@ export class ObsidianEmbeddingSearch {
   }
 
   async search(query: string, topK: number = 5): Promise<SearchResult[]> {
-    return await this.searchCoordinator.search(query, topK);
+    const queryEmbeddings = await this.ollamaClient.getEmbeddings([query]);
+    const results = await this.vectorStore.search(queryEmbeddings[0], topK);
+
+    // Transform results from { document, score } to { content, score, metadata }
+    return results.map(result => ({
+      content: result.document.content,
+      score: result.score,
+      metadata: result.document.metadata,
+    }));
   }
 
   async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {
@@ -107,13 +122,6 @@ export class ObsidianEmbeddingSearch {
 
   async close(): Promise<void> {
     await this.vectorStore.close();
-  }
-
-  /**
-   * Get the search coordinator for advanced search operations
-   */
-  getSearchCoordinator(): SearchCoordinator {
-    return this.searchCoordinator;
   }
 
   async clearIndex(): Promise<void> {

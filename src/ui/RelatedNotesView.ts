@@ -6,9 +6,9 @@ import {
   Notice,
   debounce,
 } from 'obsidian';
-import { ObsidianEmbeddingSearch } from '../embeddingSearch';
-import { QueryProcessor, QueryOptions } from '../core/search';
-import { SonarTokenizer } from '../core/tokenizer';
+import { EmbeddingSearch } from '../EmbeddingSearch';
+import { QueryProcessor, QueryOptions } from '../QueryProcessor';
+import { Tokenizer } from '../Tokenizer';
 import { SearchResultsComponent } from './SearchResultsComponent';
 import { ConfigManager } from '../ConfigManager';
 import {
@@ -21,7 +21,7 @@ import {
 export const RELATED_NOTES_VIEW_TYPE = 'related-notes-view';
 
 export class RelatedNotesView extends ItemView {
-  private embeddingSearch: ObsidianEmbeddingSearch;
+  private embeddingSearch: EmbeddingSearch;
   private configManager: ConfigManager;
   private resultsComponent: SearchResultsComponent;
   private followCursor: boolean;
@@ -37,7 +37,7 @@ export class RelatedNotesView extends ItemView {
 
   constructor(
     leaf: WorkspaceLeaf,
-    embeddingSearch: ObsidianEmbeddingSearch,
+    embeddingSearch: EmbeddingSearch,
     configManager: ConfigManager
   ) {
     super(leaf);
@@ -285,12 +285,12 @@ export class RelatedNotesView extends ItemView {
     if (queryText) queryText.setText(query);
     if (queryLength)
       // Use async tokenizer for accurate count
-      SonarTokenizer.estimateTokens(
+      Tokenizer.estimateTokens(
         query,
         this.configManager.get('embeddingModel'),
         this.configManager.get('tokenizerModel') || undefined
       ).then(tokens => {
-        queryLength.setText(SonarTokenizer.formatTokenCount(tokens));
+        queryLength.setText(Tokenizer.formatTokenCount(tokens));
       });
 
     try {

@@ -1,12 +1,12 @@
 import { App, Modal, TFile, debounce, setIcon } from 'obsidian';
-import { SearchResult } from '../core/search';
-import { ObsidianEmbeddingSearch } from '../embeddingSearch';
+import { SearchResult } from '../EmbeddingSearch';
+import { EmbeddingSearch } from '../EmbeddingSearch';
 import { SearchResultsComponent } from './SearchResultsComponent';
 import { MarkdownRenderingManager } from './MarkdownRenderingManager';
 import { ConfigManager } from '../ConfigManager';
 
-export class SearchModal extends Modal {
-  private embeddingSearch: ObsidianEmbeddingSearch;
+export class SemanticNoteFinder extends Modal {
+  private embeddingSearch: EmbeddingSearch;
   private configManager: ConfigManager;
   private resultsComponent: SearchResultsComponent;
   private markdownManager: MarkdownRenderingManager;
@@ -20,7 +20,7 @@ export class SearchModal extends Modal {
 
   constructor(
     app: App,
-    embeddingSearch: ObsidianEmbeddingSearch,
+    embeddingSearch: EmbeddingSearch,
     configManager: ConfigManager
   ) {
     super(app);

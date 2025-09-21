@@ -6,7 +6,7 @@ import {
   Notice,
   debounce,
 } from 'obsidian';
-import { ObsidianEmbeddingSearch } from './embeddingSearch';
+import { EmbeddingSearch } from './EmbeddingSearch';
 import { ConfigManager } from './ConfigManager';
 import { shouldIndexFile, getIndexableFiles } from './fileFilters';
 
@@ -17,7 +17,7 @@ interface FileOperation {
 }
 
 export class IndexManager {
-  private embeddingSearch: ObsidianEmbeddingSearch;
+  private embeddingSearch: EmbeddingSearch;
   private vault: Vault;
   private configManager: ConfigManager;
   private pendingOperations: Map<string, FileOperation> = new Map();
@@ -31,7 +31,7 @@ export class IndexManager {
   private onProcessingCompleteCallback: () => void;
 
   constructor(
-    embeddingSearch: ObsidianEmbeddingSearch,
+    embeddingSearch: EmbeddingSearch,
     vault: Vault,
     configManager: ConfigManager,
     statusUpdateCallback: (status: string) => void,

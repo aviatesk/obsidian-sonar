@@ -2,8 +2,8 @@ import path from 'path';
 import { Ora } from 'ora';
 import { OllamaUtils } from './ollama-utils';
 import { readFile } from './fs-utils';
-import { createChunks, createIndexedDocument } from '../src/core/chunking';
-import { IndexedDocument } from '../src/core/document';
+import { createChunks, createIndexedDocument } from '../src/chunker';
+import { IndexedDocument } from '../src/VectorStore';
 
 interface Config {
   maxChunkSize: number;

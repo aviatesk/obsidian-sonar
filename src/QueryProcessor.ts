@@ -1,10 +1,5 @@
-/**
- * Core search functionality shared between CLI and Obsidian plugin
- */
-
-import { OllamaClient } from './ollama-client';
-import { SonarTokenizer } from './tokenizer';
-import { DocumentMetadata } from './document';
+import { Tokenizer } from './Tokenizer';
+import { OllamaClient } from './OllamaClient';
 
 export interface QueryOptions {
   fileName: string;
@@ -27,7 +22,7 @@ export class QueryProcessor {
     options: QueryOptions
   ): Promise<string> {
     // Calculate tokens for filename
-    const fileNameTokens = await SonarTokenizer.estimateTokens(
+    const fileNameTokens = await Tokenizer.estimateTokens(
       options.fileName,
       options.embeddingModel,
       options.tokenizerModel
@@ -91,7 +86,7 @@ export class QueryProcessor {
         i < lines.length && currentTokens < remainingTokens;
         i++
       ) {
-        const lineTokens = await SonarTokenizer.estimateTokens(
+        const lineTokens = await Tokenizer.estimateTokens(
           lines[i],
           embeddingModel,
           tokenizerModel
@@ -122,7 +117,7 @@ export class QueryProcessor {
 
       // Start from cursor line
       if (startLine < lines.length) {
-        const cursorLineTokens = await SonarTokenizer.estimateTokens(
+        const cursorLineTokens = await Tokenizer.estimateTokens(
           lines[startLine],
           embeddingModel,
           tokenizerModel
@@ -150,7 +145,7 @@ export class QueryProcessor {
       ) {
         // Try to add line above
         if (above >= 0) {
-          const lineTokens = await SonarTokenizer.estimateTokens(
+          const lineTokens = await Tokenizer.estimateTokens(
             lines[above],
             embeddingModel,
             tokenizerModel
@@ -166,7 +161,7 @@ export class QueryProcessor {
 
         // Try to add line below
         if (below < lines.length && currentTokens < remainingTokens) {
-          const lineTokens = await SonarTokenizer.estimateTokens(
+          const lineTokens = await Tokenizer.estimateTokens(
             lines[below],
             embeddingModel,
             tokenizerModel
@@ -196,7 +191,7 @@ export class QueryProcessor {
     let currentTokens = 0;
 
     for (const word of words) {
-      const wordTokens = await SonarTokenizer.estimateTokens(
+      const wordTokens = await Tokenizer.estimateTokens(
         word,
         embeddingModel,
         tokenizerModel
@@ -240,38 +235,7 @@ ${input}`;
       return extractionQuery.trim();
     } catch (error) {
       console.error('LLM extraction generation failed:', error);
-      // Fallback to the original input
       return input;
     }
-  }
-}
-
-export interface SearchResult {
-  content: string;
-  score: number;
-  metadata: DocumentMetadata;
-}
-
-/**
- * Search coordinator - manages the search process
- */
-export class SearchCoordinator {
-  constructor(
-    private embedder: { embed(texts: string[]): Promise<number[][]> },
-    private vectorStore: {
-      search(embedding: number[], topK: number): Promise<any[]>;
-    }
-  ) {}
-
-  async search(query: string, topK: number = 5): Promise<SearchResult[]> {
-    const queryEmbedding = await this.embedder.embed([query]);
-    const results = await this.vectorStore.search(queryEmbedding[0], topK);
-
-    // Transform results from { document, score } to { content, score, metadata }
-    return results.map(result => ({
-      content: result.document.content,
-      score: result.score,
-      metadata: result.document.metadata,
-    }));
   }
 }
