@@ -5,6 +5,7 @@ import {
   EventRef,
   Notice,
   debounce,
+  Workspace,
 } from 'obsidian';
 import { ConfigManager } from './ConfigManager';
 import { shouldIndexFile, getFilesToIndex } from './fileFilters';
@@ -22,6 +23,7 @@ export class IndexManager {
   private vectorStore: VectorStore;
   private ollamaClient: OllamaClient;
   private vault: Vault;
+  private workspace: Workspace;
   private configManager: ConfigManager;
   private pendingOperations: Map<string, FileOperation> = new Map();
   private debouncedProcess: () => void;
@@ -33,11 +35,13 @@ export class IndexManager {
   private statusUpdateCallback: (status: string) => void;
   private onProcessingCompleteCallback: () => void;
   private metadataCache: Map<string, DocumentMetadata> | null = null;
+  private previousActiveFile: TFile | null = null;
 
   constructor(
     vectorStore: VectorStore,
     ollamaClient: OllamaClient,
     vault: Vault,
+    workspace: Workspace,
     configManager: ConfigManager,
     statusUpdateCallback: (status: string) => void,
     onProcessingCompleteCallback: () => void
@@ -45,6 +49,7 @@ export class IndexManager {
     this.vectorStore = vectorStore;
     this.ollamaClient = ollamaClient;
     this.vault = vault;
+    this.workspace = workspace;
     this.configManager = configManager;
     this.statusUpdateCallback = statusUpdateCallback;
     this.onProcessingCompleteCallback = onProcessingCompleteCallback;
@@ -259,6 +264,25 @@ export class IndexManager {
 
   private registerEventHandlers(): void {
     this.eventRefs.push(
+      this.workspace.on('active-leaf-change', () => {
+        const activeFile = this.workspace.getActiveFile();
+        if (
+          this.previousActiveFile &&
+          this.previousActiveFile !== activeFile &&
+          shouldIndexFile(this.previousActiveFile, this.configManager)
+        ) {
+          this.scheduleOperation({
+            type: 'modify',
+            file: this.previousActiveFile,
+          });
+        }
+        // Update the reference to current active file
+        this.previousActiveFile =
+          activeFile instanceof TFile ? activeFile : null;
+      })
+    );
+
+    this.eventRefs.push(
       this.vault.on('create', (file: TAbstractFile) => {
         if (
           file instanceof TFile &&
@@ -266,20 +290,6 @@ export class IndexManager {
         ) {
           this.scheduleOperation({
             type: 'create',
-            file: file,
-          });
-        }
-      })
-    );
-
-    this.eventRefs.push(
-      this.vault.on('modify', (file: TAbstractFile) => {
-        if (
-          file instanceof TFile &&
-          shouldIndexFile(file, this.configManager)
-        ) {
-          this.scheduleOperation({
-            type: 'modify',
             file: file,
           });
         }
@@ -592,9 +602,10 @@ export class IndexManager {
 
   private unregisterEventHandlers(): void {
     for (const eventRef of this.eventRefs) {
-      this.vault.offref(eventRef);
+      this.workspace.offref(eventRef);
     }
     this.eventRefs = [];
+    this.previousActiveFile = null;
   }
 
   cleanup(): void {

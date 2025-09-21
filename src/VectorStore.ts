@@ -28,6 +28,8 @@ const DB_VERSION = 1;
 
 export class VectorStore {
   private db!: IDBDatabase;
+  private documentsCache: IndexedDocument[] | null = null;
+
   private constructor(db: IDBDatabase) {
     this.db = db;
   }
@@ -82,7 +84,10 @@ export class VectorStore {
       const store = transaction.objectStore(STORE_NAME);
       const request = store.put(document);
 
-      request.onsuccess = () => resolve();
+      request.onsuccess = () => {
+        this.invalidateCache();
+        resolve();
+      };
       request.onerror = () => reject(new Error('Failed to add document'));
     });
   }
@@ -109,7 +114,10 @@ export class VectorStore {
         store.put(document);
       });
 
-      transaction.oncomplete = () => resolve();
+      transaction.oncomplete = () => {
+        this.invalidateCache();
+        resolve();
+      };
       transaction.onerror = () => reject(new Error('Failed to add documents'));
     });
   }
@@ -134,7 +142,10 @@ export class VectorStore {
       documents.forEach(doc => {
         store.delete(doc.id);
       });
-      transaction.oncomplete = () => resolve();
+      transaction.oncomplete = () => {
+        this.invalidateCache();
+        resolve();
+      };
       transaction.onerror = () =>
         reject(new Error('Failed to delete documents'));
     });
@@ -145,7 +156,10 @@ export class VectorStore {
       const transaction = this.db.transaction([STORE_NAME], 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
       const request = store.clear();
-      request.onsuccess = () => resolve();
+      request.onsuccess = () => {
+        this.invalidateCache();
+        resolve();
+      };
       request.onerror = () => reject(new Error('Failed to clear store'));
     });
   }
@@ -181,12 +195,26 @@ export class VectorStore {
     this.db.close();
   }
 
+  private invalidateCache(): void {
+    this.documentsCache = null;
+  }
+
   async getAllDocuments(): Promise<IndexedDocument[]> {
+    // Return cached documents if available (perf optimization to avoid UI blocking)
+    if (this.documentsCache) {
+      return this.documentsCache;
+    }
+
+    // Fetch from IndexedDB and update cache
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_NAME], 'readonly');
       const store = transaction.objectStore(STORE_NAME);
       const request = store.getAll();
-      request.onsuccess = () => resolve(request.result as IndexedDocument[]);
+      request.onsuccess = () => {
+        const documents = request.result as IndexedDocument[];
+        this.documentsCache = documents;
+        resolve(documents);
+      };
       request.onerror = () => reject(request.error);
     });
   }

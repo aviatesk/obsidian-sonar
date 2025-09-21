@@ -93,6 +93,7 @@ export default class ObsidianSonarPlugin extends Plugin {
         this.vectorStore,
         this.ollamaClient,
         this.app.vault,
+        this.app.workspace,
         this.configManager,
         (status: string) => this.updateStatusBarPadded(status),
         () => this.updateStatusBarWithFileCount()
