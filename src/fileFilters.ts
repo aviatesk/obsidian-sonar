@@ -6,14 +6,6 @@ import { ConfigManager } from './ConfigManager';
  */
 
 /**
- * Normalize index path using Obsidian's normalizePath
- * (which already removes leading/trailing slashes)
- */
-export function normalizeIndexPath(path: string): string {
-  return normalizePath(path);
-}
-
-/**
  * Check if a file path matches an exclusion pattern
  */
 function matchesExclusionPattern(filePath: string, pattern: string): boolean {
@@ -63,10 +55,11 @@ export function shouldIndexFile(
   }
 
   const indexPath = configManager.get('indexPath');
-  const normalizedIndexPath = normalizeIndexPath(indexPath);
+  const normalizedIndexPath = normalizePath(indexPath);
 
   // Check if file is within index path
   if (normalizedIndexPath && normalizedIndexPath !== '') {
+    console.log(indexPath, ' vs. ', normalizedIndexPath);
     if (!file.path.startsWith(normalizedIndexPath)) {
       return false;
     }

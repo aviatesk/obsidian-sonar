@@ -22,26 +22,6 @@ export interface IndexedDocument {
   metadata: DocumentMetadata;
 }
 
-/**
- * Search result with similarity score
- */
-export interface SearchResult {
-  document: IndexedDocument;
-  score: number;
-}
-
-export function cosineSimilarity(vec1: number[], vec2: number[]): number {
-  let dotProduct = 0;
-  let norm1 = 0;
-  let norm2 = 0;
-  for (let i = 0; i < vec1.length; i++) {
-    dotProduct += vec1[i] * vec2[i];
-    norm1 += vec1[i] * vec1[i];
-    norm2 += vec2[i] * vec2[i];
-  }
-  return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
-}
-
 const STORE_NAME = 'vectors';
 const DB_NAME = 'sonar-embedding-vectors';
 const DB_VERSION = 1;
@@ -131,27 +111,6 @@ export class VectorStore {
 
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(new Error('Failed to add documents'));
-    });
-  }
-
-  async search(
-    queryEmbedding: number[],
-    topK: number
-  ): Promise<SearchResult[]> {
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([STORE_NAME], 'readonly');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.getAll();
-      request.onsuccess = () => {
-        const documents = request.result as IndexedDocument[];
-        const results = documents.map(doc => ({
-          document: doc,
-          score: cosineSimilarity(queryEmbedding, doc.embedding),
-        }));
-        results.sort((a, b) => b.score - a.score);
-        resolve(results.slice(0, topK));
-      };
-      request.onerror = () => reject(new Error('Failed to search documents'));
     });
   }
 

@@ -6,10 +6,11 @@ import {
   Notice,
   debounce,
 } from 'obsidian';
-import { EmbeddingSearch } from './EmbeddingSearch';
 import { ConfigManager } from './ConfigManager';
 import { shouldIndexFile, getFilesToIndex } from './fileFilters';
-import { DocumentMetadata } from './VectorStore';
+import { DocumentMetadata, VectorStore } from './VectorStore';
+import { createChunks } from './chunker';
+import { OllamaClient } from './OllamaClient';
 
 interface FileOperation {
   type: 'create' | 'modify' | 'delete' | 'rename';
@@ -18,7 +19,8 @@ interface FileOperation {
 }
 
 export class IndexManager {
-  private embeddingSearch: EmbeddingSearch;
+  private vectorStore: VectorStore;
+  private ollamaClient: OllamaClient;
   private vault: Vault;
   private configManager: ConfigManager;
   private pendingOperations: Map<string, FileOperation> = new Map();
@@ -30,15 +32,18 @@ export class IndexManager {
   private isInitialized: boolean = false;
   private statusUpdateCallback: (status: string) => void;
   private onProcessingCompleteCallback: () => void;
+  private metadataCache: Map<string, DocumentMetadata> | null = null;
 
   constructor(
-    embeddingSearch: EmbeddingSearch,
+    vectorStore: VectorStore,
+    ollamaClient: OllamaClient,
     vault: Vault,
     configManager: ConfigManager,
     statusUpdateCallback: (status: string) => void,
     onProcessingCompleteCallback: () => void
   ) {
-    this.embeddingSearch = embeddingSearch;
+    this.vectorStore = vectorStore;
+    this.ollamaClient = ollamaClient;
     this.vault = vault;
     this.configManager = configManager;
     this.statusUpdateCallback = statusUpdateCallback;
@@ -58,11 +63,11 @@ export class IndexManager {
    * Initialize after layout is ready to avoid startup event spam
    */
   async onLayoutReady(): Promise<void> {
-    // First, perform smart sync to detect changes made while Obsidian was closed
-    await this.syncOnLoad();
-
-    // Load indexed files after sync
+    // Load current DB state first
     await this.loadIndexedFiles();
+
+    // Then sync to detect changes made while Obsidian was closed
+    await this.syncOnLoad();
 
     this.isInitialized = true;
 
@@ -75,7 +80,21 @@ export class IndexManager {
   }
 
   private setupConfigListeners(): void {
-    // Listen for auto-index changes
+    const debouncedConfigSync = debounce(
+      () => {
+        if (!this.isInitialized) return;
+        console.log('IndexManager: Config changed, syncing index...');
+        this.syncIndex().catch(error =>
+          console.error(
+            'IndexManager: Failed to sync after config change:',
+            error
+          )
+        );
+      },
+      5000,
+      true
+    );
+
     this.configUnsubscribers.push(
       this.configManager.subscribe('autoIndex', (_key, value) => {
         if (this.isInitialized) {
@@ -92,149 +111,171 @@ export class IndexManager {
 
     this.configUnsubscribers.push(
       this.configManager.subscribe('excludedPaths', () => {
-        if (!this.isInitialized) return; // Skip during initialization
-        console.log('IndexManager: Excluded paths updated, resyncing...');
-        // Run sync asynchronously to avoid blocking
-        this.syncIndex().catch(error =>
-          console.error(
-            'IndexManager: Failed to sync after excluded paths change:',
-            error
-          )
-        );
+        if (!this.isInitialized) return;
+        console.log('IndexManager: Excluded paths updated, scheduling sync...');
+        debouncedConfigSync();
       })
     );
 
     this.configUnsubscribers.push(
       this.configManager.subscribe('indexPath', () => {
-        if (!this.isInitialized) return; // Skip during initialization
-        console.log('IndexManager: Index path updated, reloading...');
-        // Run reload and sync asynchronously to avoid blocking
-        this.reloadIndexedFiles()
-          .then(() => this.syncIndex())
-          .catch(error =>
-            console.error(
-              'IndexManager: Failed to reload/sync after index path change:',
-              error
-            )
-          );
+        if (!this.isInitialized) return;
+        console.log('IndexManager: Index path updated, scheduling sync...');
+        debouncedConfigSync();
       })
     );
   }
 
   private async loadIndexedFiles(): Promise<void> {
-    const allDocs = await this.embeddingSearch.getIndexedFiles();
-    const filesSet = new Set<string>();
-    for (const doc of allDocs) {
-      if (doc.metadata && doc.metadata.filePath) {
-        filesSet.add(doc.metadata.filePath);
-      }
-    }
-    this.indexedFiles = filesSet;
+    const metadata = await this.getDbFileMetadata();
+    this.indexedFiles = new Set(metadata.keys());
   }
 
   async reloadIndexedFiles(): Promise<void> {
     await this.loadIndexedFiles();
   }
 
-  private async syncOnLoad(): Promise<void> {
-    console.log('IndexManager: Starting smart sync on load...');
+  private async getDbFileMetadata(): Promise<Map<string, DocumentMetadata>> {
+    if (this.metadataCache) {
+      return this.metadataCache;
+    }
 
-    const allDocs = await this.embeddingSearch.getIndexedFiles();
+    const allDocs = await this.vectorStore.getAllDocuments();
+    const metadata = new Map<string, DocumentMetadata>();
 
-    const vaultFiles = getFilesToIndex(this.vault, this.configManager);
-
-    // Group documents by file path and get metadata from first chunk
-    const dbFileMap = new Map<string, DocumentMetadata>();
     for (const doc of allDocs) {
       const filePath = doc.metadata.filePath;
-      if (!dbFileMap.has(filePath)) {
-        dbFileMap.set(filePath, doc.metadata);
+      if (!metadata.has(filePath)) {
+        metadata.set(filePath, doc.metadata);
       }
     }
 
+    this.metadataCache = metadata;
+    return metadata;
+  }
+
+  private clearMetadataCache(): void {
+    this.metadataCache = null;
+  }
+
+  private needsReindex(
+    file: TFile,
+    metadata: DocumentMetadata | undefined
+  ): boolean {
+    if (!metadata) return true;
+    return (
+      file.stat.mtime !== metadata.mtime || file.stat.size !== metadata.size
+    );
+  }
+
+  private async syncOnLoad(): Promise<void> {
+    console.log('IndexManager: Starting sync...');
+    await this.performSync();
+    console.log('IndexManager: Sync completed');
+    this.onProcessingCompleteCallback();
+  }
+
+  private async performSync(
+    progressCallback?: (
+      current: number,
+      total: number,
+      filePath: string
+    ) => void | Promise<void>
+  ): Promise<{
+    newCount: number;
+    modifiedCount: number;
+    deletedCount: number;
+    skippedCount: number;
+    errorCount: number;
+  }> {
+    const dbFileMap = await this.getDbFileMetadata();
+    const vaultFiles = getFilesToIndex(this.vault, this.configManager);
     const vaultFileMap = new Map(vaultFiles.map(f => [f.path, f]));
 
-    const newFiles = vaultFiles.filter(f => !dbFileMap.has(f.path));
+    // Build operations list
+    const operations: FileOperation[] = [];
+    let skippedCount = 0;
 
-    const deletedPaths = Array.from(dbFileMap.keys()).filter(
-      path => !vaultFileMap.has(path)
-    );
+    // Check vault files for new/modified
+    const unchangedFiles: string[] = [];
+    for (const file of vaultFiles) {
+      const meta = dbFileMap.get(file.path);
+      if (this.needsReindex(file, meta)) {
+        operations.push({
+          type: meta ? 'modify' : 'create',
+          file,
+        });
+      } else {
+        skippedCount++;
+        unchangedFiles.push(file.path); // Track unchanged files
+      }
+    }
 
-    const modifiedFiles = vaultFiles.filter(f => {
-      const meta = dbFileMap.get(f.path);
-      if (!meta) return false;
-      return f.stat.mtime !== meta.mtime || f.stat.size !== meta.size;
-    });
+    // Check for deleted files
+    for (const path of dbFileMap.keys()) {
+      if (!vaultFileMap.has(path)) {
+        operations.push({
+          type: 'delete',
+          file: null,
+          oldPath: path,
+        });
+      }
+    }
+
+    // Count operation types for logging
+    const newCount = operations.filter(op => op.type === 'create').length;
+    const modifiedCount = operations.filter(op => op.type === 'modify').length;
+    const deletedCount = operations.filter(op => op.type === 'delete').length;
 
     console.log(
-      `IndexManager: Smart sync detected - New: ${newFiles.length}, Modified: ${modifiedFiles.length}, Deleted: ${deletedPaths.length}`
+      `IndexManager: Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
     );
 
-    // Process new files
-    if (newFiles.length > 0) {
-      console.log(`IndexManager: Indexing ${newFiles.length} new files...`);
-      for (let i = 0; i < newFiles.length; i++) {
-        const file = newFiles[i];
-        try {
-          this.updateStatus({
-            file: file.basename,
-            current: i + 1,
-            total: newFiles.length,
-          });
-          await this.embeddingSearch.indexFile(file);
-          this.indexedFiles.add(file.path);
-        } catch (error) {
-          console.error(
-            `IndexManager: Failed to index new file ${file.path}:`,
-            error
-          );
-        }
+    // Process all operations
+    let errorCount = 0;
+    for (let i = 0; i < operations.length; i++) {
+      const operation = operations[i];
+      const filePath = operation.file?.path || operation.oldPath || 'unknown';
+
+      if (progressCallback) {
+        await progressCallback(i + 1, operations.length, filePath);
+      }
+
+      try {
+        const fileName =
+          operation.file?.basename ||
+          operation.oldPath?.split('/').pop() ||
+          'unknown';
+        this.updateStatus({
+          file: fileName,
+          current: i + 1,
+          total: operations.length,
+        });
+        await this.processOperation(operation, true); // Skip change check in sync
+      } catch (error) {
+        console.error(
+          `IndexManager: Failed to ${operation.type} ${filePath}:`,
+          error
+        );
+        errorCount++;
       }
     }
 
-    // Process modified files
-    if (modifiedFiles.length > 0) {
-      console.log(
-        `IndexManager: Re-indexing ${modifiedFiles.length} modified files...`
-      );
-      for (let i = 0; i < modifiedFiles.length; i++) {
-        const file = modifiedFiles[i];
-        try {
-          this.updateStatus({
-            file: file.basename,
-            current: i + 1,
-            total: modifiedFiles.length,
-          });
-          await this.embeddingSearch.indexFile(file);
-        } catch (error) {
-          console.error(
-            `IndexManager: Failed to re-index modified file ${file.path}:`,
-            error
-          );
-        }
-      }
+    if (operations.length > 0) this.clearMetadataCache();
+
+    // Update indexedFiles to reflect the current DB state
+    // Add unchanged files that are still in the DB
+    for (const path of unchangedFiles) {
+      this.indexedFiles.add(path);
     }
 
-    // Process deleted files
-    if (deletedPaths.length > 0) {
-      console.log(
-        `IndexManager: Removing ${deletedPaths.length} deleted files from index...`
-      );
-      for (const path of deletedPaths) {
-        try {
-          await this.deleteFromIndex(path);
-          this.indexedFiles.delete(path);
-        } catch (error) {
-          console.error(
-            `IndexManager: Failed to delete ${path} from index:`,
-            error
-          );
-        }
-      }
-    }
-
-    console.log('IndexManager: Smart sync completed');
-    this.onProcessingCompleteCallback();
+    return {
+      newCount,
+      modifiedCount,
+      deletedCount,
+      skippedCount,
+      errorCount,
+    };
   }
 
   private registerEventHandlers(): void {
@@ -358,7 +399,7 @@ export class IndexManager {
           current: i + 1,
           total: totalOperations,
         });
-        await this.processOperation(operation);
+        await this.processOperation(operation); // Check changes for event-driven operations
       } catch (error) {
         const filePath = operation.file?.path || operation.oldPath || 'unknown';
         console.error(
@@ -369,10 +410,13 @@ export class IndexManager {
       }
     }
 
+    // Clear metadata cache after all operations complete
+    if (operations.length > 0) {
+      this.clearMetadataCache();
+    }
+
     if (errorCount > 0) {
-      if (errorCount > 0) {
-        new Notice(`Sonar index failed to update ${errorCount} files`);
-      }
+      new Notice(`Sonar index failed to update ${errorCount} files`);
     }
 
     this.isProcessing = false;
@@ -380,13 +424,29 @@ export class IndexManager {
     this.onProcessingCompleteCallback();
   }
 
-  private async processOperation(operation: FileOperation): Promise<void> {
+  private async processOperation(
+    operation: FileOperation,
+    skipChangeCheck = false
+  ): Promise<void> {
     switch (operation.type) {
       case 'create':
       case 'modify':
         if (operation.file) {
-          await this.embeddingSearch.indexFile(operation.file);
-          this.indexedFiles.add(operation.file.path);
+          // For modify operations from events, check if re-indexing is actually needed
+          // Skip this check during sync since we already checked
+          if (!skipChangeCheck && operation.type === 'modify') {
+            const dbFileMap = await this.getDbFileMetadata();
+            const meta = dbFileMap.get(operation.file.path);
+
+            if (!this.needsReindex(operation.file, meta)) {
+              console.log(
+                `IndexManager: Skipped ${operation.file.path} (no changes)`
+              );
+              return;
+            }
+          }
+
+          await this.indexFileInternal(operation.file);
           console.log(`IndexManager: Indexed ${operation.file.path}`);
         }
         break;
@@ -394,7 +454,6 @@ export class IndexManager {
       case 'delete':
         if (operation.oldPath) {
           await this.deleteFromIndex(operation.oldPath);
-          this.indexedFiles.delete(operation.oldPath);
           console.log(`IndexManager: Deleted ${operation.oldPath} from index`);
         }
         break;
@@ -402,10 +461,8 @@ export class IndexManager {
       case 'rename':
         if (operation.oldPath && operation.file) {
           await this.deleteFromIndex(operation.oldPath);
-          this.indexedFiles.delete(operation.oldPath);
 
-          await this.embeddingSearch.indexFile(operation.file);
-          this.indexedFiles.add(operation.file.path);
+          await this.indexFileInternal(operation.file);
 
           console.log(
             `IndexManager: Renamed ${operation.oldPath} to ${operation.file.path}`
@@ -416,7 +473,49 @@ export class IndexManager {
   }
 
   private async deleteFromIndex(filePath: string): Promise<void> {
-    await this.embeddingSearch.deleteDocumentsByFile(filePath);
+    await this.vectorStore.deleteDocumentsByFile(filePath);
+    this.indexedFiles.delete(filePath);
+  }
+
+  private async indexFileInternal(file: TFile): Promise<void> {
+    // Do the actual indexing
+    await this.vectorStore.deleteDocumentsByFile(file.path);
+    const content = await this.vault.cachedRead(file);
+    const chunks = await createChunks(
+      content,
+      this.configManager.get('maxChunkSize'),
+      this.configManager.get('chunkOverlap'),
+      this.configManager.get('embeddingModel'),
+      this.configManager.get('tokenizerModel')
+    );
+
+    if (chunks.length === 0) {
+      console.log(`No chunks created for file: ${file.path}`);
+      return;
+    }
+
+    const chunkContents = chunks.map(c => c.content);
+    const embeddings = await this.ollamaClient.getEmbeddings(chunkContents);
+
+    // Create metadata for each chunk
+    const indexedAt = Date.now();
+    for (let i = 0; i < chunks.length; i++) {
+      const metadata: DocumentMetadata = {
+        filePath: file.path,
+        title: file.basename,
+        headings: chunks[i].headings,
+        mtime: file.stat.mtime,
+        size: file.stat.size,
+        indexedAt,
+      };
+      await this.vectorStore.addDocument(
+        chunks[i].content,
+        embeddings[i],
+        metadata
+      );
+    }
+
+    this.indexedFiles.add(file.path);
   }
 
   async indexFile(file: TFile): Promise<void> {
@@ -425,8 +524,19 @@ export class IndexManager {
       return;
     }
 
-    await this.embeddingSearch.indexFile(file);
-    this.indexedFiles.add(file.path);
+    // Check if file needs re-indexing
+    const dbFileMap = await this.getDbFileMetadata();
+    const meta = dbFileMap.get(file.path);
+
+    if (!this.needsReindex(file, meta)) {
+      if (this.configManager.get('showIndexNotifications')) {
+        new Notice(`${file.path} is already up to date`);
+      }
+      return;
+    }
+
+    await this.indexFileInternal(file);
+    this.clearMetadataCache(); // Clear cache after DB change
 
     if (this.configManager.get('showIndexNotifications')) {
       new Notice(`Indexed: ${file.path}`);
@@ -441,112 +551,24 @@ export class IndexManager {
     ) => void | Promise<void>
   ): Promise<void> {
     console.log('IndexManager: Starting full index rebuild...');
-    const allFiles = getFilesToIndex(this.vault, this.configManager);
-    const totalFiles = allFiles.length;
-    let successCount = 0;
-    let errorCount = 0;
 
     // Clear existing index
-    await this.embeddingSearch.clearIndex();
-    this.indexedFiles.clear();
+    await this.clearIndex();
 
-    // Rebuild from scratch
-    for (let i = 0; i < allFiles.length; i++) {
-      const file = allFiles[i];
-
-      if (progressCallback) {
-        await progressCallback(i + 1, totalFiles, file.path);
-      }
-      this.updateStatus({
-        file: file.basename,
-        current: i + 1,
-        total: totalFiles,
-      });
-
-      try {
-        await this.embeddingSearch.indexFile(file);
-        this.indexedFiles.add(file.path);
-        successCount++;
-      } catch (error) {
-        console.error(`IndexManager: Failed to index ${file.path}:`, error);
-        errorCount++;
-      }
-    }
+    // Re-index all files
+    const stats = await this.performSync(progressCallback);
 
     if (this.configManager.get('showIndexNotifications')) {
-      const message = `Index rebuilt: ${successCount} files indexed${errorCount > 0 ? `, ${errorCount} errors` : ''}`;
+      const message = `Rebuild complete: ${stats.newCount} files indexed${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
       new Notice(message);
     }
   }
 
   async syncIndex(): Promise<void> {
-    const allFiles = this.vault.getMarkdownFiles();
-    const filesToIndex: TFile[] = [];
-    const pathsToDelete: string[] = [];
-
-    // Find files that should be indexed but aren't
-    for (const file of allFiles) {
-      if (
-        shouldIndexFile(file, this.configManager) &&
-        !this.indexedFiles.has(file.path)
-      ) {
-        filesToIndex.push(file);
-      }
-    }
-
-    // Find indexed files that no longer exist or should not be indexed
-    for (const indexedPath of this.indexedFiles) {
-      const file = allFiles.find(f => f.path === indexedPath);
-      if (!file || !shouldIndexFile(file, this.configManager)) {
-        pathsToDelete.push(indexedPath);
-      }
-    }
-
-    console.log(
-      `IndexManager: Sync found ${filesToIndex.length} files to index, ${pathsToDelete.length} to delete`
-    );
-
-    // Process additions
-    let addedCount = 0;
-    let addErrors = 0;
-    for (const file of filesToIndex) {
-      try {
-        this.updateStatus({
-          file: file.basename,
-          current: addedCount + 1,
-          total: filesToIndex.length,
-        });
-        await this.embeddingSearch.indexFile(file);
-        this.indexedFiles.add(file.path);
-        addedCount++;
-      } catch (error) {
-        console.error(`IndexManager: Failed to index ${file.path}:`, error);
-        addErrors++;
-      }
-    }
-
-    // Process deletions
-    let deletedCount = 0;
-    let deleteErrors = 0;
-    for (const path of pathsToDelete) {
-      try {
-        await this.deleteFromIndex(path);
-        this.indexedFiles.delete(path);
-        deletedCount++;
-      } catch (error) {
-        console.error(
-          `IndexManager: Failed to delete ${path} from index:`,
-          error
-        );
-        deleteErrors++;
-      }
-    }
+    const stats = await this.performSync();
 
     if (this.configManager.get('showIndexNotifications')) {
-      let message = `Index synced: ${addedCount} added, ${deletedCount} removed`;
-      if (addErrors > 0 || deleteErrors > 0) {
-        message += ` (${addErrors + deleteErrors} errors)`;
-      }
+      const message = `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
       new Notice(message);
     }
   }
@@ -576,5 +598,15 @@ export class IndexManager {
     this.statusUpdateCallback(
       `Sonar: Indexing ${progress.file} [${progress.current}/${progress.total}]`
     );
+  }
+
+  async clearIndex(): Promise<void> {
+    await this.vectorStore.clearAll();
+    this.indexedFiles.clear();
+    this.clearMetadataCache();
+  }
+
+  async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {
+    return await this.vectorStore.getStats();
   }
 }

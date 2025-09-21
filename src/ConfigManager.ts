@@ -49,13 +49,6 @@ export class ConfigManager extends EventEmitter {
   }
 
   /**
-   * Get all settings
-   */
-  getAll(): Readonly<ObsidianSettings> {
-    return { ...this.settings };
-  }
-
-  /**
    * Update a single setting
    */
   async set<K extends keyof ObsidianSettings>(
@@ -146,85 +139,6 @@ export class ConfigManager extends EventEmitter {
         }
       }
     };
-  }
-
-  /**
-   * Subscribe to all setting changes
-   */
-  subscribeToAll(listener: ConfigBatchChangeListener): () => void {
-    this.batchChangeListeners.add(listener);
-
-    // Return unsubscribe function
-    return () => {
-      this.batchChangeListeners.delete(listener);
-    };
-  }
-
-  /**
-   * Check if a path should be excluded based on current settings
-   */
-  isPathExcluded(path: string): boolean {
-    const excludedPaths = this.settings.excludedPaths || [];
-    const indexPath = this.settings.indexPath.startsWith('/')
-      ? this.settings.indexPath.slice(1)
-      : this.settings.indexPath;
-
-    // Check if path is within index path
-    if (indexPath && indexPath !== '') {
-      if (!path.startsWith(indexPath)) {
-        return true; // Outside index path
-      }
-    }
-
-    // Check excluded paths
-    for (const pattern of excludedPaths) {
-      const cleanPattern = pattern.startsWith('/') ? pattern.slice(1) : pattern;
-
-      // Simple pattern matching (can be extended with glob support)
-      if (path.includes(cleanPattern)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Get the normalized index path
-   */
-  getNormalizedIndexPath(): string {
-    let path = this.settings.indexPath;
-    if (!path.startsWith('/')) {
-      path = '/' + path;
-    }
-    // Remove trailing slash unless it's root
-    if (path.length > 1 && path.endsWith('/')) {
-      path = path.slice(0, -1);
-    }
-    return path;
-  }
-
-  /**
-   * Reload settings from external source
-   */
-  reload(newSettings: ObsidianSettings): void {
-    const oldSettings = { ...this.settings };
-    this.settings = { ...newSettings };
-
-    // Find all changes
-    const changes: Partial<ObsidianSettings> = {};
-    for (const key in newSettings) {
-      const k = key as keyof ObsidianSettings;
-      if (oldSettings[k] !== newSettings[k]) {
-        (changes as any)[k] = newSettings[k];
-        this.notifyListeners(k, newSettings[k], oldSettings[k]);
-      }
-    }
-
-    if (Object.keys(changes).length > 0) {
-      this.notifyBatchListeners(changes);
-      this.emit('reload', changes);
-    }
   }
 
   private notifyListeners<K extends keyof ObsidianSettings>(

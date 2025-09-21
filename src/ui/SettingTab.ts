@@ -81,8 +81,8 @@ export class SettingTab extends PluginSettingTab {
           .onClick(async () => {
             const confirm = await this.confirmClearIndex();
             if (confirm) {
-              if (this.plugin.embeddingSearch) {
-                await this.plugin.embeddingSearch.clearIndex();
+              if (this.plugin.indexManager) {
+                await this.plugin.indexManager.clearIndex();
                 new Notice('Index cleared');
                 await this.updateStats();
                 // Reload indexed files in IndexManager after clearing
@@ -121,14 +121,14 @@ export class SettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('Index path')
       .setDesc(
-        'Path to index (use / for entire vault, or specify a folder like /Notes)'
+        'Path to index (leave it empty for indexing entire vault, or specify a folder like /Notes)'
       )
       .addText(text =>
         text
-          .setPlaceholder('/')
+          .setPlaceholder('')
           .setValue(this.configManager.get('indexPath'))
           .onChange(async value => {
-            const normalized = value ? normalizePath(value) : '/';
+            const normalized = value ? normalizePath(value) : '';
             await this.configManager.set('indexPath', normalized);
             await this.updateStats();
             await this.plugin.updateStatusBarWithFileCount();
@@ -388,10 +388,10 @@ export class SettingTab extends PluginSettingTab {
   }
 
   async updateStats() {
-    if (!this.statsDiv || !this.plugin.embeddingSearch) return;
+    if (!this.statsDiv || !this.plugin.indexManager) return;
 
     try {
-      const stats = await this.plugin.embeddingSearch.getStats();
+      const stats = await this.plugin.indexManager.getStats();
       const indexableCount = getIndexableFilesCount(
         this.plugin.app.vault,
         this.plugin.configManager

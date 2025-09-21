@@ -55,7 +55,7 @@ export const DEFAULT_SCRIPT_CONFIG: ScriptConfig = {
 
 export const DEFAULT_SETTINGS: ObsidianSettings = {
   ...DEFAULT_COMMON_CONFIG,
-  indexPath: '/', // Root of vault
+  indexPath: '', // Root of vault
   debugMode: false,
   followCursor: false,
   withExtraction: false,

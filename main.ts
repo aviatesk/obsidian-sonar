@@ -11,12 +11,16 @@ import { IndexManager } from './src/IndexManager';
 import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
 import { getIndexableFilesCount } from 'src/fileFilters';
+import { VectorStore } from './src/VectorStore';
+import { OllamaClient } from './src/OllamaClient';
 
 export default class ObsidianSonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
   embeddingSearch: EmbeddingSearch | null = null;
   indexManager: IndexManager | null = null;
+  vectorStore: VectorStore | null = null;
+  ollamaClient: OllamaClient | null = null;
 
   async onload() {
     // Critical initialization - needed immediately
@@ -61,14 +65,33 @@ export default class ObsidianSonarPlugin extends Plugin {
     }
 
     try {
-      this.embeddingSearch = await EmbeddingSearch.initialize(
-        this.app.vault,
-        this.configManager
+      // Initialize Ollama client
+      const ollamaUrl = this.configManager.get('ollamaUrl');
+      const embeddingModel = this.configManager.get('embeddingModel');
+
+      this.ollamaClient = new OllamaClient({
+        ollamaUrl,
+        model: embeddingModel,
+      });
+
+      await this.ollamaClient.checkModel();
+      console.log(`Ollama initialized with model: ${embeddingModel}`);
+
+      // Initialize vector store
+      this.vectorStore = await VectorStore.initialize();
+      console.log('Vector store initialized');
+
+      // Initialize search interface (read-only)
+      this.embeddingSearch = new EmbeddingSearch(
+        this.vectorStore,
+        this.ollamaClient
       );
       console.log('Semantic search system initialized');
 
+      // Initialize index manager (handles all DB modifications)
       this.indexManager = new IndexManager(
-        this.embeddingSearch,
+        this.vectorStore,
+        this.ollamaClient,
         this.app.vault,
         this.configManager,
         (status: string) => this.updateStatusBarPadded(status),
@@ -278,13 +301,13 @@ export default class ObsidianSonarPlugin extends Plugin {
   }
 
   async updateStatusBarWithFileCount() {
-    if (!this.embeddingSearch) {
+    if (!this.indexManager) {
       this.updateStatusBar('Sonar: Initializing...');
       return;
     }
 
     try {
-      const stats = await this.embeddingSearch.getStats();
+      const stats = await this.indexManager.getStats();
       const indexableCount = getIndexableFilesCount(
         this.app.vault,
         this.configManager
@@ -302,8 +325,8 @@ export default class ObsidianSonarPlugin extends Plugin {
     if (this.indexManager) {
       this.indexManager.cleanup();
     }
-    if (this.embeddingSearch) {
-      await this.embeddingSearch.close();
+    if (this.vectorStore) {
+      await this.vectorStore.close();
     }
   }
 }
