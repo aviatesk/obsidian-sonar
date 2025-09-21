@@ -3,7 +3,7 @@
 This repository contains an Obsidian plugin for semantic search using local
 embeddings.
 
-## Prerequisites & Installation
+## Prerequisites & installation
 
 See [README.md](./README.md#requirements) for prerequisites and installation
 instructions.
@@ -14,7 +14,7 @@ instructions.
 npm run build         # Quick build with type checking (`skipLibCheck` enabled)
 ```
 
-### Deploy to Local Vaults
+### Local deployment
 
 ```bash
 npm run deploy
@@ -96,6 +96,8 @@ for testing purposes.
   unless explicitly requested by users**. For example, when renaming field names
   in data structures, you can simply perform the rename.
 
+See also [Obsidian style guide](./obsidian-style-guide.md)
+
 ### Commands & settings
 
 - Any user-facing commands should be added via `this.addCommand(...)`.
@@ -125,7 +127,6 @@ for testing purposes.
 - **Always verify code quality before finalizing changes:**
   - During development: Use `npm run build` for quick compilation checks
   - Before completing work: Run `npm run check` for comprehensive validation
-- Add commands with stable IDs (don't rename once released).
 - Provide defaults and validation in settings.
 - Write idempotent code paths so `reload`/`unload` doesn't leak listeners or
   intervals.

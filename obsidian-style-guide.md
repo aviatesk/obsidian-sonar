@@ -1,0 +1,358 @@
+---
+title: Style guide
+source: https://help.obsidian.md/style-guide
+author:
+  - '[[Obsidian]]'
+  - '[[Help]]'
+published:
+created: 2025-09-21
+description: Style guide - Obsidian Help
+tags:
+  - webclip
+  - Obsidian
+image:
+favicon: https://publish-01.obsidian.md/access/f786db9fac45774fa4f0d8112e232d67/favicon-96x96.png
+site: Obsidian Help
+file-created: 2025-09-21T14:25
+file-modified: 2025-09-21T14:26
+---
+
+The Obsidian documentation uses the
+[Google developer documentation style guide](https://developers.google.com/style).
+For any topics not covered by the Google style guide, use the
+[Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/).
+
+This page lists any deviations from the Google style guide, or terminology worth
+highlighting.
+
+Contribute
+
+Most of the documentation existed before this style guide did. If you find any
+violations of this style guide, please
+[create an issue](https://github.com/obsidianmd/obsidian-docs/issues/new) or
+submit a pull request to
+[obsidianmd/obsidian-docs](https://github.com/obsidianmd/obsidian-docs).
+
+## Terminology and grammar
+
+## Language style
+
+### Terms
+
+### Product names
+
+Obsidian product names start with "Obsidian", for example "Obsidian Publish" and
+"Obsidian Sync".
+
+If a paragraph becomes overly repetitive, you can use the short form in
+subsequent references.
+
+For example:
+
+_To allow device-specific configuration, Obsidian Sync doesn't sync its own
+settings. You need to configure Sync for each of your devices._
+
+### UI and interactions
+
+When referring to multiple UI interactions in a sequence, use the → (U+2192)
+symbol. For example, " **Settings → Community plugins** ".
+
+### Notes, files, and folders
+
+- Use "note" when referring to a Markdown file in the vault.
+- Use "file" when referring to other file extensions than Markdown.
+- Prefer "note name" over "note title".
+- Prefer "active note" over "current note".
+- Prefer "folder" over "directory".
+- Prefer "file type" over "file format", unless specifically referring to the
+  data format of the file content.
+
+When moving between notes, use "open" if the destination is hidden, and "switch"
+if both source and destination notes are open in separate splits.
+
+### Reference documentation for settings
+
+When possible, any settings should be documented within Obsidian using a
+descriptive text. Avoid documenting a specific setting in Obsidian Help unless:
+
+- It requires more in-depth knowledge on how and when to use it.
+- It's commonly misused or asked about.
+- It _drastically_ changes the user experience.
+
+Consider using a tip callout if you want to draw attention to a specific
+setting.
+
+**Recommended:**
+
+- Select **Settings** in the bottom-left corner.
+- Select **Settings** in the bottom left.
+
+**Not recommended:**
+
+- Select **Settings** in the bottom left corner.
+- Select **Settings** in the bottom-left.
+
+Prefer "upper-left" and "upper-right" over "top-left" and "top-right".
+
+Don't indicate a direction when referring to settings. The location of the
+settings control depends on the device.
+
+**Recommended:**
+
+- Next to **Pick remote vault**, select **Choose**.
+
+**Not recommended:**
+
+- To the right of **Pick remote vault**, select **Choose**.
+
+### Instructions
+
+Use imperatives for the names of guides, section headings, and step-by-step
+instructions. The imperative mood is concise and action-oriented, which is more
+straightforward for users following instructions.
+
+- Prefer "Set up" over "Setting up"
+- Prefer "Move a file" over "Moving a file"
+- Prefer "Import your notes" over "Importing your notes"
+
+### Sentence case
+
+Prefer _sentence case_ over _title case_ for headings, buttons, and titles. When
+referencing UI elements always match the case of the text in the UI.
+
+**Recommended:**
+
+- How Obsidian stores data
+
+**Not recommended:**
+
+- How Obsidian Stores Data
+
+### Examples
+
+**Recommended:**
+
+- `task:(call OR schedule)`
+
+**Not recommended:**
+
+- `task:(foo OR bar)`
+
+### Key names
+
+When referring to a character on the keyboard by name, add the character between
+parentheses right after the name:
+
+**Recommended:**
+
+- Add a hyphen (-) in front of the word.
+
+**Not recommended:**
+
+- Add a hyphen in front of the word.
+- Add a `-` in front of the word.
+
+### Markdown
+
+Use newlines between Markdown blocks:
+
+**Recommended:**
+
+```md
+# Heading 1
+
+This is a section.
+
+1. First item
+2. Second item
+3. Third item
+```
+
+**Not recommended:**
+
+```md
+# Heading 1
+
+This is a section.
+
+1. First item
+2. Second item
+3. Third item
+```
+
+### Images
+
+Use " **width** x **height** pixels" for describing image or screen dimensions.
+
+**Example:**
+
+## Icons and images
+
+Include icons and images when they make it easier to explain things that are
+hard to describe with words, or when you need to show important parts of the
+Obsidian application. You can save images in the `Attachments` folder.
+
+- The image should make the text it accompanies easier to understand.
+  **Example**: Once enabled, the
+  [Word count](https://help.obsidian.md/plugins/word-count) plugin will create a
+  new entry on your bottom statusbar.
+
+![Style-guide-zoomed-example.png#interface](https://publish-01.obsidian.md/access/f786db9fac45774fa4f0d8112e232d67/Attachments/Style-guide-zoomed-example.png)
+
+Style-guide-zoomed-example.png#interface
+
+- Images should be in either `.png` or `.svg` format.
+- If an image looks too big in the note, make it smaller outside of Obsidian, or
+  adjust its dimensions as explained in
+  [embedding an image in a note](https://help.obsidian.md/embeds#Embed%20an%20image%20in%20a%20note).
+- In rare cases, you may want to place especially large or complex images in a
+  [folded callout](https://help.obsidian.md/callouts#Foldable%20callouts).
+- For pop-up windows or modals, the image should show the entire Obsidian
+  application window.
+  ![Style-guide-modal-example.png > interface](https://publish-01.obsidian.md/access/f786db9fac45774fa4f0d8112e232d67/Attachments/Style-guide-modal-example.png)
+  Style-guide-modal-example.png > interface
+
+### Icons
+
+[Lucide](https://lucide.dev/icons/) and custom Obsidian icons can be used
+alongside detailed elements to provide a visual representation of a feature.
+
+**Example:** In the ribbon on the left, select **Create new canvas** ( ) to
+create a canvas in the same folder as the active file.
+
+**Guidelines for icons**
+
+- Store icons in the `Attachments/icons` folder.
+- Add the prefix `lucide-` before the Lucide icon name.
+- Add the prefix `obsidian-icon-` before the Obsidian icon name.
+
+**Example:** The icon for creating a new canvas should be named
+`lucide-layout-dashboard`.
+
+- Use the SVG version of the icons available.
+- Icons should be `18` pixels in width, `18` pixels in height, and have a stroke
+  width of `1.5`. You can adjust these settings in the SVG data.
+
+Adjusting size and stroke in an SVG
+
+- Utilize the `icon` anchor in embedded images, to tweak the spacing around the
+  icon so that it aligns neatly with the text in the vicinity.
+- Icons should be surrounded by parenthesis. ( )
+
+**Example**: `( ![[lucide-cog.svg#icon]] )`
+
+### Image anchor tags
+
+Image anchors tags are available to add decorative changes to the embedded
+images.
+
+Live preview warning
+
+The icon anchor tags will not display correctly in **Live preview.** Use
+**Reading view** to confirm the anchor tag has been applied.
+
+**Icon**
+
+`![[lucide-menu.svg#icon]]`
+
+The icon anchor tag ensures correct vertical alignment for icons used to
+indicate interface elements.
+
+**Interface**
+
+`![[Vault picker.png#interface]]`
+
+The interface anchor tag adds a decorative box shadow around the image. In the
+first image, the interface anchor tag is applied.
+
+![Vault picker.png > interface](https://publish-01.obsidian.md/access/f786db9fac45774fa4f0d8112e232d67/Attachments/Vault%20picker.png)
+
+Vault picker.png > interface
+
+In contrast, the second image does not have the interface anchor applied.
+
+![Vault picker.png](https://publish-01.obsidian.md/access/f786db9fac45774fa4f0d8112e232d67/Attachments/Vault%20picker.png)
+
+Vault picker.png
+
+**Outline**
+
+`![[Backlinks.png#outline]]`
+
+The outline anchor tag adds a subtle border around the image. In the first
+image, the outline anchor tag is applied.
+
+Observe the lower left of the image to see the difference.
+
+![Backlinks.png > outline](https://publish-01.obsidian.md/access/f786db9fac45774fa4f0d8112e232d67/Attachments/Backlinks.png)
+
+Backlinks.png > outline
+
+The second image lacks the outline anchor tag.
+
+![Backlinks.png](https://publish-01.obsidian.md/access/f786db9fac45774fa4f0d8112e232d67/Attachments/Backlinks.png)
+
+### Optimization
+
+Images slow the loading time of the page, and take valuable
+[Publish](https://help.obsidian.md/publish) storage space. Optimizing images
+allows a reduction in file size, but maintains the visual integrity of the
+image.
+
+Both images and icons should be optimized.
+
+Tools for optimizing images
+
+Here are a some recommended programs for reducing the size of your images.
+
+- **Windows:**[FileOptimizer](https://sourceforge.net/projects/nikkhokkho/)
+- **macOS:**[ImageOptim](https://imageoptim.com/)
+- **Linux/Unix** [Trimage](https://trimage.org/)
+
+We recommend an optimization rate of 65-75%.
+
+## Layout
+
+### Broken links
+
+Before submitting your Pull Request, please check for any broken links in the
+documentation of the translation you are working on and correct them. Broken
+links can occur naturally over time, so verifying their accuracy helps maintain
+the quality of the documentation.
+
+You can check for broken links using
+[Community plugins](https://help.obsidian.md/community-plugins) or tools
+available in your IDE.
+
+### Descriptions
+
+If the page you are working on does not have a `description`
+[property](https://help.obsidian.md/properties), please add one. The description
+should be 150 characters or fewer and provide an objective summary of the page’s
+content.
+
+**Good**: Learn to create templates that capture and organize web page metadata
+automatically with Web Clipper. **Could be tweaked**: Learn how to create
+templates that automatically capture and organize metadata from web pages with
+Web Clipper.
+
+### Directions
+
+When writing or rewriting
+[Instructions](https://help.obsidian.md/style-guide#Instructions) on how to
+perform an action within the app, be sure to include steps for both the mobile
+and desktop versions.
+
+If you do not have access to a mobile or desktop device, please mention this
+when submitting your Pull Request.
+
+## Translations
+
+Translate the entirety of the content when completing a translation. This
+includes and is not limited to:
+
+- Note names
+- Folder names
+- Aliases
+- Attachment names
+- Alt link text

@@ -10,4 +10,7 @@ main.js
 db/
 .config.json
 
+# Claude
+CLAUDE.local.md
+
 notes
