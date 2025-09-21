@@ -240,19 +240,17 @@ export default class ObsidianSonarPlugin extends Plugin {
 
     if (leaves.length > 0) {
       leaf = leaves[0];
+      workspace.revealLeaf(leaf);
     } else {
       const rightLeaf = workspace.getRightLeaf(false);
       if (rightLeaf) {
         leaf = rightLeaf;
+        await leaf.setViewState({
+          type: RELATED_NOTES_VIEW_TYPE,
+          active: true,
+        });
+        workspace.revealLeaf(leaf);
       }
-    }
-
-    if (leaf) {
-      await leaf.setViewState({
-        type: RELATED_NOTES_VIEW_TYPE,
-        active: true,
-      });
-      workspace.revealLeaf(leaf);
     }
   }
 
