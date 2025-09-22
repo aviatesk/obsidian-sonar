@@ -303,7 +303,7 @@ export class SettingTab extends PluginSettingTab {
       )
       .addSlider(slider =>
         slider
-          .setLimits(500, 10000, 500)
+          .setLimits(500, 5000, 500)
           .setValue(this.configManager.get('indexDebounceMs'))
           .setDynamicTooltip()
           .onChange(async value => {
@@ -329,7 +329,7 @@ export class SettingTab extends PluginSettingTab {
       )
       .addSlider(slider =>
         slider
-          .setLimits(500, 60000, 500)
+          .setLimits(500, 10000, 500)
           .setValue(this.configManager.get('relatedNotesDebounceMs'))
           .setDynamicTooltip()
           .onChange(async value => {
