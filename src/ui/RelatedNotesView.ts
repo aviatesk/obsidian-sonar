@@ -33,6 +33,7 @@ const relatedNotesStore = writable<RelatedNotesState>({
 export class RelatedNotesView extends ItemView {
   private embeddingSearch: EmbeddingSearch;
   private configManager: ConfigManager;
+  private getTokenizer: () => Tokenizer;
   private followCursor: boolean;
   private withExtraction: boolean;
   private isProcessing = false;
@@ -43,11 +44,13 @@ export class RelatedNotesView extends ItemView {
   constructor(
     leaf: WorkspaceLeaf,
     embeddingSearch: EmbeddingSearch,
-    configManager: ConfigManager
+    configManager: ConfigManager,
+    getTokenizer: () => Tokenizer
   ) {
     super(leaf);
     this.embeddingSearch = embeddingSearch;
     this.configManager = configManager;
+    this.getTokenizer = getTokenizer;
     this.followCursor = configManager.get('followCursor');
     this.withExtraction = configManager.get('withExtraction');
 
@@ -209,6 +212,7 @@ export class RelatedNotesView extends ItemView {
       tokenizerModel: this.configManager.get('tokenizerModel') || undefined,
       ollamaUrl: this.configManager.get('ollamaUrl'),
       summaryModel: this.configManager.get('summaryModel'),
+      tokenizer: this.getTokenizer(),
     };
 
     try {
@@ -216,11 +220,7 @@ export class RelatedNotesView extends ItemView {
       const query = await QueryProcessor.process(content, options);
 
       if (query) {
-        const tokenCount = await Tokenizer.estimateTokens(
-          query,
-          this.configManager.get('embeddingModel'),
-          this.configManager.get('tokenizerModel') || undefined
-        );
+        const tokenCount = await this.getTokenizer().estimateTokens(query);
         const searchResults = await this.embeddingSearch.search(
           query,
           this.configManager.get('topK'),

@@ -21,6 +21,7 @@ export default class ObsidianSonarPlugin extends Plugin {
   indexManager: IndexManager | null = null;
   vectorStore: VectorStore | null = null;
   ollamaClient: OllamaClient | null = null;
+  tokenizer: Tokenizer | null = null;
 
   async onload() {
     // Critical initialization - needed immediately
@@ -39,9 +40,6 @@ export default class ObsidianSonarPlugin extends Plugin {
     const settingTab = new SettingTab(this.app, this);
     this.addSettingTab(settingTab);
 
-    // Setup notification handler (lightweight)
-    this.setupNotificationHandler();
-
     // Defer heavy initialization to avoid blocking plugin load
     this.app.workspace.onLayoutReady(() => this.initializeAsync());
   }
@@ -51,7 +49,10 @@ export default class ObsidianSonarPlugin extends Plugin {
     const tokenizerModel = this.configManager.get('tokenizerModel');
 
     try {
-      await Tokenizer.initialize(embeddingModel, tokenizerModel || undefined);
+      this.tokenizer = await Tokenizer.initialize(
+        embeddingModel,
+        tokenizerModel || undefined
+      );
     } catch (error) {
       console.error('Failed to initialize tokenizer:', error);
       new Notice('Failed to initialize tokenizer - check console for details');
@@ -104,6 +105,7 @@ export default class ObsidianSonarPlugin extends Plugin {
       this.app.vault,
       this.app.workspace,
       this.configManager,
+      () => this.tokenizer!,
       (status: string) => this.updateStatusBarPadded(status),
       () => this.updateStatusBarWithFileCount()
     );
@@ -128,32 +130,18 @@ export default class ObsidianSonarPlugin extends Plugin {
     }
   }
 
-  private setupNotificationHandler(): void {
-    Tokenizer.setFallbackNotification((message, type) => {
-      if (type === 'error') {
-        console.error(message);
-        new Notice(message);
-      } else if (type === 'warning') {
-        console.warn(message);
-        if (this.configManager.get('debugMode')) {
-          new Notice(message);
-        }
-      } else {
-        console.log(message);
-        if (this.configManager.get('debugMode')) {
-          new Notice(message, 3000);
-        }
-      }
-    });
-  }
-
   private isInitialized(): boolean {
     return this.embeddingSearch !== null && this.indexManager !== null;
   }
 
   private registerViews(embeddingSearch: EmbeddingSearch): void {
     this.registerView(RELATED_NOTES_VIEW_TYPE, leaf => {
-      return new RelatedNotesView(leaf, embeddingSearch, this.configManager);
+      return new RelatedNotesView(
+        leaf,
+        embeddingSearch,
+        this.configManager,
+        () => this.tokenizer!
+      );
     });
   }
 

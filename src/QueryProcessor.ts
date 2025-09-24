@@ -11,6 +11,7 @@ export interface QueryOptions {
   tokenizerModel: string | undefined;
   ollamaUrl: string;
   summaryModel: string;
+  tokenizer: Tokenizer;
 }
 
 /**
@@ -21,11 +22,8 @@ export class QueryProcessor {
     content: string,
     options: QueryOptions
   ): Promise<string> {
-    // Calculate tokens for filename
-    const fileNameTokens = await Tokenizer.estimateTokens(
-      options.fileName,
-      options.embeddingModel,
-      options.tokenizerModel
+    const fileNameTokens = await options.tokenizer.estimateTokens(
+      options.fileName
     );
     const remainingTokens = Math.max(10, options.maxTokens - fileNameTokens);
 
@@ -37,8 +35,7 @@ export class QueryProcessor {
         options.cursorLine,
         remainingTokens,
         false,
-        options.embeddingModel,
-        options.tokenizerModel
+        options.tokenizer
       );
     } else {
       extractedContent = await QueryProcessor.extractTokenBasedContent(
@@ -46,8 +43,7 @@ export class QueryProcessor {
         0,
         remainingTokens,
         true,
-        options.embeddingModel,
-        options.tokenizerModel
+        options.tokenizer
       );
     }
 
@@ -70,9 +66,8 @@ export class QueryProcessor {
     content: string,
     startLine: number,
     remainingTokens: number,
-    expandFromStart: boolean = true,
-    embeddingModel: string,
-    tokenizerModel: string | undefined
+    expandFromStart: boolean,
+    tokenizer: Tokenizer
   ): Promise<string> {
     const lines = content.split('\n');
 
@@ -86,11 +81,7 @@ export class QueryProcessor {
         i < lines.length && currentTokens < remainingTokens;
         i++
       ) {
-        const lineTokens = await Tokenizer.estimateTokens(
-          lines[i],
-          embeddingModel,
-          tokenizerModel
-        );
+        const lineTokens = await tokenizer.estimateTokens(lines[i]);
         if (currentTokens + lineTokens <= remainingTokens) {
           result.push(lines[i]);
           currentTokens += lineTokens;
@@ -101,8 +92,7 @@ export class QueryProcessor {
             const partialLine = await QueryProcessor.truncateToTokens(
               lines[i],
               remainingSpace,
-              embeddingModel,
-              tokenizerModel
+              tokenizer
             );
             result.push(partialLine);
           }
@@ -117,10 +107,8 @@ export class QueryProcessor {
 
       // Start from cursor line
       if (startLine < lines.length) {
-        const cursorLineTokens = await Tokenizer.estimateTokens(
-          lines[startLine],
-          embeddingModel,
-          tokenizerModel
+        const cursorLineTokens = await tokenizer.estimateTokens(
+          lines[startLine]
         );
         if (cursorLineTokens <= remainingTokens) {
           result.push(lines[startLine]);
@@ -129,8 +117,7 @@ export class QueryProcessor {
           return await QueryProcessor.truncateToTokens(
             lines[startLine],
             remainingTokens,
-            embeddingModel,
-            tokenizerModel
+            tokenizer
           );
         }
       }
@@ -145,11 +132,7 @@ export class QueryProcessor {
       ) {
         // Try to add line above
         if (above >= 0) {
-          const lineTokens = await Tokenizer.estimateTokens(
-            lines[above],
-            embeddingModel,
-            tokenizerModel
-          );
+          const lineTokens = await tokenizer.estimateTokens(lines[above]);
           if (currentTokens + lineTokens <= remainingTokens) {
             result.unshift(lines[above]);
             currentTokens += lineTokens;
@@ -161,11 +144,7 @@ export class QueryProcessor {
 
         // Try to add line below
         if (below < lines.length && currentTokens < remainingTokens) {
-          const lineTokens = await Tokenizer.estimateTokens(
-            lines[below],
-            embeddingModel,
-            tokenizerModel
-          );
+          const lineTokens = await tokenizer.estimateTokens(lines[below]);
           if (currentTokens + lineTokens <= remainingTokens) {
             result.push(lines[below]);
             currentTokens += lineTokens;
@@ -183,19 +162,14 @@ export class QueryProcessor {
   private static async truncateToTokens(
     text: string,
     maxTokens: number,
-    embeddingModel: string,
-    tokenizerModel: string | undefined
+    tokenizer: Tokenizer
   ): Promise<string> {
     const words = text.split(/\s+/);
     let result: string[] = [];
     let currentTokens = 0;
 
     for (const word of words) {
-      const wordTokens = await Tokenizer.estimateTokens(
-        word,
-        embeddingModel,
-        tokenizerModel
-      );
+      const wordTokens = await tokenizer.estimateTokens(word);
       if (currentTokens + wordTokens <= maxTokens) {
         result.push(word);
         currentTokens += wordTokens;

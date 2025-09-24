@@ -7,10 +7,9 @@ export interface Chunk {
 
 export async function createChunks(
   content: string,
-  maxChunkSize: number, // tokens
-  chunkOverlap: number, // tokens
-  embeddingModel?: string,
-  tokenizerModel?: string
+  maxChunkSize: number,
+  chunkOverlap: number,
+  tokenizer: Tokenizer
 ): Promise<Chunk[]> {
   let text = content.trim();
 
@@ -23,11 +22,7 @@ export async function createChunks(
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const lineTokens = await Tokenizer.estimateTokens(
-      line,
-      embeddingModel,
-      tokenizerModel
-    );
+    const lineTokens = await tokenizer.estimateTokens(line);
 
     // Update headings if this is a heading line
     if (line.startsWith('#')) {
@@ -49,7 +44,6 @@ export async function createChunks(
         headings: chunkHeadings,
       });
 
-      // Handle overlap (keep last N tokens worth of lines)
       const overlapLines: string[] = [];
       let overlapTokens = 0;
       for (
@@ -57,10 +51,8 @@ export async function createChunks(
         j >= 0 && overlapTokens < chunkOverlap;
         j--
       ) {
-        const lineOverlapTokens = await Tokenizer.estimateTokens(
-          currentChunk[j],
-          embeddingModel,
-          tokenizerModel
+        const lineOverlapTokens = await tokenizer.estimateTokens(
+          currentChunk[j]
         );
         if (overlapTokens + lineOverlapTokens <= chunkOverlap) {
           overlapLines.unshift(currentChunk[j]);

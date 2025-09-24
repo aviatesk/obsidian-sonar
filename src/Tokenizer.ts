@@ -1,4 +1,5 @@
 import { AutoTokenizer, PreTrainedTokenizer } from '@huggingface/transformers';
+import { DEFAULT_COMMON_CONFIG } from './config';
 
 /**
  * Map Ollama embedding model names to the correct Hugging Face repos
@@ -62,149 +63,81 @@ export const TOKENIZER_MODEL_MAPPING: Record<string, string> = {
 };
 
 /**
- * Callback for displaying notifications when console is not enough (e.g., in Obsidian)
- */
-export type FallbackNotification = (
-  message: string,
-  type: 'info' | 'warning' | 'error'
-) => void;
-
-/**
  * Transformers.js based tokenizer for accurate token counting
  */
 export class Tokenizer {
-  private static tokenizers: Map<string, PreTrainedTokenizer> = new Map();
-  private static defaultModel = 'Xenova/bert-base-uncased';
-  private static fallbackNotification: FallbackNotification | undefined;
+  private tokenizer: PreTrainedTokenizer;
 
-  /**
-   * Set fallback notification for environments where console is not enough (e.g., Obsidian)
-   */
-  static setFallbackNotification(callback: FallbackNotification): void {
-    this.fallbackNotification = callback;
+  private constructor(tokenizer: PreTrainedTokenizer) {
+    this.tokenizer = tokenizer;
   }
 
-  /**
-   * Send notification (uses fallback if available, otherwise console)
-   */
-  private static notify(
-    message: string,
-    type: 'info' | 'warning' | 'error' = 'info'
-  ): void {
-    if (this.fallbackNotification) {
-      this.fallbackNotification(message, type);
-    } else {
-      switch (type) {
-        case 'error':
-          console.error(message);
-          break;
-        case 'warning':
-          console.warn(message);
-          break;
-        default:
-          console.log(message);
-      }
-    }
-  }
-
-  /**
-   * Get or create a tokenizer instance
-   */
-  private static async getTokenizer(
-    model?: string,
+  static async initialize(
+    model: string,
     tokenizerModel?: string
-  ): Promise<PreTrainedTokenizer> {
-    // If explicit tokenizer model is specified, use it directly
+  ): Promise<Tokenizer> {
+    const defaultModel =
+      TOKENIZER_MODEL_MAPPING[
+        DEFAULT_COMMON_CONFIG.embeddingModel.replace(/:[a-zA-Z0-9_-]+$/, '')
+      ];
+    let tokenizer: PreTrainedTokenizer;
+
     if (tokenizerModel) {
       try {
-        this.notify(
-          `Loading custom tokenizer model: ${tokenizerModel}`,
-          'info'
-        );
-        const tokenizer = await AutoTokenizer.from_pretrained(tokenizerModel);
-        this.tokenizers.set(tokenizerModel, tokenizer);
-        this.notify(
-          `✅ Successfully loaded custom tokenizer: ${tokenizerModel}`,
-          'info'
+        console.log(`Loading custom tokenizer model: ${tokenizerModel}`);
+        tokenizer = await AutoTokenizer.from_pretrained(tokenizerModel);
+        console.log(
+          `✅ Successfully loaded custom tokenizer: ${tokenizerModel}`
         );
       } catch (error) {
-        this.notify(
-          `Failed to load custom tokenizer: ${tokenizerModel}`,
-          'error'
-        );
+        console.error(`Failed to load custom tokenizer: ${tokenizerModel}`);
         throw error;
       }
-      return this.tokenizers.get(tokenizerModel)!;
+      return new Tokenizer(tokenizer);
     }
 
-    // Remove common tags like :latest, :q4_0, :q8_0, etc.
     const cleanModel = model?.replace(/:[a-zA-Z0-9_-]+$/, '') || '';
 
-    // First try with full model name (in case it has specific tags we care about)
     let modelName = model ? TOKENIZER_MODEL_MAPPING[model] : undefined;
 
-    // If not found, try with cleaned model name
     if (!modelName && cleanModel) {
       modelName = TOKENIZER_MODEL_MAPPING[cleanModel];
     }
 
-    // If still not found, use default
     if (!modelName) {
-      modelName = this.defaultModel;
+      modelName = defaultModel;
       if (model && cleanModel) {
-        this.notify(
-          `⚠️ No tokenizer mapping for '${model}', using default: ${this.defaultModel}`,
-          'warning'
+        console.warn(
+          `⚠️ No tokenizer mapping for '${model}', using default: ${defaultModel}`
         );
       }
     }
 
-    if (!this.tokenizers.has(modelName)) {
-      try {
-        this.notify(
-          `Loading tokenizer for ${model || 'default'}: ${modelName}`,
-          'info'
+    try {
+      console.log(`Loading tokenizer for ${model || 'default'}: ${modelName}`);
+      tokenizer = await AutoTokenizer.from_pretrained(modelName);
+      console.log(`✅ Successfully loaded tokenizer: ${modelName}`);
+    } catch (error) {
+      console.error(`Failed to load tokenizer for ${modelName}`);
+      if (modelName !== defaultModel) {
+        console.warn(
+          `⚠️ Attempting fallback to default tokenizer: ${defaultModel}`
         );
-        const tokenizer = await AutoTokenizer.from_pretrained(modelName);
-        this.tokenizers.set(modelName, tokenizer);
-        this.notify(`✅ Successfully loaded tokenizer: ${modelName}`, 'info');
-      } catch (error) {
-        this.notify(`Failed to load tokenizer for ${modelName}`, 'error');
-        if (modelName !== this.defaultModel) {
-          this.notify(
-            `⚠️ Attempting fallback to default tokenizer: ${this.defaultModel}`,
-            'warning'
-          );
-          const defaultTokenizer = await AutoTokenizer.from_pretrained(
-            this.defaultModel
-          );
-          this.tokenizers.set(modelName, defaultTokenizer);
-          this.notify(
-            `✅ Fallback successful: using ${this.defaultModel}`,
-            'info'
-          );
-        } else {
-          throw error;
-        }
+        tokenizer = await AutoTokenizer.from_pretrained(defaultModel);
+        console.log(`✅ Fallback successful: using ${defaultModel}`);
+      } else {
+        throw error;
       }
     }
 
-    return this.tokenizers.get(modelName)!;
+    return new Tokenizer(tokenizer);
   }
 
-  /**
-   * Estimate token count for a given text using transformers.js
-   */
-  static async estimateTokens(
-    text: string,
-    model?: string,
-    tokenizerModel?: string
-  ): Promise<number> {
+  async estimateTokens(text: string): Promise<number> {
     if (!text) return 0;
 
     try {
-      const tokenizer = await this.getTokenizer(model, tokenizerModel);
-      const { input_ids } = await tokenizer(text);
+      const { input_ids } = await this.tokenizer(text);
       return input_ids.size;
     } catch (error) {
       console.error('Failed to tokenize with transformers.js:', error);
@@ -212,16 +145,10 @@ export class Tokenizer {
     }
   }
 
-  /**
-   * Format token count for display
-   */
   static formatTokenCount(count: number): string {
     return `${count} tokens`;
   }
 
-  /**
-   * Get a short format for status bar
-   */
   static formatTokenCountShort(count: number): string {
     if (count < 1000) {
       return `${count} tokens`;
@@ -230,15 +157,5 @@ export class Tokenizer {
     } else {
       return `${(count / 1000).toFixed(0)}k tokens`;
     }
-  }
-
-  /**
-   * Initialize tokenizer with a specific model (preload)
-   */
-  static async initialize(
-    model?: string,
-    tokenizerModel?: string
-  ): Promise<void> {
-    await this.getTokenizer(model, tokenizerModel);
   }
 }

@@ -185,9 +185,8 @@ export class SettingTab extends PluginSettingTab {
           .setValue(this.configManager.get('tokenizerModel'))
           .onChange(async value => {
             await this.configManager.set('tokenizerModel', value || '');
-            // Reinitialize tokenizer with new model
             try {
-              await Tokenizer.initialize(
+              this.plugin.tokenizer = await Tokenizer.initialize(
                 this.configManager.get('embeddingModel'),
                 value || undefined
               );

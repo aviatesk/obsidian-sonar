@@ -12,6 +12,7 @@ import { shouldIndexFile, getFilesToIndex } from './fileFilters';
 import { type DocumentMetadata, VectorStore } from './VectorStore';
 import { createChunks } from './chunker';
 import { OllamaClient } from './OllamaClient';
+import { Tokenizer } from './Tokenizer';
 
 interface FileOperation {
   type: 'create' | 'modify' | 'delete' | 'rename';
@@ -25,6 +26,7 @@ export class IndexManager {
   private vault: Vault;
   private workspace: Workspace;
   private configManager: ConfigManager;
+  private getTokenizer: () => Tokenizer;
   private pendingOperations: Map<string, FileOperation> = new Map();
   private debouncedProcess: () => void;
   private eventRefs: EventRef[] = [];
@@ -43,6 +45,7 @@ export class IndexManager {
     vault: Vault,
     workspace: Workspace,
     configManager: ConfigManager,
+    getTokenizer: () => Tokenizer,
     statusUpdateCallback: (status: string) => void,
     onProcessingCompleteCallback: () => void
   ) {
@@ -51,6 +54,7 @@ export class IndexManager {
     this.vault = vault;
     this.workspace = workspace;
     this.configManager = configManager;
+    this.getTokenizer = getTokenizer;
     this.statusUpdateCallback = statusUpdateCallback;
     this.onProcessingCompleteCallback = onProcessingCompleteCallback;
 
@@ -506,8 +510,7 @@ export class IndexManager {
       content,
       this.configManager.get('maxChunkSize'),
       this.configManager.get('chunkOverlap'),
-      this.configManager.get('embeddingModel'),
-      this.configManager.get('tokenizerModel')
+      this.getTokenizer()
     );
 
     const chunkContents = chunks.map(c => c.content);
