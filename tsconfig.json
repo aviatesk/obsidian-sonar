@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
-    "inlineSourceMap": true,
+    "sourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
     "target": "ES2018",
@@ -13,6 +13,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "declaration": false,
@@ -28,6 +29,6 @@
     "noFallthroughCasesInSwitch": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": ["src/**/*.ts", "cli/**/*.ts", "main.ts"],
+  "include": ["src/**/*.ts", "cli/**/*.ts", "main.ts", "**/*.svelte"],
   "exclude": ["node_modules", "out"]
 }

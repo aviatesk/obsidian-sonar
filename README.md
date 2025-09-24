@@ -38,4 +38,5 @@ Built with:
 - [Ollama](https://ollama.ai/) for local LLM inference
 - [Transformers.js](https://huggingface.co/docs/transformers.js) for
   tokenization
+- [Svelte](https://svelte.dev/) for reactive UI components
 - [Obsidian API](https://docs.obsidian.md/) for vault integration

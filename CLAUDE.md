@@ -39,9 +39,10 @@ Deploys built plugin to configured vaults (see `deploy.sh` for vault paths).
 ## Code quality checks
 
 ```bash
-npm run check         # Comprehensive check: format + lint + strict type checking
+npm run check         # Comprehensive check: format + lint + svelte-check + strict type checking
 npm run format:check  # Check formatting -- included in `npm run check`
 npm run lint:check    # Check for ESLint errors -- included in `npm run check`
+npm run svelte-check  # Type check Svelte components -- included in `npm run check`
 npx tsc --noEmit      # Strict type checking (no `skipLibCheck`) -- included in `npm run check`
 ```
 
@@ -69,8 +70,8 @@ a test folder and explicitly specify it for testing.
 - **Make sure to run the code quality checks after making changes**
   - During development: Run `npm run build` to verify compilation succeeds
   - Before finalizing/committing: Run `npm run check` for comprehensive
-    validation. This runs format check, ESLint (0 warnings) and strict
-    TypeScript type checking (no `skipLibCheck`)
+    validation. This runs format check, ESLint (0 warnings), Svelte type
+    checking, and strict TypeScript type checking (no `skipLibCheck`)
   - To fix issues: Use `npm run fix` to auto-format and fix linting in one
     command (or use `npm run format` and `npm run lint` separately)
 - After writing or modifying code, run `npm run format` to ensure consistent
@@ -108,6 +109,15 @@ a test folder and explicitly specify it for testing.
 - Generally, **efforts to maintain backward compatibility are not necessary
   unless explicitly requested by users**. For example, when renaming field names
   in data structures, you can simply perform the rename.
+
+### UI Components with Svelte
+
+- UI components are built using [Svelte](https://svelte.dev/) for better
+  reactivity and cleaner code
+- Svelte components are located in `src/ui/*.svelte` files
+- When creating new UI components, prefer Svelte over vanilla TypeScript
+- Use TypeScript in Svelte components (`<script lang="ts">`)
+- Follow Obsidian's Svelte integration patterns (see Obsidian developer docs)
 
 ### Commands & settings
 

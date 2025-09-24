@@ -1,4 +1,4 @@
-import { VectorStore, DocumentMetadata } from './VectorStore';
+import { VectorStore, type DocumentMetadata } from './VectorStore';
 import { OllamaClient } from './OllamaClient';
 
 export interface SearchResult {

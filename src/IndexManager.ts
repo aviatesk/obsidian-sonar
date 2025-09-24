@@ -2,14 +2,14 @@ import {
   TAbstractFile,
   TFile,
   Vault,
-  EventRef,
+  type EventRef,
   Notice,
   debounce,
   Workspace,
 } from 'obsidian';
 import { ConfigManager } from './ConfigManager';
 import { shouldIndexFile, getFilesToIndex } from './fileFilters';
-import { DocumentMetadata, VectorStore } from './VectorStore';
+import { type DocumentMetadata, VectorStore } from './VectorStore';
 import { createChunks } from './chunker';
 import { OllamaClient } from './OllamaClient';
 
