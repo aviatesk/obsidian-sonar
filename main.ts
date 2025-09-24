@@ -47,68 +47,78 @@ export default class ObsidianSonarPlugin extends Plugin {
   }
 
   private async initializeAsync(): Promise<void> {
+    const embeddingModel = this.configManager.get('embeddingModel');
+    const tokenizerModel = this.configManager.get('tokenizerModel');
+
     try {
-      const embeddingModel = this.configManager.get('embeddingModel');
-      const tokenizerModel = this.configManager.get('tokenizerModel');
       await Tokenizer.initialize(embeddingModel, tokenizerModel || undefined);
-      if (tokenizerModel) {
-        console.log('Tokenizer initialized with custom model:', tokenizerModel);
-      } else {
-        console.log(
-          'Tokenizer initialized with embedding model:',
-          embeddingModel
-        );
-      }
     } catch (error) {
       console.error('Failed to initialize tokenizer:', error);
       new Notice('Failed to initialize tokenizer - check console for details');
+      return;
     }
 
+    if (tokenizerModel) {
+      console.log('Tokenizer initialized with custom model:', tokenizerModel);
+    } else {
+      console.log(
+        'Tokenizer initialized with embedding model:',
+        embeddingModel
+      );
+    }
+
+    const ollamaUrl = this.configManager.get('ollamaUrl');
+
+    this.ollamaClient = new OllamaClient({
+      ollamaUrl,
+      model: embeddingModel,
+    });
+
     try {
-      // Initialize Ollama client
-      const ollamaUrl = this.configManager.get('ollamaUrl');
-      const embeddingModel = this.configManager.get('embeddingModel');
-
-      this.ollamaClient = new OllamaClient({
-        ollamaUrl,
-        model: embeddingModel,
-      });
-
       await this.ollamaClient.checkModel();
-      console.log(`Ollama initialized with model: ${embeddingModel}`);
+    } catch {
+      new Notice('Failed to connect to Ollama - check console for details');
+      return;
+    }
 
-      // Initialize vector store
+    console.log(`Ollama initialized with model: ${embeddingModel}`);
+
+    try {
       this.vectorStore = await VectorStore.initialize();
-      console.log('Vector store initialized');
+    } catch {
+      new Notice('Failed to initialize vector store - check console');
+      return;
+    }
 
-      // Initialize search interface (read-only)
-      this.embeddingSearch = new EmbeddingSearch(
-        this.vectorStore,
-        this.ollamaClient
-      );
-      console.log('Semantic search system initialized');
+    console.log('Vector store initialized');
 
-      // Initialize index manager (handles all DB modifications)
-      this.indexManager = new IndexManager(
-        this.vectorStore,
-        this.ollamaClient,
-        this.app.vault,
-        this.app.workspace,
-        this.configManager,
-        (status: string) => this.updateStatusBarPadded(status),
-        () => this.updateStatusBarWithFileCount()
-      );
+    this.embeddingSearch = new EmbeddingSearch(
+      this.vectorStore,
+      this.ollamaClient
+    );
+    console.log('Semantic search system initialized');
 
-      this.updateStatusBarWithFileCount();
+    this.indexManager = new IndexManager(
+      this.vectorStore,
+      this.ollamaClient,
+      this.app.vault,
+      this.app.workspace,
+      this.configManager,
+      (status: string) => this.updateStatusBarPadded(status),
+      () => this.updateStatusBarWithFileCount()
+    );
 
-      this.registerViews(this.embeddingSearch);
-      // Auto-open related notes view if configured
-      if (this.configManager.get('autoOpenRelatedNotes')) {
-        this.activateRelatedNotesView();
-      }
-      this.setupEventHandlers();
+    this.updateStatusBarWithFileCount();
 
-      // Initialize IndexManager's event handlers and smart sync
+    this.registerViews(this.embeddingSearch);
+
+    if (this.configManager.get('autoOpenRelatedNotes')) {
+      this.activateRelatedNotesView();
+    }
+
+    this.setupEventHandlers();
+
+    try {
       await this.indexManager.onLayoutReady();
     } catch {
       this.updateStatusBar('Sonar: Failed to initialize');

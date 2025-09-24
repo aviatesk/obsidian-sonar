@@ -192,28 +192,27 @@ export class RelatedNotesView extends ItemView {
 
     this.updateStore({ status: 'Processing...' });
 
+    let cursorLine = 0;
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (activeView && activeView.editor) {
+      const cursor = activeView.editor.getCursor();
+      cursorLine = cursor.line;
+    }
+
+    const options: QueryOptions = {
+      fileName: activeFile.basename,
+      cursorLine: cursorLine,
+      followCursor: this.followCursor,
+      withExtraction: this.withExtraction,
+      maxTokens: this.configManager.get('maxQueryTokens'),
+      embeddingModel: this.configManager.get('embeddingModel'),
+      tokenizerModel: this.configManager.get('tokenizerModel') || undefined,
+      ollamaUrl: this.configManager.get('ollamaUrl'),
+      summaryModel: this.configManager.get('summaryModel'),
+    };
+
     try {
       const content = await this.app.vault.cachedRead(activeFile);
-
-      let cursorLine = 0;
-      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (activeView && activeView.editor) {
-        const cursor = activeView.editor.getCursor();
-        cursorLine = cursor.line;
-      }
-
-      const options: QueryOptions = {
-        fileName: activeFile.basename,
-        cursorLine: cursorLine,
-        followCursor: this.followCursor,
-        withExtraction: this.withExtraction,
-        maxTokens: this.configManager.get('maxQueryTokens'),
-        embeddingModel: this.configManager.get('embeddingModel'),
-        tokenizerModel: this.configManager.get('tokenizerModel') || undefined,
-        ollamaUrl: this.configManager.get('ollamaUrl'),
-        summaryModel: this.configManager.get('summaryModel'),
-      };
-
       const query = await QueryProcessor.process(content, options);
 
       if (query) {

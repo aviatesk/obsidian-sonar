@@ -405,17 +405,17 @@ export class IndexManager {
         await progressCallback(i + 1, totalOperations, filePath);
       }
 
+      const fileName =
+        operation.file?.basename ||
+        operation.oldPath?.split('/').pop() ||
+        'unknown';
+      this.updateStatus({
+        file: fileName,
+        current: i + 1,
+        total: totalOperations,
+      });
+
       try {
-        const fileName =
-          operation.file?.basename ||
-          operation.oldPath?.split('/').pop() ||
-          'unknown';
-        this.updateStatus({
-          file: fileName,
-          current: i + 1,
-          total: totalOperations,
-        });
-        // Skip change check if called from sync
         await this.processOperation(operation, isSync);
       } catch (error) {
         console.error(

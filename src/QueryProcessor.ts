@@ -212,13 +212,12 @@ export class QueryProcessor {
     ollamaUrl: string,
     summaryModel: string
   ): Promise<string> {
-    try {
-      const ollamaClient = new OllamaClient({
-        ollamaUrl,
-        model: summaryModel,
-      });
+    const ollamaClient = new OllamaClient({
+      ollamaUrl,
+      model: summaryModel,
+    });
 
-      const prompt = `Extract a search query from the following text for finding related documents in a RAG system.
+    const prompt = `Extract a search query from the following text for finding related documents in a RAG system.
 Requirements:
 1. Write in the same language as the input text (do not translate)
 2. Start with ONE concise sentence summarizing the main topic or question (max 50 tokens)
@@ -231,6 +230,7 @@ Text to analyze follows:
 
 ${input}`;
 
+    try {
       const extractionQuery = await ollamaClient.generate(prompt);
       return extractionQuery.trim();
     } catch (error) {
