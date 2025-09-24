@@ -123,7 +123,7 @@
   }
 
   .results-list {
-    padding: 10px;
+    padding: 8px;
   }
 
   .result-item {
@@ -200,8 +200,8 @@
   }
 
   .result-score {
-    font-size: 11px;
-    padding: 2px 6px;
+    font-size: 12px;
+    padding: 2px 8px;
     color: var(--text-muted);
     border-radius: 4px;
     border: 1px solid var(--interactive-accent);
@@ -210,8 +210,8 @@
   }
 
   .chunk-count {
-    font-size: 10px;
-    padding: 2px 6px;
+    font-size: 12px;
+    padding: 2px 8px;
     color: var(--text-muted);
     background: var(--background-modifier-border);
     border-radius: 4px;
@@ -222,9 +222,9 @@
   }
 
   .result-path {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     opacity: 0.8;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -232,7 +232,7 @@
   }
 
   .result-headings {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     margin-bottom: 8px;
     padding: 4px 0;
@@ -255,7 +255,7 @@
   }
 
   .result-excerpt::-webkit-scrollbar {
-    width: 6px;
+    width: 8px;
   }
 
   .result-excerpt::-webkit-scrollbar-track {

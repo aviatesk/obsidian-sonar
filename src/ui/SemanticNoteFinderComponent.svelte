@@ -9,8 +9,10 @@
     store: any; // Svelte store
     logger: Logger;
     placeholder?: string;
+    titleEl: HTMLElement;
     onQueryChange: (query: string) => void;
     onSearchImmediate: (query: string) => void;
+    onClose?: () => void;
   }
 
   let {
@@ -18,8 +20,10 @@
     store,
     logger,
     placeholder = 'Enter your search query...',
+    titleEl,
     onQueryChange,
     onSearchImmediate,
+    onClose,
   }: Props = $props();
 
   // Get reactive state from store
@@ -30,14 +34,18 @@
   const hasSearched = $derived(storeState.hasSearched);
 
   let inputEl: HTMLInputElement;
+  let searchInputContainer: HTMLDivElement;
 
   function handleInputChange(event: Event) {
     const value = (event.target as HTMLInputElement).value;
     onQueryChange(value);
   }
 
-  // Focus input on mount
+  // Mount search input to titleEl
   $effect(() => {
+    if (searchInputContainer && titleEl) {
+      titleEl.appendChild(searchInputContainer);
+    }
     if (inputEl) {
       inputEl.focus();
     }
@@ -51,54 +59,49 @@
   }
 </script>
 
-<div class="semantic-search-container">
-  <div class="search-input-container">
-    <input
-      type="text"
-      class="search-input"
-      bind:this={inputEl}
-      value={query}
-      oninput={handleInputChange}
-      onkeydown={handleKeydown}
-      {placeholder}
-    />
-    {#if isSearching}
-      <div class="search-status">
-        <span class="spinner"></span>
-        Searching...
-      </div>
-    {/if}
-  </div>
+<div class="search-input-container" bind:this={searchInputContainer}>
+  <input
+    type="text"
+    class="search-input"
+    bind:this={inputEl}
+    value={query}
+    oninput={handleInputChange}
+    onkeydown={handleKeydown}
+    {placeholder}
+  />
+  {#if isSearching}
+    <div class="search-status">
+      <span class="spinner"></span>
+      Searching...
+    </div>
+  {/if}
+</div>
 
-  <div class="search-results-container">
-    {#if hasSearched}
-      <SearchResults
-        {app}
-        {results}
-        {logger}
-        noResultsMessage={isSearching ? 'Searching...' : 'No results found for your query'}
-      />
-    {/if}
-  </div>
+<div class="search-results-container">
+  {#if hasSearched}
+    <SearchResults
+      {app}
+      {results}
+      {logger}
+      noResultsMessage={isSearching ? 'Searching...' : 'No results found for your query'}
+      onFileClick={(file) => {
+        app.workspace.getLeaf(false).openFile(file);
+        onClose?.();
+      }}
+    />
+  {/if}
 </div>
 
 <style>
-  .semantic-search-container {
-    padding: 20px;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-  }
-
   .search-input-container {
     display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
+    align-items: center;
+    margin: 0 32px;
   }
 
   .search-input {
     flex: 1;
-    padding: 8px 32px;
+    padding: 0 32px;
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
     background: var(--background-primary);
@@ -117,7 +120,7 @@
     font-size: 14px;
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 8px;
   }
 
   .spinner {
@@ -136,8 +139,6 @@
   }
 
   .search-results-container {
-    flex: 1;
-    overflow-y: auto;
-    min-height: 0;
+    padding: 0 16px;
   }
 </style>

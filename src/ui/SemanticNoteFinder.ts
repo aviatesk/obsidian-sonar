@@ -90,8 +90,9 @@ export class SemanticNoteFinder extends Modal {
   }
 
   onOpen(): void {
-    const { contentEl } = this;
+    const { contentEl, titleEl } = this;
     contentEl.empty();
+    titleEl.empty();
 
     this.modalEl.addClass('semantic-search-modal');
     this.modalEl.style.width = '800px';
@@ -104,6 +105,7 @@ export class SemanticNoteFinder extends Modal {
         store: searchStore,
         logger: this.logger,
         placeholder: 'Enter your search query...',
+        titleEl: titleEl,
         onQueryChange: (query: string) => {
           this.updateStore({ query });
           if (query) {
@@ -117,6 +119,9 @@ export class SemanticNoteFinder extends Modal {
         },
         onSearchImmediate: (query: string) => {
           this.handleSearch(query);
+        },
+        onClose: () => {
+          this.close();
         },
       },
     });
