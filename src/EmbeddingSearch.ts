@@ -7,6 +7,10 @@ export interface SearchResult {
   metadata: DocumentMetadata;
 }
 
+export interface SearchOptions {
+  excludeFilePath?: string;
+}
+
 function cosineSimilarity(vec1: number[], vec2: number[]): number {
   let dotProduct = 0;
   let norm1 = 0;
@@ -29,25 +33,31 @@ export class EmbeddingSearch {
     private ollamaClient: OllamaClient
   ) {}
 
-  async search(query: string, topK: number = 5): Promise<SearchResult[]> {
-    // Get embedding for query
+  async search(
+    query: string,
+    topK: number = 5,
+    options?: SearchOptions
+  ): Promise<SearchResult[]> {
     const queryEmbeddings = await this.ollamaClient.getEmbeddings([query]);
     const queryEmbedding = queryEmbeddings[0];
 
-    // Get all documents from store
     const documents = await this.vectorStore.getAllDocuments();
 
-    // Calculate similarity scores
-    const results = documents.map(doc => ({
+    let filteredDocuments = documents;
+    if (options?.excludeFilePath) {
+      filteredDocuments = documents.filter(
+        doc => doc.metadata.filePath !== options.excludeFilePath
+      );
+    }
+
+    const results = filteredDocuments.map(doc => ({
       document: doc,
       score: cosineSimilarity(queryEmbedding, doc.embedding),
     }));
 
-    // Sort by score and take top K
     results.sort((a, b) => b.score - a.score);
     const topResults = results.slice(0, topK);
 
-    // Transform to SearchResult format
     return topResults.map(result => ({
       content: result.document.content,
       score: result.score,
