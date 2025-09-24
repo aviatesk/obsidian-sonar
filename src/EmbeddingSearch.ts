@@ -35,7 +35,7 @@ export class EmbeddingSearch {
 
   async search(
     query: string,
-    topK: number = 5,
+    topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
     const queryEmbeddings = await this.ollamaClient.getEmbeddings([query]);
