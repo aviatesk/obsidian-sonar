@@ -256,6 +256,33 @@ export class SettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('Multi-chunk score decay')
+      .setDesc(
+        'Controls scoring for files with multiple matching chunks. ' +
+          'Higher values (0.3-0.5) give more weight to additional chunks, favoring longer documents. ' +
+          'Lower values (0-0.2) prioritize the best match, treating all files more equally. ' +
+          'Use 0 to score by best chunk only.'
+      )
+      .addSlider(slider =>
+        slider
+          .setLimits(0, 0.5, 0.05)
+          .setValue(this.configManager.get('scoreDecay'))
+          .setDynamicTooltip()
+          .onChange(async value => {
+            await this.configManager.set('scoreDecay', value);
+            if (this.plugin.embeddingSearch) {
+              this.plugin.embeddingSearch = new (
+                await import('../EmbeddingSearch')
+              ).EmbeddingSearch(
+                this.plugin.vectorStore!,
+                this.plugin.ollamaClient!,
+                value
+              );
+            }
+          })
+      );
+
+    new Setting(containerEl)
       .setName('Log level')
       .setDesc('Set logging verbosity (error < warn < log)')
       .addDropdown(dropdown =>

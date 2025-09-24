@@ -1,14 +1,35 @@
 import { VectorStore, type DocumentMetadata } from './VectorStore';
 import { OllamaClient } from './OllamaClient';
 
-export interface SearchResult {
+interface ChunkSearchResult {
   content: string;
   score: number;
   metadata: DocumentMetadata;
 }
 
+export interface SearchResult {
+  filePath: string;
+  title: string;
+  score: number;
+  topChunk: ChunkSearchResult;
+  chunkCount: number;
+}
+
 export interface SearchOptions {
   excludeFilePath?: string;
+}
+
+const L = 3;
+const MULTIPLIER = 4;
+
+function aggregateWeightedDecay(scoresDesc: number[], decay: number): number {
+  let w = 1,
+    acc = 0;
+  for (let i = 0; i < Math.min(L, scoresDesc.length); i++) {
+    acc += w * scoresDesc[i];
+    w *= decay;
+  }
+  return acc;
 }
 
 function cosineSimilarity(vec1: number[], vec2: number[]): number {
@@ -30,7 +51,8 @@ function cosineSimilarity(vec1: number[], vec2: number[]): number {
 export class EmbeddingSearch {
   constructor(
     private vectorStore: VectorStore,
-    private ollamaClient: OllamaClient
+    private ollamaClient: OllamaClient,
+    private scoreDecay: number = 0.1
   ) {}
 
   async search(
@@ -56,13 +78,51 @@ export class EmbeddingSearch {
     }));
 
     results.sort((a, b) => b.score - a.score);
-    const topResults = results.slice(0, topK);
+    const topResults = results.slice(0, topK * MULTIPLIER);
 
-    return topResults.map(result => ({
-      content: result.document.content,
-      score: result.score,
-      metadata: result.document.metadata,
-    }));
+    const groupedByFile = new Map<string, typeof results>();
+    for (const result of topResults) {
+      const filePath = result.document.metadata.filePath;
+      if (!groupedByFile.has(filePath)) {
+        groupedByFile.set(filePath, []);
+      }
+      groupedByFile.get(filePath)!.push(result);
+    }
+
+    const aggregated: SearchResult[] = [];
+    for (const [filePath, chunks] of groupedByFile.entries()) {
+      chunks.sort((a, b) => b.score - a.score);
+      const scores = chunks.map(c => c.score);
+      const aggregatedScore = aggregateWeightedDecay(scores, this.scoreDecay);
+      const topChunk = chunks[0];
+
+      aggregated.push({
+        filePath,
+        title: topChunk.document.metadata.title || filePath,
+        score: aggregatedScore,
+        topChunk: {
+          content: topChunk.document.content,
+          score: topChunk.score,
+          metadata: topChunk.document.metadata,
+        },
+        chunkCount: chunks.length,
+      });
+    }
+
+    aggregated.sort((a, b) => b.score - a.score);
+
+    let maxTheoreticalScore = 0;
+    let weight = 1;
+    for (let i = 0; i < L; i++) {
+      maxTheoreticalScore += weight;
+      weight *= this.scoreDecay;
+    }
+
+    for (const result of aggregated) {
+      result.score = result.score / maxTheoreticalScore;
+    }
+
+    return aggregated.slice(0, topK);
   }
 
   async close(): Promise<void> {

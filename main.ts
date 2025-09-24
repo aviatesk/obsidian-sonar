@@ -91,7 +91,8 @@ export default class SonarPlugin extends Plugin {
 
     this.embeddingSearch = new EmbeddingSearch(
       this.vectorStore,
-      this.ollamaClient
+      this.ollamaClient,
+      this.configManager.get('scoreDecay')
     );
     this.configManager.getLogger().log('Semantic search system initialized');
 

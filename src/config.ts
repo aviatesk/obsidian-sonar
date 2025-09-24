@@ -13,6 +13,7 @@ export interface CommonConfig {
   chunkOverlap: number;
   maxQueryTokens: number; // Maximum tokens for search queries
   topK: number; // Number of search results to return
+  scoreDecay: number; // Decay factor for multi-chunk scoring (0-1)
 }
 
 export interface ScriptConfig extends CommonConfig {
@@ -44,6 +45,7 @@ export const DEFAULT_COMMON_CONFIG: CommonConfig = {
   chunkOverlap: 64, // tokens (roughly 10% of chunk size)
   maxQueryTokens: 128, // tokens for search queries
   topK: 10, // default number of search results
+  scoreDecay: 0.1, // small bonus for additional chunks
 };
 
 export const DEFAULT_SCRIPT_CONFIG: ScriptConfig = {

@@ -37,7 +37,7 @@
       requestAnimationFrame(() => {
         if (node.parentElement) {
           node.empty();
-          markdownManager.render(result.content, node, result.metadata.filePath);
+          markdownManager.render(result.topChunk.content, node, result.filePath);
         }
       });
     }
@@ -49,7 +49,7 @@
   }
 
   async function handleTitleClick(result: SearchResult) {
-    const file = app.vault.getAbstractFileByPath(result.metadata.filePath);
+    const file = app.vault.getAbstractFileByPath(result.filePath);
     if (file instanceof TFile) {
       if (onFileClick) {
         onFileClick(file);
@@ -60,11 +60,7 @@
   }
 
   function getDisplayTitle(result: SearchResult): string {
-    return (
-      result.metadata.title ||
-      result.metadata.filePath.split('/').pop()?.replace('.md', '') ||
-      'Untitled'
-    );
+    return result.title || 'Untitled';
   }
 
   function getScorePercent(score: number): number {
@@ -77,7 +73,7 @@
   <p class="no-results">{noResultsMessage}</p>
 {:else}
   <div class="results-list">
-    {#each results as result, index (`${result.metadata.filePath}-${index}`)}
+    {#each results as result, index (`${result.filePath}-${index}`)}
       <div class="result-item">
         <div
           class="score-bar"
@@ -95,13 +91,16 @@
               {getDisplayTitle(result)}
             </button>
             <span class="result-score" title="Similarity score">{result.score.toFixed(3)}</span>
+            {#if result.chunkCount > 1}
+              <span class="chunk-count">{result.chunkCount} chunks</span>
+            {/if}
           </div>
 
-          <div class="result-path">{result.metadata.filePath}</div>
+          <div class="result-path">{result.filePath}</div>
 
-          {#if result.metadata.headings && result.metadata.headings.length > 0}
+          {#if result.topChunk.metadata.headings && result.topChunk.metadata.headings.length > 0}
             <div class="result-headings">
-              {result.metadata.headings.join(' › ')}
+              {result.topChunk.metadata.headings.join(' › ')}
             </div>
           {/if}
 
@@ -171,16 +170,14 @@
 
   .title-container {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
     gap: 8px;
-    min-width: 0; /* Allow flex items to shrink below content width */
+    margin-bottom: 8px;
+    min-width: 0;
   }
 
   .result-title {
     margin: 0;
-    padding: 0;
     background: none;
     border: none;
     color: var(--text-normal);
@@ -190,10 +187,12 @@
     font-weight: 600;
     text-align: left;
     flex: 1;
-    min-width: 0; /* Allow text truncation */
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    justify-content: space-evenly;
+    padding: 8;
   }
 
   .result-title:hover {
@@ -205,9 +204,21 @@
     padding: 2px 6px;
     color: var(--text-muted);
     border-radius: 4px;
-    flex-shrink: 0; /* Prevent score badge from shrinking */
     border: 1px solid var(--interactive-accent);
     font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .chunk-count {
+    font-size: 10px;
+    padding: 2px 6px;
+    color: var(--text-muted);
+    background: var(--background-modifier-border);
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+    flex-shrink: 0;
   }
 
   .result-path {
