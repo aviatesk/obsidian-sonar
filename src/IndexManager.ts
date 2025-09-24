@@ -13,6 +13,7 @@ import { type DocumentMetadata, VectorStore } from './VectorStore';
 import { createChunks } from './chunker';
 import { OllamaClient } from './OllamaClient';
 import { Tokenizer } from './Tokenizer';
+import { Logger } from './Logger';
 
 interface FileOperation {
   type: 'create' | 'modify' | 'delete' | 'rename';
@@ -27,6 +28,7 @@ export class IndexManager {
   private workspace: Workspace;
   private configManager: ConfigManager;
   private getTokenizer: () => Tokenizer;
+  private logger: Logger;
   private pendingOperations: Map<string, FileOperation> = new Map();
   private debouncedProcess: () => void;
   private eventRefs: EventRef[] = [];
@@ -46,6 +48,7 @@ export class IndexManager {
     workspace: Workspace,
     configManager: ConfigManager,
     getTokenizer: () => Tokenizer,
+    logger: Logger,
     statusUpdateCallback: (status: string) => void,
     onProcessingCompleteCallback: () => void
   ) {
@@ -55,6 +58,7 @@ export class IndexManager {
     this.workspace = workspace;
     this.configManager = configManager;
     this.getTokenizer = getTokenizer;
+    this.logger = logger;
     this.statusUpdateCallback = statusUpdateCallback;
     this.onProcessingCompleteCallback = onProcessingCompleteCallback;
 
@@ -82,9 +86,9 @@ export class IndexManager {
 
     if (this.configManager.get('autoIndex')) {
       this.registerEventHandlers();
-      console.log('IndexManager: Auto-indexing enabled');
+      this.logger.log('IndexManager: Auto-indexing enabled');
     } else {
-      console.log('IndexManager: Auto-indexing disabled');
+      this.logger.log('IndexManager: Auto-indexing disabled');
     }
   }
 
@@ -92,11 +96,10 @@ export class IndexManager {
     const debouncedConfigSync = debounce(
       () => {
         if (!this.isInitialized) return;
-        console.log('IndexManager: Config changed, syncing index...');
+        this.logger.log('IndexManager: Config changed, syncing index...');
         this.syncIndex().catch(error =>
-          console.error(
-            'IndexManager: Failed to sync after config change:',
-            error
+          this.logger.error(
+            `IndexManager: Failed to sync after config change: ${error}`
           )
         );
       },
@@ -109,10 +112,10 @@ export class IndexManager {
         if (this.isInitialized) {
           if (value) {
             this.registerEventHandlers();
-            console.log('IndexManager: Auto-indexing enabled');
+            this.logger.log('IndexManager: Auto-indexing enabled');
           } else {
             this.unregisterEventHandlers();
-            console.log('IndexManager: Auto-indexing disabled');
+            this.logger.log('IndexManager: Auto-indexing disabled');
           }
         }
       })
@@ -121,7 +124,9 @@ export class IndexManager {
     this.configUnsubscribers.push(
       this.configManager.subscribe('excludedPaths', () => {
         if (!this.isInitialized) return;
-        console.log('IndexManager: Excluded paths updated, scheduling sync...');
+        this.logger.log(
+          'IndexManager: Excluded paths updated, scheduling sync...'
+        );
         debouncedConfigSync();
       })
     );
@@ -129,7 +134,7 @@ export class IndexManager {
     this.configUnsubscribers.push(
       this.configManager.subscribe('indexPath', () => {
         if (!this.isInitialized) return;
-        console.log('IndexManager: Index path updated, scheduling sync...');
+        this.logger.log('IndexManager: Index path updated, scheduling sync...');
         debouncedConfigSync();
       })
     );
@@ -178,9 +183,9 @@ export class IndexManager {
   }
 
   private async syncOnLoad(): Promise<void> {
-    console.log('IndexManager: Starting sync...');
+    this.logger.log('IndexManager: Starting sync...');
     await this.performSync();
-    console.log('IndexManager: Sync completed');
+    this.logger.log('IndexManager: Sync completed');
     this.onProcessingCompleteCallback();
   }
 
@@ -236,7 +241,7 @@ export class IndexManager {
     const modifiedCount = operations.filter(op => op.type === 'modify').length;
     const deletedCount = operations.filter(op => op.type === 'delete').length;
 
-    console.log(
+    this.logger.log(
       `IndexManager: Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
     );
 
@@ -393,7 +398,7 @@ export class IndexManager {
     this.pendingOperations.clear();
 
     if (operations.length > 0) {
-      console.log(
+      this.logger.log(
         `IndexManager: Processing ${operations.length} file operation(s)${isSync ? ' synchronously' : ''}`
       );
     }
@@ -422,9 +427,8 @@ export class IndexManager {
       try {
         await this.processOperation(operation, isSync);
       } catch (error) {
-        console.error(
-          `IndexManager: Failed to ${operation.type} ${filePath}:`,
-          error
+        this.logger.error(
+          `IndexManager: Failed to ${operation.type} ${filePath}: ${error}`
         );
         errorCount++;
       }
@@ -464,7 +468,7 @@ export class IndexManager {
             const meta = dbFileMap.get(operation.file.path);
 
             if (!this.needsReindex(operation.file, meta)) {
-              console.log(
+              this.logger.log(
                 `IndexManager: Skipped ${operation.file.path} (no changes)`
               );
               return;
@@ -472,14 +476,16 @@ export class IndexManager {
           }
 
           await this.indexFileInternal(operation.file);
-          console.log(`IndexManager: Indexed ${operation.file.path}`);
+          this.logger.log(`IndexManager: Indexed ${operation.file.path}`);
         }
         break;
 
       case 'delete':
         if (operation.oldPath) {
           await this.deleteFromIndex(operation.oldPath);
-          console.log(`IndexManager: Deleted ${operation.oldPath} from index`);
+          this.logger.log(
+            `IndexManager: Deleted ${operation.oldPath} from index`
+          );
         }
         break;
 
@@ -489,7 +495,7 @@ export class IndexManager {
 
           await this.indexFileInternal(operation.file);
 
-          console.log(
+          this.logger.log(
             `IndexManager: Renamed ${operation.oldPath} to ${operation.file.path}`
           );
         }
@@ -580,7 +586,7 @@ export class IndexManager {
       filePath: string
     ) => void | Promise<void>
   ): Promise<void> {
-    console.log('IndexManager: Starting full index rebuild...');
+    this.logger.log('IndexManager: Starting full index rebuild...');
 
     // Clear existing index
     await this.clearIndex();

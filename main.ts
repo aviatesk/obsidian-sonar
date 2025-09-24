@@ -13,8 +13,7 @@ import { SettingTab } from './src/ui/SettingTab';
 import { getIndexableFilesCount } from 'src/fileFilters';
 import { VectorStore } from './src/VectorStore';
 import { OllamaClient } from './src/OllamaClient';
-
-export default class ObsidianSonarPlugin extends Plugin {
+export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
   embeddingSearch: EmbeddingSearch | null = null;
@@ -24,7 +23,6 @@ export default class ObsidianSonarPlugin extends Plugin {
   tokenizer: Tokenizer | null = null;
 
   async onload() {
-    // Critical initialization - needed immediately
     this.configManager = await ConfigManager.initialize(
       () => this.loadData(),
       data => this.saveData(data),
@@ -51,21 +49,15 @@ export default class ObsidianSonarPlugin extends Plugin {
     try {
       this.tokenizer = await Tokenizer.initialize(
         embeddingModel,
+        this.configManager.getLogger(),
         tokenizerModel || undefined
       );
     } catch (error) {
-      console.error('Failed to initialize tokenizer:', error);
+      this.configManager
+        .getLogger()
+        .error(`Failed to initialize tokenizer: ${error}`);
       new Notice('Failed to initialize tokenizer - check console for details');
       return;
-    }
-
-    if (tokenizerModel) {
-      console.log('Tokenizer initialized with custom model:', tokenizerModel);
-    } else {
-      console.log(
-        'Tokenizer initialized with embedding model:',
-        embeddingModel
-      );
     }
 
     const ollamaUrl = this.configManager.get('ollamaUrl');
@@ -82,22 +74,26 @@ export default class ObsidianSonarPlugin extends Plugin {
       return;
     }
 
-    console.log(`Ollama initialized with model: ${embeddingModel}`);
+    this.configManager
+      .getLogger()
+      .log(`Ollama initialized with model: ${embeddingModel}`);
 
     try {
-      this.vectorStore = await VectorStore.initialize();
+      this.vectorStore = await VectorStore.initialize(
+        this.configManager.getLogger()
+      );
     } catch {
       new Notice('Failed to initialize vector store - check console');
       return;
     }
 
-    console.log('Vector store initialized');
+    this.configManager.getLogger().log('Vector store initialized');
 
     this.embeddingSearch = new EmbeddingSearch(
       this.vectorStore,
       this.ollamaClient
     );
-    console.log('Semantic search system initialized');
+    this.configManager.getLogger().log('Semantic search system initialized');
 
     this.indexManager = new IndexManager(
       this.vectorStore,
@@ -106,6 +102,7 @@ export default class ObsidianSonarPlugin extends Plugin {
       this.app.workspace,
       this.configManager,
       () => this.tokenizer!,
+      this.configManager.getLogger(),
       (status: string) => this.updateStatusBarPadded(status),
       () => this.updateStatusBarWithFileCount()
     );
@@ -140,7 +137,8 @@ export default class ObsidianSonarPlugin extends Plugin {
         leaf,
         embeddingSearch,
         this.configManager,
-        () => this.tokenizer!
+        () => this.tokenizer!,
+        this.configManager.getLogger()
       );
     });
   }
@@ -262,7 +260,8 @@ export default class ObsidianSonarPlugin extends Plugin {
     const modal = new SemanticNoteFinder(
       this.app,
       this.embeddingSearch!,
-      this.configManager
+      this.configManager,
+      this.configManager.getLogger()
     );
     modal.open();
   }
@@ -318,7 +317,7 @@ export default class ObsidianSonarPlugin extends Plugin {
   }
 
   async onunload() {
-    console.log('Obsidian Sonar plugin unloaded');
+    this.configManager.getLogger().log('Obsidian Sonar plugin unloaded');
     if (this.indexManager) {
       this.indexManager.cleanup();
     }

@@ -2,9 +2,12 @@
   import { App } from 'obsidian';
   import SearchResults from './SearchResults.svelte';
 
+  import type { Logger } from '../Logger';
+
   interface Props {
     app: App;
     store: any; // Svelte store
+    logger: Logger;
     placeholder?: string;
     onQueryChange: (query: string) => void;
     onSearchImmediate: (query: string) => void;
@@ -13,6 +16,7 @@
   let {
     app,
     store,
+    logger,
     placeholder = 'Enter your search query...',
     onQueryChange,
     onSearchImmediate,
@@ -71,6 +75,7 @@
       <SearchResults
         {app}
         {results}
+        {logger}
         noResultsMessage={isSearching ? 'Searching...' : 'No results found for your query'}
       />
     {/if}

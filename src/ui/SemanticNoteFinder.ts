@@ -4,6 +4,7 @@ import { writable } from 'svelte/store';
 import { EmbeddingSearch, type SearchResult } from '../EmbeddingSearch';
 import { ConfigManager } from '../ConfigManager';
 import SemanticNoteFinderComponent from './SemanticNoteFinderComponent.svelte';
+import type { Logger } from '../Logger';
 
 interface SemanticSearchState {
   query: string;
@@ -22,6 +23,7 @@ const searchStore = writable<SemanticSearchState>({
 export class SemanticNoteFinder extends Modal {
   private embeddingSearch: EmbeddingSearch;
   private configManager: ConfigManager;
+  private logger: Logger;
   private svelteComponent:
     | ReturnType<typeof SemanticNoteFinderComponent>
     | undefined;
@@ -30,11 +32,13 @@ export class SemanticNoteFinder extends Modal {
   constructor(
     app: App,
     embeddingSearch: EmbeddingSearch,
-    configManager: ConfigManager
+    configManager: ConfigManager,
+    logger: Logger
   ) {
     super(app);
     this.embeddingSearch = embeddingSearch;
     this.configManager = configManager;
+    this.logger = logger;
 
     this.debouncedSearch = debounce(
       this.handleSearch.bind(this),
@@ -75,8 +79,8 @@ export class SemanticNoteFinder extends Modal {
         results,
         isSearching: false,
       });
-    } catch (error) {
-      console.error('Search failed:', error);
+    } catch (err) {
+      this.logger.error(`Search failed: ${err}`);
       new Notice('Search failed. Please check your settings.');
       this.updateStore({
         results: [],
@@ -98,6 +102,7 @@ export class SemanticNoteFinder extends Modal {
       props: {
         app: this.app,
         store: searchStore,
+        logger: this.logger,
         placeholder: 'Enter your search query...',
         onQueryChange: (query: string) => {
           this.updateStore({ query });

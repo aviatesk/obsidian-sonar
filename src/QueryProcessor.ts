@@ -1,5 +1,6 @@
 import { Tokenizer } from './Tokenizer';
 import { OllamaClient } from './OllamaClient';
+import type { Logger } from './Logger';
 
 export interface QueryOptions {
   fileName: string;
@@ -12,6 +13,7 @@ export interface QueryOptions {
   ollamaUrl: string;
   summaryModel: string;
   tokenizer: Tokenizer;
+  logger: Logger;
 }
 
 /**
@@ -55,7 +57,8 @@ export class QueryProcessor {
       query = await QueryProcessor.generateLLMExtraction(
         query,
         options.ollamaUrl,
-        options.summaryModel
+        options.summaryModel,
+        options.logger
       );
     }
 
@@ -184,7 +187,8 @@ export class QueryProcessor {
   private static async generateLLMExtraction(
     input: string,
     ollamaUrl: string,
-    summaryModel: string
+    summaryModel: string,
+    logger: Logger
   ): Promise<string> {
     const ollamaClient = new OllamaClient({
       ollamaUrl,
@@ -207,8 +211,8 @@ ${input}`;
     try {
       const extractionQuery = await ollamaClient.generate(prompt);
       return extractionQuery.trim();
-    } catch (error) {
-      console.error('LLM extraction generation failed:', error);
+    } catch (err) {
+      logger.error(`LLM extraction generation failed: ${err}`);
       return input;
     }
   }

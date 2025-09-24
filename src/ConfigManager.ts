@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import type { ObsidianSettings } from './config';
+import { Logger } from './Logger';
 
 export type { ObsidianSettings };
 
@@ -18,6 +19,7 @@ export class ConfigManager extends EventEmitter {
   private saveCallback: (settings: ObsidianSettings) => Promise<void>;
   private changeListeners: Map<string, Set<ConfigChangeListener>> = new Map();
   private batchChangeListeners: Set<ConfigBatchChangeListener> = new Set();
+  private logger: Logger;
 
   private constructor(
     initialSettings: ObsidianSettings,
@@ -26,6 +28,7 @@ export class ConfigManager extends EventEmitter {
     super();
     this.settings = { ...initialSettings };
     this.saveCallback = saveCallback;
+    this.logger = new Logger(() => this.settings.debugMode);
   }
 
   /**
@@ -46,6 +49,10 @@ export class ConfigManager extends EventEmitter {
    */
   get<K extends keyof ObsidianSettings>(key: K): ObsidianSettings[K] {
     return this.settings[key];
+  }
+
+  getLogger(): Logger {
+    return this.logger;
   }
 
   /**
@@ -151,8 +158,10 @@ export class ConfigManager extends EventEmitter {
       listeners.forEach(listener => {
         try {
           listener(key, value, oldValue);
-        } catch (error) {
-          console.error(`Error in config listener for ${String(key)}:`, error);
+        } catch (err) {
+          this.logger.error(
+            `Error in config listener for ${String(key)}: ${err}`
+          );
         }
       });
     }
@@ -162,8 +171,8 @@ export class ConfigManager extends EventEmitter {
     this.batchChangeListeners.forEach(listener => {
       try {
         listener(changes);
-      } catch (error) {
-        console.error('Error in batch config listener:', error);
+      } catch (err) {
+        this.logger.error(`Error in batch config listener: ${err}`);
       }
     });
   }

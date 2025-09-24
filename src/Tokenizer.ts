@@ -1,5 +1,6 @@
 import { AutoTokenizer, PreTrainedTokenizer } from '@huggingface/transformers';
 import { DEFAULT_COMMON_CONFIG } from './config';
+import type { Logger } from './Logger';
 
 /**
  * Map Ollama embedding model names to the correct Hugging Face repos
@@ -67,13 +68,16 @@ export const TOKENIZER_MODEL_MAPPING: Record<string, string> = {
  */
 export class Tokenizer {
   private tokenizer: PreTrainedTokenizer;
+  private logger: Logger;
 
-  private constructor(tokenizer: PreTrainedTokenizer) {
+  private constructor(tokenizer: PreTrainedTokenizer, logger: Logger) {
     this.tokenizer = tokenizer;
+    this.logger = logger;
   }
 
   static async initialize(
     model: string,
+    logger: Logger,
     tokenizerModel?: string
   ): Promise<Tokenizer> {
     const defaultModel =
@@ -84,16 +88,16 @@ export class Tokenizer {
 
     if (tokenizerModel) {
       try {
-        console.log(`Loading custom tokenizer model: ${tokenizerModel}`);
+        logger.log(`Loading custom tokenizer model: ${tokenizerModel}`);
         tokenizer = await AutoTokenizer.from_pretrained(tokenizerModel);
-        console.log(
+        logger.log(
           `✅ Successfully loaded custom tokenizer: ${tokenizerModel}`
         );
       } catch (error) {
-        console.error(`Failed to load custom tokenizer: ${tokenizerModel}`);
+        logger.error(`Failed to load custom tokenizer: ${tokenizerModel}`);
         throw error;
       }
-      return new Tokenizer(tokenizer);
+      return new Tokenizer(tokenizer, logger);
     }
 
     const cleanModel = model?.replace(/:[a-zA-Z0-9_-]+$/, '') || '';
@@ -107,30 +111,30 @@ export class Tokenizer {
     if (!modelName) {
       modelName = defaultModel;
       if (model && cleanModel) {
-        console.warn(
+        logger.warn(
           `⚠️ No tokenizer mapping for '${model}', using default: ${defaultModel}`
         );
       }
     }
 
     try {
-      console.log(`Loading tokenizer for ${model || 'default'}: ${modelName}`);
+      logger.log(`Loading tokenizer for ${model || 'default'}: ${modelName}`);
       tokenizer = await AutoTokenizer.from_pretrained(modelName);
-      console.log(`✅ Successfully loaded tokenizer: ${modelName}`);
+      logger.log(`✅ Successfully loaded tokenizer: ${modelName}`);
     } catch (error) {
-      console.error(`Failed to load tokenizer for ${modelName}`);
+      logger.error(`Failed to load tokenizer for ${modelName}`);
       if (modelName !== defaultModel) {
-        console.warn(
+        logger.warn(
           `⚠️ Attempting fallback to default tokenizer: ${defaultModel}`
         );
         tokenizer = await AutoTokenizer.from_pretrained(defaultModel);
-        console.log(`✅ Fallback successful: using ${defaultModel}`);
+        logger.log(`✅ Fallback successful: using ${defaultModel}`);
       } else {
         throw error;
       }
     }
 
-    return new Tokenizer(tokenizer);
+    return new Tokenizer(tokenizer, logger);
   }
 
   async estimateTokens(text: string): Promise<number> {
@@ -140,7 +144,7 @@ export class Tokenizer {
       const { input_ids } = await this.tokenizer(text);
       return input_ids.size;
     } catch (error) {
-      console.error('Failed to tokenize with transformers.js:', error);
+      this.logger.error(`Failed to tokenize with transformers.js: ${error}`);
       throw error;
     }
   }

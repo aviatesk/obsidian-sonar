@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import type { Logger } from './Logger';
 
 /**
  * Metadata associated with a document chunk
@@ -29,19 +30,22 @@ const DB_VERSION = 1;
 export class VectorStore {
   private db!: IDBDatabase;
   private documentsCache: IndexedDocument[] | null = null;
+  private logger: Logger;
 
-  private constructor(db: IDBDatabase) {
+  private constructor(db: IDBDatabase, logger: Logger) {
     this.db = db;
+    this.logger = logger;
   }
-  static async initialize(): Promise<VectorStore> {
+  static async initialize(logger: Logger): Promise<VectorStore> {
     return new Promise((resolve, reject) => {
       const request = window.indexedDB.open(DB_NAME, DB_VERSION);
       request.onerror = () => {
         reject(new Error('Failed to open IndexedDB'));
       };
       request.onsuccess = () => {
-        console.log('Vector store initialized');
-        resolve(new VectorStore(request.result));
+        const store = new VectorStore(request.result, logger);
+        store.logger.log('Vector store initialized');
+        resolve(store);
       };
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = (event.target as any).result as IDBDatabase;

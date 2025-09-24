@@ -3,6 +3,7 @@
   import type { ConfigManager } from '../ConfigManager';
   import { Tokenizer } from '../Tokenizer';
   import SearchResults from './SearchResults.svelte';
+  import type { Logger } from '../Logger';
   import { SquareDashedMousePointer, BrainCircuit, RefreshCw, createElement } from 'lucide';
   import { onMount } from 'svelte';
 
@@ -10,6 +11,7 @@
     app: App;
     configManager: ConfigManager;
     store: any; // Svelte store
+    logger: Logger;
     onRefresh: () => void;
     onToggleFollowCursor: (value: boolean) => void;
     onToggleWithExtraction: (value: boolean) => void;
@@ -19,6 +21,7 @@
     app,
     configManager,
     store,
+    logger,
     onRefresh,
     onToggleFollowCursor,
     onToggleWithExtraction,
@@ -137,6 +140,7 @@
       <SearchResults
         {app}
         {results}
+        {logger}
         noResultsMessage={status === 'No active note' ? status : 'No related notes found'}
         maxHeight="200px"
       />

@@ -1,3 +1,5 @@
+export type LogLevel = 'error' | 'warn' | 'log';
+
 export interface CommonConfig {
   // Ollama
   ollamaUrl: string;
@@ -22,7 +24,7 @@ export interface ScriptConfig extends CommonConfig {
 
 export interface ObsidianSettings extends CommonConfig {
   indexPath: string;
-  debugMode: boolean;
+  debugMode: LogLevel;
   followCursor: boolean;
   withExtraction: boolean;
   excludedPaths: string[]; // Array of paths/patterns to ignore
@@ -56,7 +58,7 @@ export const DEFAULT_SCRIPT_CONFIG: ScriptConfig = {
 export const DEFAULT_SETTINGS: ObsidianSettings = {
   ...DEFAULT_COMMON_CONFIG,
   indexPath: '', // Root of vault
-  debugMode: false,
+  debugMode: 'error',
   followCursor: false,
   withExtraction: false,
   excludedPaths: [], // Default to no ignored paths

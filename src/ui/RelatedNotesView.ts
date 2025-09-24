@@ -13,6 +13,7 @@ import { QueryProcessor, type QueryOptions } from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';
 import { Tokenizer } from '../Tokenizer';
 import RelatedNotesContent from './RelatedNotesContent.svelte';
+import type { Logger } from '../Logger';
 
 export const RELATED_NOTES_VIEW_TYPE = 'related-notes-view';
 
@@ -34,6 +35,7 @@ export class RelatedNotesView extends ItemView {
   private embeddingSearch: EmbeddingSearch;
   private configManager: ConfigManager;
   private getTokenizer: () => Tokenizer;
+  private logger: Logger;
   private followCursor: boolean;
   private withExtraction: boolean;
   private isProcessing = false;
@@ -45,12 +47,14 @@ export class RelatedNotesView extends ItemView {
     leaf: WorkspaceLeaf,
     embeddingSearch: EmbeddingSearch,
     configManager: ConfigManager,
-    getTokenizer: () => Tokenizer
+    getTokenizer: () => Tokenizer,
+    logger: Logger
   ) {
     super(leaf);
     this.embeddingSearch = embeddingSearch;
     this.configManager = configManager;
     this.getTokenizer = getTokenizer;
+    this.logger = logger;
     this.followCursor = configManager.get('followCursor');
     this.withExtraction = configManager.get('withExtraction');
 
@@ -134,6 +138,7 @@ export class RelatedNotesView extends ItemView {
         app: this.app,
         configManager: this.configManager,
         store: relatedNotesStore,
+        logger: this.logger,
         onRefresh: () => {
           this.manualRefresh();
         },
@@ -213,6 +218,7 @@ export class RelatedNotesView extends ItemView {
       ollamaUrl: this.configManager.get('ollamaUrl'),
       summaryModel: this.configManager.get('summaryModel'),
       tokenizer: this.getTokenizer(),
+      logger: this.logger,
     };
 
     try {
@@ -234,8 +240,8 @@ export class RelatedNotesView extends ItemView {
           status: 'Ready to search',
         });
       }
-    } catch (error) {
-      console.error('Error refreshing related notes:', error);
+    } catch (err) {
+      this.logger.error(`Error refreshing related notes: ${err}`);
       new Notice('Failed to retrieve related notes');
       this.isProcessing = false;
       this.updateStore({

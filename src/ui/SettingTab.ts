@@ -8,15 +8,15 @@ import {
 } from 'obsidian';
 import { ConfigManager } from '../ConfigManager';
 import { Tokenizer } from '../Tokenizer';
-import type ObsidianSonarPlugin from '../../main';
+import type SonarPlugin from '../../main';
 import { getIndexableFilesCount } from 'src/fileFilters';
 
 export class SettingTab extends PluginSettingTab {
-  plugin: ObsidianSonarPlugin;
+  plugin: SonarPlugin;
   statsDiv: HTMLDivElement | null = null;
   private configManager: ConfigManager;
 
-  constructor(app: App, plugin: ObsidianSonarPlugin) {
+  constructor(app: App, plugin: SonarPlugin) {
     super(app, plugin);
     this.plugin = plugin;
     this.configManager = plugin.configManager;
@@ -188,17 +188,14 @@ export class SettingTab extends PluginSettingTab {
             try {
               this.plugin.tokenizer = await Tokenizer.initialize(
                 this.configManager.get('embeddingModel'),
+                this.configManager.getLogger(),
                 value || undefined
               );
-              if (value) {
-                new Notice(`Tokenizer updated to: ${value}`);
-              } else {
-                new Notice(
-                  `Tokenizer using default mapping for: ${this.configManager.get('embeddingModel')}`
-                );
-              }
-            } catch (error) {
-              console.error('Failed to update tokenizer:', error);
+              new Notice('Tokenizer updated');
+            } catch (err) {
+              this.configManager
+                .getLogger()
+                .error(`Failed to update tokenizer: ${err}`);
               new Notice('Failed to update tokenizer model');
             }
           })
@@ -259,13 +256,19 @@ export class SettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Debug mode')
-      .setDesc('Enable debug logging to console')
-      .addToggle(toggle =>
-        toggle
+      .setName('Log level')
+      .setDesc('Set logging verbosity (error < warn < log)')
+      .addDropdown(dropdown =>
+        dropdown
+          .addOption('error', 'Error only')
+          .addOption('warn', 'Warn + Error')
+          .addOption('log', 'Log + Warn + Error')
           .setValue(this.configManager.get('debugMode'))
           .onChange(async value => {
-            await this.configManager.set('debugMode', value);
+            await this.configManager.set(
+              'debugMode',
+              value as 'error' | 'warn' | 'log'
+            );
           })
       );
 
@@ -405,8 +408,8 @@ export class SettingTab extends PluginSettingTab {
       this.statsDiv.createEl('p', {
         text: `Index path: ${this.configManager.get('indexPath')}`,
       });
-    } catch (error) {
-      console.error('Failed to get stats:', error);
+    } catch (err) {
+      this.configManager.getLogger().error(`Failed to get stats: ${err}`);
       this.statsDiv.empty();
       this.statsDiv.createEl('p', { text: 'Stats unavailable' });
     }

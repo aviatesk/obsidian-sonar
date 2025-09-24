@@ -3,10 +3,12 @@
   import type { SearchResult } from '../EmbeddingSearch';
   import { MarkdownRenderingManager } from './MarkdownRenderingManager';
   import { onDestroy } from 'svelte';
+  import type { Logger } from '../Logger';
 
   interface Props {
     app: App;
     results: SearchResult[];
+    logger: Logger;
     onFileClick?: (file: TFile) => void;
     noResultsMessage?: string;
     maxHeight?: string;
@@ -16,13 +18,14 @@
   let {
     app,
     results = [],
+    logger,
     onFileClick,
     noResultsMessage = 'No results found',
     maxHeight = '100px',
     maxLength = undefined,
   }: Props = $props();
 
-  const markdownManager = new MarkdownRenderingManager(app, { maxLength });
+  const markdownManager = new MarkdownRenderingManager(app, logger, { maxLength });
 
   onDestroy(() => {
     markdownManager.cleanup();
