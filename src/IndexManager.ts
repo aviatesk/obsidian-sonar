@@ -565,18 +565,14 @@ export class IndexManager {
     const meta = dbFileMap.get(file.path);
 
     if (!this.needsReindex(file, meta)) {
-      if (this.configManager.get('showIndexNotifications')) {
-        new Notice(`${file.path} is already up to date`);
-      }
+      new Notice(`${file.path} is already up to date`);
       return;
     }
 
     await this.indexFileInternal(file);
     this.clearMetadataCache(); // Clear cache after DB change
 
-    if (this.configManager.get('showIndexNotifications')) {
-      new Notice(`Indexed: ${file.path}`);
-    }
+    new Notice(`Indexed: ${file.path}`);
   }
 
   async rebuildIndex(
@@ -594,19 +590,15 @@ export class IndexManager {
     // Re-index all files
     const stats = await this.performSync(progressCallback);
 
-    if (this.configManager.get('showIndexNotifications')) {
-      const message = `Rebuild complete: ${stats.newCount} files indexed${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
-      new Notice(message);
-    }
+    const message = `Rebuild complete: ${stats.newCount} files indexed${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
+    new Notice(message);
   }
 
   async syncIndex(): Promise<void> {
     const stats = await this.performSync();
 
-    if (this.configManager.get('showIndexNotifications')) {
-      const message = `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
-      new Notice(message);
-    }
+    const message = `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
+    new Notice(message);
   }
 
   private unregisterEventHandlers(): void {

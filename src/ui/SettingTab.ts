@@ -314,17 +314,6 @@ export class SettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Show index notifications')
-      .setDesc('Display notifications when files are indexed')
-      .addToggle(toggle =>
-        toggle
-          .setValue(this.configManager.get('showIndexNotifications'))
-          .onChange(async value => {
-            await this.configManager.set('showIndexNotifications', value);
-          })
-      );
-
-    new Setting(containerEl)
       .setName('Related notes update delay')
       .setDesc(
         'Delay in milliseconds before updating related notes view after typing (default: 5000ms = 5s)'

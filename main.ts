@@ -165,7 +165,7 @@ export default class SonarPlugin extends Plugin {
           return;
         }
         const startTime = Date.now();
-        await this.indexManager!.rebuildIndex(async (current, total) => {
+        await this.indexManager!.rebuildIndex((current, total) => {
           this.updateStatusBar(`Rebuilding index: ${current}/${total}`);
         });
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);

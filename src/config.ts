@@ -32,7 +32,6 @@ export interface ObsidianSettings extends CommonConfig {
   autoIndex: boolean;
   indexDebounceMs: number;
   relatedNotesDebounceMs: number;
-  showIndexNotifications: boolean;
   statusBarMaxLength: number;
 }
 
@@ -66,6 +65,5 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   autoIndex: false,
   indexDebounceMs: 1000, // 1s for auto-indexing queue
   relatedNotesDebounceMs: 5000, // 5s for related notes view updates
-  showIndexNotifications: true,
   statusBarMaxLength: 40,
 };
