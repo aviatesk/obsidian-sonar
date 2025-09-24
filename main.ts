@@ -120,7 +120,7 @@ export default class SonarPlugin extends Plugin {
     try {
       await this.indexManager.onLayoutReady();
     } catch {
-      this.updateStatusBar('Sonar: Failed to initialize');
+      this.updateStatusBar('Failed to initialize');
       new Notice(
         'Failed to initialize semantic search - Check Ollama is running'
       );
@@ -268,7 +268,7 @@ export default class SonarPlugin extends Plugin {
 
   updateStatusBar(text: string) {
     if (this.statusBarItem) {
-      this.statusBarItem.setText(text);
+      this.statusBarItem.setText(`Sonar: ${text}`);
     }
   }
 
@@ -278,7 +278,7 @@ export default class SonarPlugin extends Plugin {
 
       // If maxLength is 0, no padding/truncation
       if (maxLength === 0) {
-        this.statusBarItem.setText(text);
+        this.statusBarItem.setText(`Sonar: ${text}`);
         return;
       }
 
@@ -292,13 +292,13 @@ export default class SonarPlugin extends Plugin {
       } else {
         paddedText = text.padEnd(maxLength);
       }
-      this.statusBarItem.setText(paddedText);
+      this.statusBarItem.setText(`Sonar: ${paddedText}`);
     }
   }
 
   async updateStatusBarWithFileCount() {
     if (!this.indexManager) {
-      this.updateStatusBar('Sonar: Initializing...');
+      this.updateStatusBar('Initializing...');
       return;
     }
 
@@ -309,10 +309,10 @@ export default class SonarPlugin extends Plugin {
         this.configManager
       );
       this.updateStatusBar(
-        `Sonar: Indexed ${stats.totalFiles}/${indexableCount} files`
+        `Indexed ${stats.totalFiles}/${indexableCount} files`
       );
     } catch {
-      this.updateStatusBar('Sonar: Vector store errored');
+      this.updateStatusBar('Vector store errored');
     }
   }
 

@@ -419,6 +419,7 @@ export class IndexManager {
         operation.oldPath?.split('/').pop() ||
         'unknown';
       this.updateStatus({
+        action: this.getOperationAction(operation.type),
         file: fileName,
         current: i + 1,
         total: totalOperations,
@@ -500,6 +501,19 @@ export class IndexManager {
           );
         }
         break;
+    }
+  }
+
+  private getOperationAction(type: FileOperation['type']): string {
+    switch (type) {
+      case 'create':
+        return 'Indexing';
+      case 'modify':
+        return 'Reindexing';
+      case 'delete':
+        return 'Deleting';
+      case 'rename':
+        return 'Renaming';
     }
   }
 
@@ -620,12 +634,13 @@ export class IndexManager {
   }
 
   private updateStatus(progress: {
+    action: string;
     file: string;
     current: number;
     total: number;
   }): void {
     this.statusUpdateCallback(
-      `Sonar: Indexing ${progress.file} [${progress.current}/${progress.total}]`
+      `${progress.action} ${progress.file} [${progress.current}/${progress.total}]`
     );
   }
 
