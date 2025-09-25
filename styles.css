@@ -66,4 +66,9 @@
     margin-block-start: inherit !important;
     margin-block-end: inherit !important;
   }
+  pre {
+    button {
+      display: none;
+    }
+  }
 }
