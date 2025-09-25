@@ -122,7 +122,7 @@ export class RelatedNotesView extends ItemView {
   }
 
   getIcon(): string {
-    return 'links-coming-in';
+    return 'radar';
   }
 
   async onOpen(): Promise<void> {
