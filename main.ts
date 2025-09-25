@@ -104,7 +104,7 @@ export default class SonarPlugin extends Plugin {
       this.configManager,
       () => this.tokenizer!,
       this.configManager.getLogger(),
-      (status: string) => this.updateStatusBarPadded(status),
+      (status: string) => this.updateStatusBar(status),
       () => this.updateStatusBarWithFileCount()
     );
 
@@ -268,12 +268,6 @@ export default class SonarPlugin extends Plugin {
   }
 
   updateStatusBar(text: string) {
-    if (this.statusBarItem) {
-      this.statusBarItem.setText(`Sonar: ${text}`);
-    }
-  }
-
-  updateStatusBarPadded(text: string) {
     if (this.statusBarItem) {
       const maxLength = this.configManager.get('statusBarMaxLength');
 
