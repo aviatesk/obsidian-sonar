@@ -4,7 +4,7 @@
   import { Tokenizer } from '../Tokenizer';
   import SearchResults from './SearchResults.svelte';
   import type { Logger } from '../Logger';
-  import { SquareDashedMousePointer, BrainCircuit, RefreshCw, createElement } from 'lucide';
+  import { BrainCircuit, RefreshCw, createElement } from 'lucide';
   import { onMount } from 'svelte';
 
   interface Props {
@@ -13,7 +13,6 @@
     store: any; // Svelte store
     logger: Logger;
     onRefresh: () => void;
-    onToggleFollowCursor: (value: boolean) => void;
     onToggleWithExtraction: (value: boolean) => void;
   }
 
@@ -23,7 +22,6 @@
     store,
     logger,
     onRefresh,
-    onToggleFollowCursor,
     onToggleWithExtraction,
   }: Props = $props();
 
@@ -33,22 +31,11 @@
   const results = $derived(storeState.results);
   const tokenCount = $derived(storeState.tokenCount);
   const status = $derived(storeState.status);
-  let followCursor = $state(configManager.get('followCursor'));
   let withExtraction = $state(configManager.get('withExtraction'));
-  let followCursorIcon: HTMLElement;
   let brainIcon: HTMLElement;
   let refreshIcon: HTMLElement;
 
   onMount(() => {
-    // Create and append lucide icons - DOM manipulation needed for Lucide icons
-    if (followCursorIcon) {
-      const icon = createElement(SquareDashedMousePointer);
-      icon.setAttribute('width', '16');
-      icon.setAttribute('height', '16');
-      // eslint-disable-next-line svelte/no-dom-manipulating
-      followCursorIcon.appendChild(icon);
-    }
-
     if (brainIcon) {
       const icon = createElement(BrainCircuit);
       icon.setAttribute('width', '16');
@@ -65,11 +52,6 @@
       refreshIcon.appendChild(icon);
     }
   });
-
-  function handleFollowCursorToggle() {
-    followCursor = !followCursor;
-    onToggleFollowCursor(followCursor);
-  }
 
   function handleWithExtractionToggle() {
     withExtraction = !withExtraction;
@@ -96,15 +78,6 @@
       </div>
 
       <div class="controls-container">
-        <button
-          class="icon-button follow-cursor-btn"
-          class:active={followCursor}
-          aria-label="Follow cursor - Updates search based on cursor position"
-          onclick={handleFollowCursorToggle}
-        >
-          <span bind:this={followCursorIcon}></span>
-        </button>
-
         <button
           class="icon-button with-llm-extraction-btn"
           class:active={withExtraction}
