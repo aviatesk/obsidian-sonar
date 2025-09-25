@@ -90,10 +90,12 @@
             >
               {getDisplayTitle(result)}
             </button>
-            <span class="result-score" title="Similarity score">{result.score.toFixed(3)}</span>
-            {#if result.chunkCount > 1}
-              <span class="chunk-count">{result.chunkCount} chunks</span>
-            {/if}
+            <div class="score-info">
+              <span class="result-score" title="Similarity score">{result.score.toFixed(3)}</span>
+              {#if result.chunkCount > 1}
+                <span class="chunk-count">{result.chunkCount} chunks</span>
+              {/if}
+            </div>
           </div>
 
           <div class="result-path">{result.filePath}</div>
@@ -199,6 +201,14 @@
     text-decoration: underline;
   }
 
+  .score-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
   .result-score {
     font-size: 12px;
     padding: 2px 8px;
@@ -206,11 +216,10 @@
     border-radius: 4px;
     border: 1px solid var(--interactive-accent);
     font-weight: 600;
-    flex-shrink: 0;
   }
 
   .chunk-count {
-    font-size: 12px;
+    font-size: 8px;
     padding: 2px 8px;
     color: var(--text-muted);
     background: var(--background-modifier-border);
@@ -218,7 +227,6 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     font-weight: 500;
-    flex-shrink: 0;
   }
 
   .result-path {

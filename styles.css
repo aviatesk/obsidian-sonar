@@ -62,7 +62,7 @@
 }
 
 .result-excerpt-markdown {
-  * {
+  *:not(.bases-table-container) {
     margin-block-start: inherit !important;
     margin-block-end: inherit !important;
   }
