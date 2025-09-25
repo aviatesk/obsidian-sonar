@@ -19,7 +19,6 @@ export interface CommonConfig {
 export interface ObsidianSettings extends CommonConfig {
   indexPath: string;
   debugMode: LogLevel;
-  followCursor: boolean;
   withExtraction: boolean;
   excludedPaths: string[]; // Array of paths/patterns to ignore
   autoOpenRelatedNotes: boolean;
@@ -45,7 +44,6 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   ...DEFAULT_COMMON_CONFIG,
   indexPath: '', // Root of vault
   debugMode: 'error',
-  followCursor: false,
   withExtraction: false,
   excludedPaths: [], // Default to no ignored paths
   autoOpenRelatedNotes: true,

@@ -6,12 +6,23 @@ import {
   Notice,
   debounce,
 } from 'obsidian';
+import type {
+  MarkdownPostProcessorContext,
+  MarkdownPostProcessor,
+} from 'obsidian';
+import { EditorView } from '@codemirror/view';
+import type { Extension } from '@codemirror/state';
 import { mount, unmount } from 'svelte';
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { EmbeddingSearch, type SearchResult } from '../EmbeddingSearch';
-import { QueryProcessor, type QueryOptions } from '../QueryProcessor';
+import {
+  processQuery,
+  extractWithLLM,
+  type QueryOptions,
+} from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';
 import { Tokenizer } from '../Tokenizer';
+import { getCurrentContext } from '../ObsidianUtils';
 import RelatedNotesContent from './RelatedNotesContent.svelte';
 import type { Logger } from '../Logger';
 
@@ -22,45 +33,58 @@ interface RelatedNotesState {
   results: SearchResult[];
   tokenCount: number;
   status: string;
+  isProcessing: boolean;
 }
-
-const relatedNotesStore = writable<RelatedNotesState>({
-  query: '',
-  results: [],
-  tokenCount: 0,
-  status: 'Ready to search',
-});
 
 export class RelatedNotesView extends ItemView {
   private embeddingSearch: EmbeddingSearch;
   private configManager: ConfigManager;
   private getTokenizer: () => Tokenizer;
   private logger: Logger;
-  private followCursor: boolean;
   private withExtraction: boolean;
-  private isProcessing = false;
   private lastActiveFile: TFile | null = null;
+  private lastQuery: string = '';
   private debouncedRefresh: () => void;
+  private debouncedPositionCheck: () => void;
   private svelteComponent: any;
+  private scrollUnsubscribe: (() => void) | null = null;
+  private registerEditorExt: (ext: Extension) => void;
+  private registerMdPostProcessor: (processor: MarkdownPostProcessor) => void;
+  private relatedNotesStore = writable<RelatedNotesState>({
+    query: '',
+    results: [],
+    tokenCount: 0,
+    status: 'Ready to search',
+    isProcessing: false,
+  });
 
   constructor(
     leaf: WorkspaceLeaf,
     embeddingSearch: EmbeddingSearch,
     configManager: ConfigManager,
     getTokenizer: () => Tokenizer,
-    logger: Logger
+    logger: Logger,
+    registerEditorExt: (ext: Extension) => void,
+    registerMdPostProcessor: (processor: MarkdownPostProcessor) => void
   ) {
     super(leaf);
     this.embeddingSearch = embeddingSearch;
     this.configManager = configManager;
     this.getTokenizer = getTokenizer;
     this.logger = logger;
-    this.followCursor = configManager.get('followCursor');
     this.withExtraction = configManager.get('withExtraction');
+    this.registerEditorExt = registerEditorExt;
+    this.registerMdPostProcessor = registerMdPostProcessor;
 
     this.debouncedRefresh = debounce(
       this.refresh.bind(this),
       configManager.get('relatedNotesDebounceMs'),
+      true
+    );
+
+    this.debouncedPositionCheck = debounce(
+      this.handlePositionChange.bind(this),
+      200,
       true
     );
 
@@ -82,10 +106,6 @@ export class RelatedNotesView extends ItemView {
 
     this.configManager.subscribe('tokenizerModel', () => {
       this.debouncedRefresh();
-    });
-
-    this.configManager.subscribe('followCursor', (_, value) => {
-      this.followCursor = value;
     });
 
     this.configManager.subscribe('withExtraction', (_, value) => {
@@ -113,6 +133,24 @@ export class RelatedNotesView extends ItemView {
     // Mount component once with reactive props
     this.mountComponent();
 
+    this.registerEditorExt(
+      EditorView.updateListener.of(update => {
+        if (update.selectionSet && !update.docChanged) {
+          this.debouncedPositionCheck();
+        }
+      })
+    );
+
+    this.registerMdPostProcessor(
+      (el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
+        const info = ctx.getSectionInfo(el);
+        if (info) {
+          el.dataset.lineStart = String(info.lineStart);
+          el.dataset.lineEnd = String(info.lineEnd);
+        }
+      }
+    );
+
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', async () => {
         await this.onActiveLeafChange();
@@ -121,7 +159,7 @@ export class RelatedNotesView extends ItemView {
 
     this.registerEvent(
       this.app.workspace.on('editor-change', () => {
-        this.debouncedRefresh();
+        this.debouncedPositionCheck();
       })
     );
 
@@ -137,14 +175,10 @@ export class RelatedNotesView extends ItemView {
       props: {
         app: this.app,
         configManager: this.configManager,
-        store: relatedNotesStore,
+        store: this.relatedNotesStore,
         logger: this.logger,
         onRefresh: () => {
           this.manualRefresh();
-        },
-        onToggleFollowCursor: (value: boolean) => {
-          this.followCursor = value;
-          this.configManager.set('followCursor', value);
         },
         onToggleWithExtraction: (value: boolean) => {
           this.withExtraction = value;
@@ -155,7 +189,7 @@ export class RelatedNotesView extends ItemView {
   }
 
   private updateStore(updates: Partial<RelatedNotesState>): void {
-    relatedNotesStore.update(state => ({
+    this.relatedNotesStore.update(state => ({
       ...state,
       ...updates,
     }));
@@ -164,15 +198,28 @@ export class RelatedNotesView extends ItemView {
   private async onActiveLeafChange(): Promise<void> {
     const activeFile = this.app.workspace.getActiveFile();
 
+    if (this.scrollUnsubscribe) {
+      this.scrollUnsubscribe();
+      this.scrollUnsubscribe = null;
+    }
+
     if (
       activeFile &&
       activeFile instanceof TFile &&
       activeFile !== this.lastActiveFile
     ) {
       this.lastActiveFile = activeFile;
-      await this.refresh();
+      this.lastQuery = '';
+
+      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (activeView && activeView.getMode() === 'preview') {
+        this.setupScrollListener(activeView);
+      }
+
+      await this.handlePositionChange();
     } else if (!activeFile) {
       this.lastActiveFile = null;
+      this.lastQuery = '';
       this.updateStore({
         query: '',
         results: [],
@@ -182,8 +229,28 @@ export class RelatedNotesView extends ItemView {
     }
   }
 
+  private setupScrollListener(view: MarkdownView): void {
+    const previewEl = view.containerEl.querySelector(
+      '.markdown-preview-view'
+    ) as HTMLElement;
+    if (!previewEl) return;
+
+    const handler = debounce(() => {
+      this.debouncedPositionCheck();
+    }, 200);
+
+    previewEl.addEventListener('scroll', handler);
+    this.scrollUnsubscribe = () => {
+      previewEl.removeEventListener('scroll', handler);
+    };
+  }
+
+  private async handlePositionChange(): Promise<void> {
+    await this.refresh();
+  }
+
   private async refresh(): Promise<void> {
-    if (this.isProcessing) return;
+    if (get(this.relatedNotesStore).isProcessing) return;
 
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile || !(activeFile instanceof TFile)) {
@@ -192,38 +259,54 @@ export class RelatedNotesView extends ItemView {
         results: [],
         tokenCount: 0,
         status: 'No active note',
+        isProcessing: false,
       });
       return;
     }
 
-    this.isProcessing = true;
+    this.updateStore({ status: 'Processing...', isProcessing: true });
 
-    this.updateStore({ status: 'Processing...' });
-
-    let cursorLine = 0;
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (activeView && activeView.editor) {
-      const cursor = activeView.editor.getCursor();
-      cursorLine = cursor.line;
+    const context = activeView ? getCurrentContext(activeView) : null;
+
+    if (!context) {
+      this.updateStore({
+        status: 'Unable to determine position',
+        results: [],
+        isProcessing: false,
+      });
+      return;
     }
 
     const options: QueryOptions = {
       fileName: activeFile.basename,
-      cursorLine: cursorLine,
-      followCursor: this.followCursor,
-      withExtraction: this.withExtraction,
+      lineStart: context.lineStart,
+      lineEnd: context.lineEnd,
+      hasSelection: context.hasSelection,
       maxTokens: this.configManager.get('maxQueryTokens'),
-      embeddingModel: this.configManager.get('embeddingModel'),
-      tokenizerModel: this.configManager.get('tokenizerModel') || undefined,
-      ollamaUrl: this.configManager.get('ollamaUrl'),
-      summaryModel: this.configManager.get('summaryModel'),
       tokenizer: this.getTokenizer(),
-      logger: this.logger,
     };
 
     try {
       const content = await this.app.vault.cachedRead(activeFile);
-      const query = await QueryProcessor.process(content, options);
+      let query = await processQuery(content, options);
+
+      if (this.withExtraction) {
+        query = await extractWithLLM(
+          query,
+          this.configManager.get('maxQueryTokens'),
+          this.configManager.get('ollamaUrl'),
+          this.configManager.get('summaryModel'),
+          this.logger
+        );
+      }
+
+      if (query === this.lastQuery) {
+        this.updateStore({ status: 'Ready to search', isProcessing: false });
+        return;
+      }
+
+      this.lastQuery = query;
 
       if (query) {
         const tokenCount = await this.getTokenizer().estimateTokens(query);
@@ -232,27 +315,27 @@ export class RelatedNotesView extends ItemView {
           this.configManager.get('topK'),
           { excludeFilePath: activeFile.path }
         );
-        this.isProcessing = false;
         this.updateStore({
           query: query,
           results: searchResults,
           tokenCount: tokenCount,
           status: 'Ready to search',
+          isProcessing: false,
         });
       }
     } catch (err) {
       this.logger.error(`Error refreshing related notes: ${err}`);
       new Notice('Failed to retrieve related notes');
-      this.isProcessing = false;
       this.updateStore({
         status: 'Failed to search',
         results: [],
+        isProcessing: false,
       });
     }
   }
 
   private manualRefresh(): void {
-    if (this.isProcessing) {
+    if (get(this.relatedNotesStore).isProcessing) {
       new Notice('Processing in progress. Please wait.');
       return;
     }
@@ -260,6 +343,10 @@ export class RelatedNotesView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    if (this.scrollUnsubscribe) {
+      this.scrollUnsubscribe();
+      this.scrollUnsubscribe = null;
+    }
     if (this.svelteComponent) {
       unmount(this.svelteComponent);
     }

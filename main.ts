@@ -139,7 +139,9 @@ export default class SonarPlugin extends Plugin {
         embeddingSearch,
         this.configManager,
         () => this.tokenizer!,
-        this.configManager.getLogger()
+        this.configManager.getLogger(),
+        ext => this.registerEditorExtension(ext),
+        processor => this.registerMarkdownPostProcessor(processor)
       );
     });
   }
