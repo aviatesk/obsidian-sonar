@@ -13,13 +13,6 @@ interface SemanticSearchState {
   hasSearched: boolean;
 }
 
-const searchStore = writable<SemanticSearchState>({
-  query: '',
-  results: [],
-  isSearching: false,
-  hasSearched: false,
-});
-
 export class SemanticNoteFinder extends Modal {
   private embeddingSearch: EmbeddingSearch;
   private configManager: ConfigManager;
@@ -28,6 +21,12 @@ export class SemanticNoteFinder extends Modal {
     | ReturnType<typeof SemanticNoteFinderComponent>
     | undefined;
   private debouncedSearch: (query: string) => void;
+  private searchStore = writable<SemanticSearchState>({
+    query: '',
+    results: [],
+    isSearching: false,
+    hasSearched: false,
+  });
 
   constructor(
     app: App,
@@ -48,7 +47,7 @@ export class SemanticNoteFinder extends Modal {
   }
 
   private updateStore(updates: Partial<SemanticSearchState>): void {
-    searchStore.update(state => ({
+    this.searchStore.update(state => ({
       ...state,
       ...updates,
     }));
@@ -102,7 +101,7 @@ export class SemanticNoteFinder extends Modal {
       target: contentEl,
       props: {
         app: this.app,
-        store: searchStore,
+        store: this.searchStore,
         logger: this.logger,
         placeholder: 'Enter your search query...',
         titleEl: titleEl,
