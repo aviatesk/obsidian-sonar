@@ -3,8 +3,9 @@
   import type { ConfigManager } from '../ConfigManager';
   import { Tokenizer } from '../Tokenizer';
   import SearchResults from './SearchResults.svelte';
+  import KnowledgeGraph from './KnowledgeGraph.svelte';
   import type { Logger } from '../Logger';
-  import { BrainCircuit, RefreshCw, Eye, EyeOff, Quote, createElement } from 'lucide';
+  import { BrainCircuit, RefreshCw, Eye, EyeOff, FileText, ChartNetwork, createElement } from 'lucide';
   import { onMount } from 'svelte';
 
   interface Props {
@@ -30,14 +31,17 @@
   const results = $derived(storeState.results);
   const tokenCount = $derived(storeState.tokenCount);
   const status = $derived(storeState.status);
+  const activeFile = $derived(storeState.activeFile);
   const hasQuery = $derived(query && query.trim().length > 0);
   let withExtraction = $state(configManager.get('withExtraction'));
   let showQuery = $state(configManager.get('showRelatedNotesQuery'));
   let showExcerpts = $state(configManager.get('showRelatedNotesExcerpts'));
+  let showKnowledgeGraph = $state(configManager.get('showKnowledgeGraph'));
   let brainIcon: HTMLElement;
   let refreshIcon: HTMLElement;
   let eyeIcon: HTMLElement;
   let excerptIcon: HTMLElement;
+  let graphIcon: HTMLElement;
 
   // eyeIcon needs $effect because it changes reactively with showQuery state
   $effect(() => {
@@ -69,11 +73,19 @@
     }
 
     if (excerptIcon) {
-      const icon = createElement(Quote);
+      const icon = createElement(FileText);
       icon.setAttribute('width', '16');
       icon.setAttribute('height', '16');
       // eslint-disable-next-line svelte/no-dom-manipulating
       excerptIcon.appendChild(icon);
+    }
+
+    if (graphIcon) {
+      const icon = createElement(ChartNetwork);
+      icon.setAttribute('width', '16');
+      icon.setAttribute('height', '16');
+      // eslint-disable-next-line svelte/no-dom-manipulating
+      graphIcon.appendChild(icon);
     }
   });
 
@@ -98,6 +110,11 @@
   function handleToggleExcerpts() {
     showExcerpts = !showExcerpts;
     configManager.set('showRelatedNotesExcerpts', showExcerpts);
+  }
+
+  function handleToggleGraph() {
+    showKnowledgeGraph = !showKnowledgeGraph;
+    configManager.set('showKnowledgeGraph', showKnowledgeGraph);
   }
 </script>
 
@@ -131,6 +148,15 @@
         </button>
 
         <button
+          class="icon-button toggle-graph-btn"
+          class:active={showKnowledgeGraph}
+          aria-label="Toggle knowledge graph visibility"
+          onclick={handleToggleGraph}
+        >
+          <span bind:this={graphIcon}></span>
+        </button>
+
+        <button
           class="icon-button with-llm-extraction-btn"
           class:active={withExtraction}
           aria-label="Uses LLM to extract relevant context"
@@ -159,6 +185,17 @@
         </div>
         <div class="query-text">
           {query}
+        </div>
+      </div>
+    {/if}
+
+    {#if activeFile && results.length > 0 && showKnowledgeGraph}
+      <div class="knowledge-graph-section">
+        <div class="graph-header">
+          <h4>Knowledge Graph</h4>
+        </div>
+        <div class="graph-container">
+          <KnowledgeGraph {app} {activeFile} {results} maxNodes={10} />
         </div>
       </div>
     {/if}
@@ -267,10 +304,12 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    gap: 12px;
+    padding: 12px 0;
   }
 
   .current-query {
-    margin: 12px;
+    margin: 0 12px;
     padding: 12px;
     background: var(--background-secondary);
     border: 1px solid var(--background-modifier-border);
@@ -330,6 +369,39 @@
 
   .related-notes-results {
     flex: 1;
+    overflow-y: auto;
+    margin: 0 12px;
+  }
+
+  .knowledge-graph-section {
+    margin: 0 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--background-secondary);
+    flex-shrink: 0;
+  }
+
+  .graph-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--background-secondary);
+    border-bottom: 1px solid var(--background-modifier-border);
+  }
+
+  .graph-header h4 {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .graph-container {
+    padding: 12px;
   }
 
   .empty-state {
@@ -337,6 +409,7 @@
     align-items: center;
     justify-content: center;
     flex: 1;
+    margin: 0 12px;
     padding: 24px;
     color: var(--text-muted);
     font-size: 13px;

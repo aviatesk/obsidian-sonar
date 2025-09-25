@@ -13,6 +13,7 @@ export interface SearchResult {
   score: number;
   topChunk: ChunkSearchResult;
   chunkCount: number;
+  fileSize: number;
 }
 
 export interface SearchOptions {
@@ -120,6 +121,7 @@ export class EmbeddingSearch {
           metadata: topChunk.document.metadata,
         },
         chunkCount: chunks.length,
+        fileSize: topChunk.document.metadata.size,
       });
     }
 

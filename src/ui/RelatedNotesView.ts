@@ -34,6 +34,7 @@ interface RelatedNotesState {
   tokenCount: number;
   status: string;
   isProcessing: boolean;
+  activeFile: string | null;
 }
 
 export class RelatedNotesView extends ItemView {
@@ -56,6 +57,7 @@ export class RelatedNotesView extends ItemView {
     tokenCount: 0,
     status: 'Ready to search',
     isProcessing: false,
+    activeFile: null,
   });
 
   constructor(
@@ -223,6 +225,7 @@ export class RelatedNotesView extends ItemView {
         tokenCount: 0,
         status: 'No active note',
         isProcessing: false,
+        activeFile: null,
       });
     }
   }
@@ -258,6 +261,7 @@ export class RelatedNotesView extends ItemView {
         tokenCount: 0,
         status: 'No active note',
         isProcessing: false,
+        activeFile: null,
       });
       return;
     }
@@ -286,6 +290,7 @@ export class RelatedNotesView extends ItemView {
         tokenCount: 0,
         status: 'Unable to determine position',
         isProcessing: false,
+        activeFile: activeFile.path,
       });
       return;
     }
@@ -338,6 +343,7 @@ export class RelatedNotesView extends ItemView {
           tokenCount: tokenCount,
           status: 'Ready to search',
           isProcessing: false,
+          activeFile: activeFile.path,
         });
       } else {
         this.updateStore({
@@ -346,6 +352,7 @@ export class RelatedNotesView extends ItemView {
           tokenCount: 0,
           status: 'No content to search',
           isProcessing: false,
+          activeFile: activeFile.path,
         });
       }
     } catch (err) {
@@ -357,6 +364,7 @@ export class RelatedNotesView extends ItemView {
         tokenCount: 0,
         status: 'Failed to search',
         isProcessing: false,
+        activeFile: activeFile.path,
       });
     }
   }

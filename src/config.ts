@@ -28,6 +28,7 @@ export interface ObsidianSettings extends CommonConfig {
   statusBarMaxLength: number;
   showRelatedNotesQuery: boolean;
   showRelatedNotesExcerpts: boolean;
+  showKnowledgeGraph: boolean;
 }
 
 export const DEFAULT_COMMON_CONFIG: CommonConfig = {
@@ -55,4 +56,5 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   statusBarMaxLength: 40,
   showRelatedNotesQuery: true,
   showRelatedNotesExcerpts: true,
+  showKnowledgeGraph: true,
 };

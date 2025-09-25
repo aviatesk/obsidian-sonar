@@ -129,7 +129,7 @@
   }
 
   .results-list {
-    padding: 8px;
+    padding: 8px 0;
   }
 
   .result-item {
