@@ -188,11 +188,8 @@ export class RelatedNotesView extends ItemView {
     });
   }
 
-  private updateStore(updates: Partial<RelatedNotesState>): void {
-    this.relatedNotesStore.update(state => ({
-      ...state,
-      ...updates,
-    }));
+  private updateStore(newState: RelatedNotesState): void {
+    this.relatedNotesStore.set(newState);
   }
 
   private async onActiveLeafChange(): Promise<void> {
@@ -225,6 +222,7 @@ export class RelatedNotesView extends ItemView {
         results: [],
         tokenCount: 0,
         status: 'No active note',
+        isProcessing: false,
       });
     }
   }
@@ -264,15 +262,22 @@ export class RelatedNotesView extends ItemView {
       return;
     }
 
-    this.updateStore({ status: 'Processing...', isProcessing: true });
+    const currentState = get(this.relatedNotesStore);
+    this.updateStore({
+      ...currentState,
+      status: 'Processing...',
+      isProcessing: true,
+    });
 
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
     const context = activeView ? getCurrentContext(activeView) : null;
 
     if (!context) {
       this.updateStore({
-        status: 'Unable to determine position',
+        query: '',
         results: [],
+        tokenCount: 0,
+        status: 'Unable to determine position',
         isProcessing: false,
       });
       return;
@@ -302,7 +307,12 @@ export class RelatedNotesView extends ItemView {
       }
 
       if (query === this.lastQuery) {
-        this.updateStore({ status: 'Ready to search', isProcessing: false });
+        const currentState = get(this.relatedNotesStore);
+        this.updateStore({
+          ...currentState,
+          status: 'Ready to search',
+          isProcessing: false,
+        });
         return;
       }
 
@@ -322,13 +332,23 @@ export class RelatedNotesView extends ItemView {
           status: 'Ready to search',
           isProcessing: false,
         });
+      } else {
+        this.updateStore({
+          query: '',
+          results: [],
+          tokenCount: 0,
+          status: 'No content to search',
+          isProcessing: false,
+        });
       }
     } catch (err) {
       this.logger.error(`Error refreshing related notes: ${err}`);
       new Notice('Failed to retrieve related notes');
       this.updateStore({
-        status: 'Failed to search',
+        query: '',
         results: [],
+        tokenCount: 0,
+        status: 'Failed to search',
         isProcessing: false,
       });
     }

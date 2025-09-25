@@ -20,12 +20,13 @@ export interface ObsidianSettings extends CommonConfig {
   indexPath: string;
   debugMode: LogLevel;
   withExtraction: boolean;
-  excludedPaths: string[]; // Array of paths/patterns to ignore
+  excludedPaths: string[];
   autoOpenRelatedNotes: boolean;
   autoIndex: boolean;
   indexDebounceMs: number;
   relatedNotesDebounceMs: number;
   statusBarMaxLength: number;
+  showRelatedNotesQuery: boolean;
 }
 
 export const DEFAULT_COMMON_CONFIG: CommonConfig = {
@@ -42,13 +43,14 @@ export const DEFAULT_COMMON_CONFIG: CommonConfig = {
 
 export const DEFAULT_SETTINGS: ObsidianSettings = {
   ...DEFAULT_COMMON_CONFIG,
-  indexPath: '', // Root of vault
+  indexPath: '',
   debugMode: 'error',
   withExtraction: false,
-  excludedPaths: [], // Default to no ignored paths
+  excludedPaths: [],
   autoOpenRelatedNotes: true,
   autoIndex: false,
-  indexDebounceMs: 1000, // 1s for auto-indexing queue
-  relatedNotesDebounceMs: 5000, // 5s for related notes view updates
+  indexDebounceMs: 1000,
+  relatedNotesDebounceMs: 5000,
   statusBarMaxLength: 40,
+  showRelatedNotesQuery: true,
 };

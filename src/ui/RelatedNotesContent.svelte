@@ -4,7 +4,7 @@
   import { Tokenizer } from '../Tokenizer';
   import SearchResults from './SearchResults.svelte';
   import type { Logger } from '../Logger';
-  import { BrainCircuit, RefreshCw, createElement } from 'lucide';
+  import { BrainCircuit, RefreshCw, Eye, EyeOff, createElement } from 'lucide';
   import { onMount } from 'svelte';
 
   interface Props {
@@ -25,16 +25,30 @@
     onToggleWithExtraction,
   }: Props = $props();
 
-  // Get reactive state from store
   const storeState = $derived($store);
   const query = $derived(storeState.query);
   const results = $derived(storeState.results);
   const tokenCount = $derived(storeState.tokenCount);
   const status = $derived(storeState.status);
+  const hasQuery = $derived(query && query.trim().length > 0);
   let withExtraction = $state(configManager.get('withExtraction'));
+  let showQuery = $state(configManager.get('showRelatedNotesQuery'));
   let brainIcon: HTMLElement;
   let refreshIcon: HTMLElement;
+  let eyeIcon: HTMLElement;
 
+  // eyeIcon needs $effect because it changes reactively with showQuery state
+  $effect(() => {
+    if (eyeIcon) {
+      const icon = createElement(showQuery ? Eye : EyeOff);
+      icon.setAttribute('width', '16');
+      icon.setAttribute('height', '16');
+      // eslint-disable-next-line svelte/no-dom-manipulating
+      eyeIcon.replaceChildren(icon);
+    }
+  });
+
+  // Static icons only need onMount
   onMount(() => {
     if (brainIcon) {
       const icon = createElement(BrainCircuit);
@@ -65,6 +79,11 @@
     }
     onRefresh();
   }
+
+  function handleToggleQuery() {
+    showQuery = !showQuery;
+    configManager.set('showRelatedNotesQuery', showQuery);
+  }
 </script>
 
 <div class="related-notes-view">
@@ -79,9 +98,18 @@
 
       <div class="controls-container">
         <button
+          class="icon-button toggle-query-btn"
+          class:active={showQuery}
+          aria-label="Toggle search query visibility"
+          onclick={handleToggleQuery}
+        >
+          <span bind:this={eyeIcon}></span>
+        </button>
+
+        <button
           class="icon-button with-llm-extraction-btn"
           class:active={withExtraction}
-          aria-label="Smart context - Uses AI to extract relevant context"
+          aria-label="Uses LLM to extract relevant context"
           onclick={handleWithExtractionToggle}
         >
           <span bind:this={brainIcon}></span>
@@ -99,25 +127,33 @@
   </div>
 
   <div class="related-notes-content">
-    <div class="current-query">
-      <div class="query-header">
-        <h4>Search Query</h4>
-        <span class="query-length">{Tokenizer.formatTokenCount(tokenCount)}</span>
+    {#if hasQuery && showQuery}
+      <div class="current-query">
+        <div class="query-header">
+          <h4>Search Query</h4>
+          <span class="query-length">{Tokenizer.formatTokenCount(tokenCount)}</span>
+        </div>
+        <div class="query-text">
+          {query}
+        </div>
       </div>
-      <div class="query-text">
-        {query || 'No query'}
-      </div>
-    </div>
+    {/if}
 
-    <div class="related-notes-results">
-      <SearchResults
-        {app}
-        {results}
-        {logger}
-        noResultsMessage={status === 'No active note' ? status : 'No related notes found'}
-        maxHeight="200px"
-      />
-    </div>
+    {#if hasQuery}
+      <div class="related-notes-results">
+        <SearchResults
+          {app}
+          {results}
+          {logger}
+          noResultsMessage="No related notes found"
+          maxHeight="200px"
+        />
+      </div>
+    {:else}
+      <div class="empty-state">
+        <span>{status}</span>
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -269,5 +305,15 @@
 
   .related-notes-results {
     flex: 1;
+  }
+
+  .empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 24px;
+    color: var(--text-muted);
+    font-size: 13px;
   }
 </style>
