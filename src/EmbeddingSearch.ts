@@ -17,6 +17,8 @@ export interface SearchResult {
 
 export interface SearchOptions {
   excludeFilePath?: string;
+  titleWeight?: number;
+  contentWeight?: number;
 }
 
 const L = 3;
@@ -72,10 +74,22 @@ export class EmbeddingSearch {
       );
     }
 
-    const results = filteredDocuments.map(doc => ({
-      document: doc,
-      score: cosineSimilarity(queryEmbedding, doc.embedding),
-    }));
+    const titleWeight = options?.titleWeight ?? 0;
+    const contentWeight = options?.contentWeight ?? 1;
+
+    const results = filteredDocuments.map(doc => {
+      const contentSimilarity = cosineSimilarity(queryEmbedding, doc.embedding);
+      const titleSimilarity = cosineSimilarity(
+        queryEmbedding,
+        doc.titleEmbedding
+      );
+      const score =
+        contentWeight * contentSimilarity + titleWeight * titleSimilarity;
+      return {
+        document: doc,
+        score,
+      };
+    });
 
     results.sort((a, b) => b.score - a.score);
     const topResults = results.slice(0, topK * MULTIPLIER);

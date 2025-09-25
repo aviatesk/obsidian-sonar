@@ -78,13 +78,35 @@ export default class SonarPlugin extends Plugin {
       .getLogger()
       .log(`Ollama initialized with model: ${embeddingModel}`);
 
+    let wasUpgraded = false;
     try {
-      this.vectorStore = await VectorStore.initialize(
+      const result = await VectorStore.initialize(
         this.configManager.getLogger()
       );
+      this.vectorStore = result.store;
+      wasUpgraded = result.wasUpgraded;
     } catch {
       new Notice('Failed to initialize vector store - check console');
       return;
+    }
+
+    if (wasUpgraded) {
+      const frag = document.createDocumentFragment();
+      const container = frag.createEl('div');
+      container.createEl('div', {
+        text: 'Sonar: Database schema updated. Index cleared.',
+      });
+      const buttonContainer = container.createEl('div', {
+        cls: 'notice-button-container',
+      });
+      buttonContainer.style.marginTop = '8px';
+      const rebuildButton = buttonContainer.createEl('button', {
+        text: 'Rebuild Index',
+      });
+      rebuildButton.addEventListener('click', () => {
+        this.indexManager?.rebuildIndex();
+      });
+      new Notice(frag, 0);
     }
 
     this.configManager.getLogger().log('Vector store initialized');

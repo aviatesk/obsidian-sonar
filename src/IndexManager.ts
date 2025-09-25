@@ -536,10 +536,14 @@ export class IndexManager {
     const chunkContents = chunks.map(c => c.content);
     const embeddings = await this.ollamaClient.getEmbeddings(chunkContents);
 
-    // Create metadata for each chunk
+    const titleEmbeddings = await this.ollamaClient.getEmbeddings([
+      file.basename,
+    ]);
+    const titleEmbedding = titleEmbeddings[0];
+
     const indexedAt = Date.now();
     if (chunks.length == 0) {
-      await this.vectorStore.addDocument('', [], {
+      await this.vectorStore.addDocument('', [], titleEmbedding, {
         filePath: file.path,
         title: file.basename,
         headings: [],
@@ -560,6 +564,7 @@ export class IndexManager {
         await this.vectorStore.addDocument(
           chunks[i].content,
           embeddings[i],
+          titleEmbedding,
           metadata
         );
       }

@@ -20,12 +20,13 @@ export interface IndexedDocument {
   id: string;
   content: string;
   embedding: number[];
+  titleEmbedding: number[];
   metadata: DocumentMetadata;
 }
 
 const STORE_NAME = 'vectors';
 const DB_NAME = 'sonar-embedding-vectors';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export class VectorStore {
   private db!: IDBDatabase;
@@ -36,8 +37,11 @@ export class VectorStore {
     this.db = db;
     this.logger = logger;
   }
-  static async initialize(logger: Logger): Promise<VectorStore> {
+  static async initialize(
+    logger: Logger
+  ): Promise<{ store: VectorStore; wasUpgraded: boolean }> {
     return new Promise((resolve, reject) => {
+      let wasUpgraded = false;
       const request = window.indexedDB.open(DB_NAME, DB_VERSION);
       request.onerror = () => {
         reject(new Error('Failed to open IndexedDB'));
@@ -45,12 +49,22 @@ export class VectorStore {
       request.onsuccess = () => {
         const store = new VectorStore(request.result, logger);
         store.logger.log('Vector store initialized');
-        resolve(store);
+        resolve({ store, wasUpgraded });
       };
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = (event.target as any).result as IDBDatabase;
+        const oldVersion = event.oldVersion;
 
-        // Create vector store if it doesn't exist
+        if (oldVersion > 0 && oldVersion < DB_VERSION) {
+          wasUpgraded = true;
+          if (db.objectStoreNames.contains(STORE_NAME)) {
+            db.deleteObjectStore(STORE_NAME);
+            logger.log(
+              `Vector store schema updated (v${oldVersion} -> v${DB_VERSION}). All data cleared. Reindexing required.`
+            );
+          }
+        }
+
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           const vectorStore = db.createObjectStore(STORE_NAME, {
             keyPath: 'id',
@@ -73,6 +87,7 @@ export class VectorStore {
   async addDocument(
     content: string,
     embedding: number[],
+    titleEmbedding: number[],
     metadata: DocumentMetadata
   ): Promise<void> {
     const id = this.generateId(content, metadata);
@@ -80,6 +95,7 @@ export class VectorStore {
       id,
       content,
       embedding,
+      titleEmbedding,
       metadata,
     };
 
@@ -100,6 +116,7 @@ export class VectorStore {
     documents: Array<{
       content: string;
       embedding: number[];
+      titleEmbedding: number[];
       metadata: DocumentMetadata;
     }>
   ): Promise<void> {
@@ -113,6 +130,7 @@ export class VectorStore {
           id,
           content: doc.content,
           embedding: doc.embedding,
+          titleEmbedding: doc.titleEmbedding,
           metadata: doc.metadata,
         };
         store.put(document);

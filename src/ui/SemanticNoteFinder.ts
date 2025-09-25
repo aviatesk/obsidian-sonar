@@ -72,7 +72,11 @@ export class SemanticNoteFinder extends Modal {
     try {
       const results = await this.embeddingSearch.search(
         query,
-        this.configManager.get('topK')
+        this.configManager.get('topK'),
+        {
+          titleWeight: 0.5,
+          contentWeight: 0.5,
+        }
       );
       this.updateStore({
         results,
