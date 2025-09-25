@@ -12,7 +12,8 @@
     onFileClick?: (file: TFile) => void;
     noResultsMessage?: string;
     maxHeight?: string;
-    maxLength?: number,
+    maxLength?: number;
+    showExcerpts?: boolean;
   }
 
   let {
@@ -23,6 +24,7 @@
     noResultsMessage = 'No results found',
     maxHeight = '100px',
     maxLength = undefined,
+    showExcerpts = true,
   }: Props = $props();
 
   const markdownManager = new MarkdownRenderingManager(app, logger, { maxLength });
@@ -106,11 +108,13 @@
             </div>
           {/if}
 
-          <div
-            class="result-excerpt"
-            style:max-height={maxHeight}
-            use:setExcerptElement={index}
-          ></div>
+          {#if showExcerpts}
+            <div
+              class="result-excerpt"
+              style:max-height={maxHeight}
+              use:setExcerptElement={index}
+            ></div>
+          {/if}
         </div>
       </div>
     {/each}

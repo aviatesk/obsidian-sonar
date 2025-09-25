@@ -4,7 +4,7 @@
   import { Tokenizer } from '../Tokenizer';
   import SearchResults from './SearchResults.svelte';
   import type { Logger } from '../Logger';
-  import { BrainCircuit, RefreshCw, Eye, EyeOff, createElement } from 'lucide';
+  import { BrainCircuit, RefreshCw, Eye, EyeOff, Quote, createElement } from 'lucide';
   import { onMount } from 'svelte';
 
   interface Props {
@@ -33,11 +33,13 @@
   const hasQuery = $derived(query && query.trim().length > 0);
   let withExtraction = $state(configManager.get('withExtraction'));
   let showQuery = $state(configManager.get('showRelatedNotesQuery'));
+  let showExcerpts = $state(configManager.get('showRelatedNotesExcerpts'));
   let brainIcon: HTMLElement;
   let refreshIcon: HTMLElement;
   let eyeIcon: HTMLElement;
+  let excerptIcon: HTMLElement;
 
-  // eyeIcon needs $effect because it changes reactively with showQuery state
+  // Dynamic icons that change with state
   $effect(() => {
     if (eyeIcon) {
       const icon = createElement(showQuery ? Eye : EyeOff);
@@ -45,6 +47,16 @@
       icon.setAttribute('height', '16');
       // eslint-disable-next-line svelte/no-dom-manipulating
       eyeIcon.replaceChildren(icon);
+    }
+  });
+
+  $effect(() => {
+    if (excerptIcon) {
+      const icon = createElement(Quote);
+      icon.setAttribute('width', '16');
+      icon.setAttribute('height', '16');
+      // eslint-disable-next-line svelte/no-dom-manipulating
+      excerptIcon.replaceChildren(icon);
     }
   });
 
@@ -84,6 +96,11 @@
     showQuery = !showQuery;
     configManager.set('showRelatedNotesQuery', showQuery);
   }
+
+  function handleToggleExcerpts() {
+    showExcerpts = !showExcerpts;
+    configManager.set('showRelatedNotesExcerpts', showExcerpts);
+  }
 </script>
 
 <div class="related-notes-view">
@@ -104,6 +121,15 @@
           onclick={handleToggleQuery}
         >
           <span bind:this={eyeIcon}></span>
+        </button>
+
+        <button
+          class="icon-button toggle-excerpts-btn"
+          class:active={showExcerpts}
+          aria-label="Toggle result excerpts visibility"
+          onclick={handleToggleExcerpts}
+        >
+          <span bind:this={excerptIcon}></span>
         </button>
 
         <button
@@ -147,6 +173,7 @@
           {logger}
           noResultsMessage="No related notes found"
           maxHeight="200px"
+          showExcerpts={showExcerpts}
         />
       </div>
     {:else}

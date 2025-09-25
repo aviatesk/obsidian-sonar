@@ -27,6 +27,7 @@ export interface ObsidianSettings extends CommonConfig {
   relatedNotesDebounceMs: number;
   statusBarMaxLength: number;
   showRelatedNotesQuery: boolean;
+  showRelatedNotesExcerpts: boolean;
 }
 
 export const DEFAULT_COMMON_CONFIG: CommonConfig = {
@@ -53,4 +54,5 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   relatedNotesDebounceMs: 5000,
   statusBarMaxLength: 40,
   showRelatedNotesQuery: true,
+  showRelatedNotesExcerpts: true,
 };
