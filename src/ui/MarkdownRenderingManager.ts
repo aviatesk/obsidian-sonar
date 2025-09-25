@@ -26,7 +26,7 @@ export class MarkdownRenderingManager {
     this.logger = logger;
     this.options = {
       maxLength: undefined,
-      cssClass: 'markdown-rendered',
+      cssClass: 'result-excerpt-markdown',
       fallbackClass: 'result-excerpt-fallback',
       ...options,
     };

@@ -61,7 +61,7 @@
   background: var(--background-modifier-error-hover);
 }
 
-.markdown-rendered {
+.result-excerpt-markdown {
   * {
     margin-block-start: inherit !important;
     margin-block-end: inherit !important;
