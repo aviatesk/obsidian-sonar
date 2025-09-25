@@ -16,13 +16,6 @@ export interface CommonConfig {
   scoreDecay: number; // Decay factor for multi-chunk scoring (0-1)
 }
 
-export interface ScriptConfig extends CommonConfig {
-  indexPath: string;
-  dbPath: string;
-  parallelServers: number;
-  parallelPort: number;
-}
-
 export interface ObsidianSettings extends CommonConfig {
   indexPath: string;
   debugMode: LogLevel;
@@ -46,14 +39,6 @@ export const DEFAULT_COMMON_CONFIG: CommonConfig = {
   maxQueryTokens: 128, // tokens for search queries
   topK: 10, // default number of search results
   scoreDecay: 0.1, // small bonus for additional chunks
-};
-
-export const DEFAULT_SCRIPT_CONFIG: ScriptConfig = {
-  ...DEFAULT_COMMON_CONFIG,
-  indexPath: process.cwd(),
-  dbPath: './db/sonar-index.json',
-  parallelServers: 1,
-  parallelPort: 11435,
 };
 
 export const DEFAULT_SETTINGS: ObsidianSettings = {
