@@ -197,9 +197,8 @@
         enter => enter
           .append('line')
           .attr('stroke', 'var(--graph-line)')
-          .attr('stroke-opacity', 0)
-          .attr('stroke-width', d => 1 + d.strength * 2)
-          .call(enter => enter.transition().duration(300).attr('stroke-opacity', 0.9)),
+          .attr('stroke-opacity', 0.9)
+          .attr('stroke-width', d => 1 + d.strength * 2),
         update => update.call(update =>
           update.transition().duration(300).attr('stroke-width', d => 1 + d.strength * 2)
         ),
