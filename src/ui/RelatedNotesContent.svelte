@@ -39,7 +39,7 @@
   let eyeIcon: HTMLElement;
   let excerptIcon: HTMLElement;
 
-  // Dynamic icons that change with state
+  // eyeIcon needs $effect because it changes reactively with showQuery state
   $effect(() => {
     if (eyeIcon) {
       const icon = createElement(showQuery ? Eye : EyeOff);
@@ -47,16 +47,6 @@
       icon.setAttribute('height', '16');
       // eslint-disable-next-line svelte/no-dom-manipulating
       eyeIcon.replaceChildren(icon);
-    }
-  });
-
-  $effect(() => {
-    if (excerptIcon) {
-      const icon = createElement(Quote);
-      icon.setAttribute('width', '16');
-      icon.setAttribute('height', '16');
-      // eslint-disable-next-line svelte/no-dom-manipulating
-      excerptIcon.replaceChildren(icon);
     }
   });
 
@@ -76,6 +66,14 @@
       icon.setAttribute('height', '16');
       // eslint-disable-next-line svelte/no-dom-manipulating
       refreshIcon.appendChild(icon);
+    }
+
+    if (excerptIcon) {
+      const icon = createElement(Quote);
+      icon.setAttribute('width', '16');
+      icon.setAttribute('height', '16');
+      // eslint-disable-next-line svelte/no-dom-manipulating
+      excerptIcon.appendChild(icon);
     }
   });
 

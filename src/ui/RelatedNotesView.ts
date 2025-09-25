@@ -269,7 +269,14 @@ export class RelatedNotesView extends ItemView {
       isProcessing: true,
     });
 
-    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    let activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!activeView) {
+      const leaves = this.app.workspace.getLeavesOfType('markdown');
+      activeView =
+        (leaves.find(leaf => (leaf.view as MarkdownView).file === activeFile)
+          ?.view as MarkdownView) || null;
+    }
+
     const context = activeView ? getCurrentContext(activeView) : null;
 
     if (!context) {
@@ -359,6 +366,7 @@ export class RelatedNotesView extends ItemView {
       new Notice('Processing in progress. Please wait.');
       return;
     }
+    this.lastQuery = '';
     this.refresh();
   }
 

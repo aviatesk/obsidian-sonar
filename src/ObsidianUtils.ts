@@ -31,6 +31,19 @@ export function getEditModeContext(view: MarkdownView): DocumentContext | null {
   };
 }
 
+function getFullDocumentContextFallback(
+  view: MarkdownView
+): DocumentContext | null {
+  if (!view.editor) return null;
+  const lastLine = view.editor.lastLine();
+  return {
+    lineStart: 0,
+    lineEnd: lastLine,
+    mode: 'preview',
+    hasSelection: false,
+  };
+}
+
 export function getReadingModeContext(
   view: MarkdownView
 ): DocumentContext | null {
@@ -47,7 +60,9 @@ export function getReadingModeContext(
     return rect.top < previewRect.bottom && rect.bottom > previewRect.top;
   });
 
-  if (visibleBlocks.length === 0) return null;
+  if (visibleBlocks.length === 0) {
+    return getFullDocumentContextFallback(view);
+  }
 
   const lineRanges = visibleBlocks
     .map(el => {
@@ -59,7 +74,9 @@ export function getReadingModeContext(
     })
     .filter(range => !isNaN(range.start) && !isNaN(range.end));
 
-  if (lineRanges.length === 0) return null;
+  if (lineRanges.length === 0) {
+    return getFullDocumentContextFallback(view);
+  }
 
   return {
     lineStart: Math.min(...lineRanges.map(r => r.start)),
