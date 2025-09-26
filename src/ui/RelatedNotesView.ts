@@ -46,7 +46,8 @@ export class RelatedNotesView extends ItemView {
   private lastActiveFile: TFile | null = null;
   private lastQuery: string = '';
   private debouncedRefresh: () => void;
-  private debouncedPositionCheck: () => void;
+  private debouncedCursorRefresh: () => void;
+  private debouncedScrollRefresh: () => void;
   private svelteComponent: any;
   private scrollUnsubscribe: (() => void) | null = null;
   private registerEditorExt: (ext: Extension) => void;
@@ -84,9 +85,15 @@ export class RelatedNotesView extends ItemView {
       true
     );
 
-    this.debouncedPositionCheck = debounce(
-      this.handlePositionChange.bind(this),
-      200,
+    this.debouncedCursorRefresh = debounce(
+      () => this.refresh(true),
+      configManager.get('relatedNotesDebounceMs'),
+      true
+    );
+
+    this.debouncedScrollRefresh = debounce(
+      () => this.refresh(false),
+      configManager.get('relatedNotesDebounceMs'),
       true
     );
 
@@ -96,6 +103,16 @@ export class RelatedNotesView extends ItemView {
   private setupConfigListeners(): void {
     this.configManager.subscribe('relatedNotesDebounceMs', (_, value) => {
       this.debouncedRefresh = debounce(this.refresh.bind(this), value, true);
+      this.debouncedCursorRefresh = debounce(
+        () => this.refresh(true),
+        value,
+        true
+      );
+      this.debouncedScrollRefresh = debounce(
+        () => this.refresh(false),
+        value,
+        true
+      );
     });
 
     this.configManager.subscribe('maxQueryTokens', () => {
@@ -138,7 +155,7 @@ export class RelatedNotesView extends ItemView {
     this.registerEditorExt(
       EditorView.updateListener.of(update => {
         if (update.selectionSet && !update.docChanged) {
-          this.debouncedPositionCheck();
+          this.debouncedCursorRefresh();
         }
       })
     );
@@ -161,7 +178,7 @@ export class RelatedNotesView extends ItemView {
 
     this.registerEvent(
       this.app.workspace.on('editor-change', () => {
-        this.debouncedPositionCheck();
+        this.debouncedCursorRefresh();
       })
     );
 
@@ -211,11 +228,11 @@ export class RelatedNotesView extends ItemView {
       this.lastQuery = '';
 
       const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (activeView && activeView.getMode() === 'preview') {
+      if (activeView) {
         this.setupScrollListener(activeView);
       }
 
-      await this.handlePositionChange();
+      await this.refresh(true);
     } else if (!activeFile) {
       this.lastActiveFile = null;
       this.lastQuery = '';
@@ -231,26 +248,26 @@ export class RelatedNotesView extends ItemView {
   }
 
   private setupScrollListener(view: MarkdownView): void {
-    const previewEl = view.containerEl.querySelector(
+    const readingEl = view.containerEl.querySelector(
       '.markdown-preview-view'
     ) as HTMLElement;
-    if (!previewEl) return;
+    const editingEl = view.containerEl.querySelector(
+      '.cm-scroller'
+    ) as HTMLElement;
 
-    const handler = debounce(() => {
-      this.debouncedPositionCheck();
-    }, 200);
+    const handler = () => {
+      this.debouncedScrollRefresh();
+    };
 
-    previewEl.addEventListener('scroll', handler);
+    if (readingEl) readingEl.addEventListener('scroll', handler);
+    if (editingEl) editingEl.addEventListener('scroll', handler);
     this.scrollUnsubscribe = () => {
-      previewEl.removeEventListener('scroll', handler);
+      if (readingEl) readingEl.removeEventListener('scroll', handler);
+      if (editingEl) editingEl.removeEventListener('scroll', handler);
     };
   }
 
-  private async handlePositionChange(): Promise<void> {
-    await this.refresh();
-  }
-
-  private async refresh(): Promise<void> {
+  private async refresh(preferCursor: boolean = false): Promise<void> {
     if (get(this.relatedNotesStore).isProcessing) return;
 
     const activeFile = this.app.workspace.getActiveFile();
@@ -281,7 +298,9 @@ export class RelatedNotesView extends ItemView {
           ?.view as MarkdownView) || null;
     }
 
-    const context = activeView ? getCurrentContext(activeView) : null;
+    const context = activeView
+      ? getCurrentContext(activeView, preferCursor)
+      : null;
 
     if (!context) {
       this.updateStore({
@@ -375,7 +394,7 @@ export class RelatedNotesView extends ItemView {
       return;
     }
     this.lastQuery = '';
-    this.refresh();
+    this.refresh(true);
   }
 
   async onClose(): Promise<void> {

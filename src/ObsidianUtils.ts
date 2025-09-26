@@ -7,7 +7,10 @@ export interface DocumentContext {
   hasSelection: boolean;
 }
 
-export function getEditModeContext(view: MarkdownView): DocumentContext | null {
+export function getEditModeContext(
+  view: MarkdownView,
+  preferCursor: boolean = false
+): DocumentContext | null {
   if (!view.editor) return null;
 
   const selection = view.editor.getSelection();
@@ -19,6 +22,44 @@ export function getEditModeContext(view: MarkdownView): DocumentContext | null {
       lineEnd: to.line,
       mode: 'source',
       hasSelection: true,
+    };
+  }
+
+  if (preferCursor) {
+    const cursor = view.editor.getCursor();
+    return {
+      lineStart: cursor.line,
+      lineEnd: cursor.line,
+      mode: 'source',
+      hasSelection: false,
+    };
+  }
+
+  const scrollInfo = view.editor.getScrollInfo();
+  const scrollerEl = view.containerEl.querySelector(
+    '.cm-scroller'
+  ) as HTMLElement;
+  const contentEl = scrollerEl?.querySelector('.cm-content') as HTMLElement;
+
+  if (scrollerEl && contentEl && scrollInfo) {
+    const viewportHeight = scrollerEl.clientHeight;
+    const scrollTop = scrollInfo.top;
+    const totalContentHeight = contentEl.scrollHeight;
+
+    const totalLines = view.editor.lastLine() + 1;
+    const avgLineHeight = totalContentHeight / totalLines;
+
+    const visibleStartLine = Math.floor(scrollTop / avgLineHeight);
+    const visibleEndLine = Math.min(
+      Math.ceil((scrollTop + viewportHeight) / avgLineHeight),
+      view.editor.lastLine()
+    );
+
+    return {
+      lineStart: Math.max(0, visibleStartLine),
+      lineEnd: visibleEndLine,
+      mode: 'source',
+      hasSelection: false,
     };
   }
 
@@ -86,9 +127,12 @@ export function getReadingModeContext(
   };
 }
 
-export function getCurrentContext(view: MarkdownView): DocumentContext | null {
+export function getCurrentContext(
+  view: MarkdownView,
+  preferCursor: boolean = false
+): DocumentContext | null {
   const mode = view.getMode();
   return mode === 'source'
-    ? getEditModeContext(view)
+    ? getEditModeContext(view, preferCursor)
     : getReadingModeContext(view);
 }
