@@ -61,6 +61,10 @@ export const TOKENIZER_MODEL_MAPPING: Record<string, string> = {
   'jina-embeddings-v2-base-zh': 'jinaai/jina-embeddings-v2-base-zh',
   'jina-embeddings-v2-base-es': 'jinaai/jina-embeddings-v2-base-es',
   'jina-embeddings-v2-base-code': 'jinaai/jina-embeddings-v2-base-code',
+
+  // -------- EmbeddingGemma --------
+  embeddinggemma: 'onnx-community/embeddinggemma-300m-ONNX',
+  'embeddinggemma:300m': 'onnx-community/embeddinggemma-300m-ONNX',
 };
 
 /**
