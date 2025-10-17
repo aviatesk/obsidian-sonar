@@ -41,6 +41,12 @@
 
   const nodeMeta = new SvelteMap<string, NodeMeta>();
 
+  function updateLabelOpacity(scale: number) {
+    if (!g) return;
+    const opacity = scale > 1.2 ? Math.min((scale - 1.2) / 0.8, 1) : 0;
+    g.selectAll('.labels text').style('opacity', opacity);
+  }
+
   function initGraph() {
     if (!svgElement || initialized) return;
 
@@ -89,21 +95,17 @@
       .scale(initialZoom)
       .translate(-width / 2, -height / 2);
 
-    g.attr('transform', initialTransform.toString());
-
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.5, 3])
       .on('zoom', event => {
         if (g) {
           g.attr('transform', event.transform);
-          const k = event.transform.k;
-          g.selectAll('.labels text').style('opacity', () => {
-            return k > 1.2 ? Math.min((k - 1.2) / 0.8, 1) : 0;
-          });
+          updateLabelOpacity(event.transform.k);
         }
       });
 
+    g.attr('transform', initialTransform.toString());
     svg.call(zoom).call(zoom.transform, initialTransform);
 
     simulation.on('tick', updatePositions);
@@ -266,6 +268,10 @@
             })
         )
       );
+
+    const svg = d3.select(svgElement);
+    const currentTransform = d3.zoomTransform(svg.node()!);
+    updateLabelOpacity(currentTransform.k);
   }
 
   function updatePositions() {
