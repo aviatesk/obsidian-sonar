@@ -76,6 +76,8 @@ export class SemanticNoteFinder extends Modal {
         {
           titleWeight: 0.5,
           contentWeight: 0.5,
+          embeddingWeight: 0.6,
+          bm25Weight: 0.4,
         }
       );
       this.updateStore({

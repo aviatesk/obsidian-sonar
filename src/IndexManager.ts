@@ -14,6 +14,7 @@ import { createChunks } from './chunker';
 import { OllamaClient } from './OllamaClient';
 import { Tokenizer } from './Tokenizer';
 import { Logger } from './Logger';
+import { BM25Store } from './BM25Store';
 
 interface FileOperation {
   type: 'create' | 'modify' | 'delete' | 'rename';
@@ -23,6 +24,7 @@ interface FileOperation {
 
 export class IndexManager {
   private vectorStore: VectorStore;
+  private bm25Store: BM25Store;
   private ollamaClient: OllamaClient;
   private vault: Vault;
   private workspace: Workspace;
@@ -43,6 +45,7 @@ export class IndexManager {
 
   constructor(
     vectorStore: VectorStore,
+    bm25Store: BM25Store,
     ollamaClient: OllamaClient,
     vault: Vault,
     workspace: Workspace,
@@ -53,6 +56,7 @@ export class IndexManager {
     onProcessingCompleteCallback: () => void
   ) {
     this.vectorStore = vectorStore;
+    this.bm25Store = bm25Store;
     this.ollamaClient = ollamaClient;
     this.vault = vault;
     this.workspace = workspace;
@@ -519,12 +523,15 @@ export class IndexManager {
 
   private async deleteFromIndex(filePath: string): Promise<void> {
     await this.vectorStore.deleteDocumentsByFile(filePath);
+    await this.bm25Store.removeDocumentsByFilePath(filePath);
     this.indexedFiles.delete(filePath);
   }
 
   private async indexFileInternal(file: TFile): Promise<void> {
     // Do the actual indexing
     await this.vectorStore.deleteDocumentsByFile(file.path);
+    await this.bm25Store.removeDocumentsByFilePath(file.path);
+
     const content = await this.vault.cachedRead(file);
     const chunks = await createChunks(
       content,
@@ -542,6 +549,11 @@ export class IndexManager {
     const titleEmbedding = titleEmbeddings[0];
 
     const indexedAt = Date.now();
+
+    // Index title for BM25 with chunkId format: filePath#title
+    const titleChunkId = `${file.path}#title`;
+    await this.bm25Store.indexDocument(titleChunkId, file.basename);
+
     if (chunks.length == 0) {
       await this.vectorStore.addDocument('', [], titleEmbedding, {
         filePath: file.path,
@@ -567,6 +579,10 @@ export class IndexManager {
           titleEmbedding,
           metadata
         );
+
+        // Index each chunk for BM25 with chunkId format: filePath#chunkIndex
+        const chunkId = `${file.path}#${i}`;
+        await this.bm25Store.indexDocument(chunkId, chunks[i].content);
       }
     }
 
@@ -651,8 +667,128 @@ export class IndexManager {
 
   async clearIndex(): Promise<void> {
     await this.vectorStore.clearAll();
+    await this.bm25Store.clearAll();
     this.indexedFiles.clear();
     this.clearMetadataCache();
+  }
+
+  async clearBM25Index(): Promise<void> {
+    await this.bm25Store.clearAll();
+  }
+
+  async rebuildBM25Index(
+    progressCallback?: (
+      current: number,
+      total: number,
+      filePath: string
+    ) => void | Promise<void>
+  ): Promise<void> {
+    this.logger.log('IndexManager: Starting BM25 index rebuild...');
+
+    await this.bm25Store.clearAll();
+
+    const vaultFiles = getFilesToIndex(this.vault, this.configManager);
+    const totalFiles = vaultFiles.length;
+
+    this.logger.log(
+      `IndexManager: Rebuilding BM25 index for ${totalFiles} files`
+    );
+
+    let errorCount = 0;
+    for (let i = 0; i < vaultFiles.length; i++) {
+      const file = vaultFiles[i];
+
+      if (progressCallback) {
+        await progressCallback(i + 1, totalFiles, file.path);
+      }
+
+      this.updateStatus({
+        action: 'Indexing',
+        file: file.basename,
+        current: i + 1,
+        total: totalFiles,
+      });
+
+      try {
+        const content = await this.vault.cachedRead(file);
+        const chunks = await createChunks(
+          content,
+          this.configManager.get('maxChunkSize'),
+          this.configManager.get('chunkOverlap'),
+          this.getTokenizer()
+        );
+
+        // Index title
+        const titleChunkId = `${file.path}#title`;
+        await this.bm25Store.indexDocument(titleChunkId, file.basename);
+
+        // Index each chunk
+        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+          const chunkId = `${file.path}#${chunkIndex}`;
+          await this.bm25Store.indexDocument(
+            chunkId,
+            chunks[chunkIndex].content
+          );
+        }
+      } catch (error) {
+        this.logger.error(
+          `IndexManager: Failed to index ${file.path} in BM25: ${error}`
+        );
+        errorCount++;
+      }
+    }
+
+    const message = `BM25 rebuild complete: ${totalFiles - errorCount}/${totalFiles} files indexed`;
+    this.logger.log(`IndexManager: ${message}`);
+    this.onProcessingCompleteCallback();
+  }
+
+  async syncBM25Index(): Promise<void> {
+    this.logger.log('IndexManager: Starting BM25 sync...');
+
+    const vaultFiles = getFilesToIndex(this.vault, this.configManager);
+
+    let newCount = 0;
+    let errorCount = 0;
+
+    for (const file of vaultFiles) {
+      try {
+        const content = await this.vault.cachedRead(file);
+        const chunks = await createChunks(
+          content,
+          this.configManager.get('maxChunkSize'),
+          this.configManager.get('chunkOverlap'),
+          this.getTokenizer()
+        );
+
+        // Remove old chunks for this file
+        await this.bm25Store.removeDocumentsByFilePath(file.path);
+
+        // Index title
+        const titleChunkId = `${file.path}#title`;
+        await this.bm25Store.indexDocument(titleChunkId, file.basename);
+
+        // Index each chunk
+        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+          const chunkId = `${file.path}#${chunkIndex}`;
+          await this.bm25Store.indexDocument(
+            chunkId,
+            chunks[chunkIndex].content
+          );
+        }
+
+        newCount++;
+      } catch (error) {
+        this.logger.error(
+          `IndexManager: Failed to sync ${file.path} in BM25: ${error}`
+        );
+        errorCount++;
+      }
+    }
+
+    const message = `BM25 sync complete: ${newCount} files indexed${errorCount > 0 ? `, ${errorCount} errors` : ''}`;
+    this.logger.log(`IndexManager: ${message}`);
+    this.onProcessingCompleteCallback();
   }
 
   async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {

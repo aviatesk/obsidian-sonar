@@ -354,7 +354,9 @@ export class RelatedNotesView extends ItemView {
         const searchResults = await this.embeddingSearch.search(
           query,
           this.configManager.get('topK'),
-          { excludeFilePath: activeFile.path }
+          {
+            excludeFilePath: activeFile.path,
+          }
         );
         this.updateStore({
           query: query,

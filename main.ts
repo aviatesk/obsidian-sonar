@@ -1,5 +1,7 @@
 import { Notice, Plugin, WorkspaceLeaf, debounce } from 'obsidian';
 import { EmbeddingSearch } from './src/EmbeddingSearch';
+import { BM25Store } from './src/BM25Store';
+import { BM25Search } from './src/BM25Search';
 import { DEFAULT_SETTINGS } from './src/config';
 import {
   RelatedNotesView,
@@ -17,6 +19,8 @@ export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
   embeddingSearch: EmbeddingSearch | null = null;
+  bm25Store: BM25Store | null = null;
+  bm25Search: BM25Search | null = null;
   indexManager: IndexManager | null = null;
   vectorStore: VectorStore | null = null;
   ollamaClient: OllamaClient | null = null;
@@ -111,15 +115,34 @@ export default class SonarPlugin extends Plugin {
 
     this.configManager.getLogger().log('Vector store initialized');
 
+    try {
+      this.bm25Store = await BM25Store.initialize(
+        this.configManager.getLogger()
+      );
+      this.configManager.getLogger().log('BM25 store initialized');
+    } catch {
+      new Notice('Failed to initialize BM25 store - check console');
+      return;
+    }
+
+    // Initialize BM25 search
+    this.bm25Search = new BM25Search(this.bm25Store, this.vectorStore);
+    this.configManager.getLogger().log('BM25 search initialized');
+
+    // Initialize embedding search with BM25 for hybrid functionality
     this.embeddingSearch = new EmbeddingSearch(
       this.vectorStore,
       this.ollamaClient,
-      this.configManager.get('scoreDecay')
+      this.configManager.get('scoreDecay'),
+      this.bm25Search
     );
-    this.configManager.getLogger().log('Semantic search system initialized');
+    this.configManager
+      .getLogger()
+      .log('Embedding search with hybrid support initialized');
 
     this.indexManager = new IndexManager(
       this.vectorStore,
+      this.bm25Store,
       this.ollamaClient,
       this.app.vault,
       this.app.workspace,
@@ -247,6 +270,51 @@ export default class SonarPlugin extends Plugin {
         await this.indexManager!.syncIndex();
       },
     });
+
+    // BM25-specific commands
+    this.addCommand({
+      id: 'rebuild-bm25-index',
+      name: 'Rebuild BM25 full-text index',
+      callback: async () => {
+        if (!this.isInitialized()) {
+          new Notice('Sonar is still initializing. Please wait...');
+          return;
+        }
+        const startTime = Date.now();
+        await this.indexManager!.rebuildBM25Index((current, total) => {
+          this.updateStatusBar(`Rebuilding BM25: ${current}/${total}`);
+        });
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        new Notice(`BM25 index rebuilt in ${duration}s`);
+        await this.updateStatusBarWithFileCount();
+      },
+    });
+
+    this.addCommand({
+      id: 'sync-bm25-index',
+      name: 'Sync BM25 full-text index',
+      callback: async () => {
+        if (!this.isInitialized()) {
+          new Notice('Sonar is still initializing. Please wait...');
+          return;
+        }
+        await this.indexManager!.syncBM25Index();
+        new Notice('BM25 index synced');
+      },
+    });
+
+    this.addCommand({
+      id: 'clear-bm25-index',
+      name: 'Clear BM25 full-text index',
+      callback: async () => {
+        if (!this.isInitialized()) {
+          new Notice('Sonar is still initializing. Please wait...');
+          return;
+        }
+        await this.indexManager!.clearBM25Index();
+        new Notice('BM25 index cleared');
+      },
+    });
   }
 
   async activateRelatedNotesView() {
@@ -342,6 +410,9 @@ export default class SonarPlugin extends Plugin {
     }
     if (this.vectorStore) {
       await this.vectorStore.close();
+    }
+    if (this.bm25Store) {
+      await this.bm25Store.close();
     }
   }
 }
