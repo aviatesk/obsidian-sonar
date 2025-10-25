@@ -14,6 +14,7 @@
     "sonar:search": "npx tsx scripts/sonar.ts search",
     "sonar:stats": "npx tsx scripts/sonar.ts stats",
     "sonar:config": "npx tsx scripts/sonar.ts config",
+    "parse-line-chat": "npx tsx cli/parse-line-chat.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --fix",
