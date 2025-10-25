@@ -119,12 +119,9 @@ export class BM25Store {
       existingDoc.tokens.forEach(t => tokensToFetch.add(t));
     }
 
-    // Fetch all inverted index entries
-    const invertedEntries = new Map<string, InvertedIndexEntry | undefined>();
-    for (const token of tokensToFetch) {
-      const entry = await this.getInvertedIndexEntry(token);
-      invertedEntries.set(token, entry);
-    }
+    // Fetch all inverted index entries using bulk read
+    const invertedEntries =
+      await this.bulkGetInvertedIndexEntries(tokensToFetch);
 
     // Compute new stats
     let newStats: BM25Stats;
@@ -217,6 +214,153 @@ export class BM25Store {
   }
 
   /**
+   * Indexes multiple documents in a single transaction (much faster than individual indexing)
+   */
+  async indexDocumentBatch(
+    documents: Array<{ docId: string; content: string }>
+  ): Promise<void> {
+    if (documents.length === 0) return;
+
+    this.logger.log(`BM25Store: Batch indexing ${documents.length} documents`);
+
+    // Phase 1: Tokenize all documents
+    const docsTokenInfo: DocumentTokenInfo[] = [];
+    const allTokensToFetch = new Set<string>();
+
+    for (const doc of documents) {
+      const tokens = this.tokenizer.tokenize(doc.content);
+      const termFreq = this.tokenizer.calculateTermFrequency(tokens);
+
+      docsTokenInfo.push({
+        docId: doc.docId,
+        tokens,
+        length: tokens.length,
+      });
+
+      // Collect all unique tokens
+      for (const token of termFreq.keys()) {
+        allTokensToFetch.add(token);
+      }
+    }
+
+    // Phase 2: Read all existing data
+    const existingDocs = await Promise.all(
+      documents.map(doc => this.getDocumentTokenInfo(doc.docId))
+    );
+
+    // Collect tokens from existing docs
+    for (const existingDoc of existingDocs) {
+      if (existingDoc) {
+        existingDoc.tokens.forEach(t => allTokensToFetch.add(t));
+      }
+    }
+
+    const stats = await this.getStats();
+    const invertedEntries =
+      await this.bulkGetInvertedIndexEntries(allTokensToFetch);
+
+    // Compute new stats
+    let totalLengthChange = 0;
+    let docsAddedCount = 0;
+
+    for (let i = 0; i < documents.length; i++) {
+      const existingDoc = existingDocs[i];
+      if (existingDoc) {
+        totalLengthChange += docsTokenInfo[i].length - existingDoc.length;
+      } else {
+        totalLengthChange += docsTokenInfo[i].length;
+        docsAddedCount++;
+      }
+    }
+
+    const newTotalDocs = stats.totalDocuments + docsAddedCount;
+    const newAvgDocLength =
+      (stats.averageDocLength * stats.totalDocuments + totalLengthChange) /
+      newTotalDocs;
+    const newStats: BM25Stats = {
+      totalDocuments: newTotalDocs,
+      averageDocLength: newAvgDocLength,
+      version: stats.version + 1,
+    };
+
+    // Phase 3: Write transaction - all synchronous
+    const transaction = this.db.transaction(
+      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE, STATS_STORE],
+      'readwrite'
+    );
+
+    const docTokensStore = transaction.objectStore(DOC_TOKENS_STORE);
+    const invertedIndexStore = transaction.objectStore(INVERTED_INDEX_STORE);
+    const statsStore = transaction.objectStore(STATS_STORE);
+
+    // Process each document
+    for (let i = 0; i < documents.length; i++) {
+      const docInfo = docsTokenInfo[i];
+      const existingDoc = existingDocs[i];
+      const termFreq = this.tokenizer.calculateTermFrequency(docInfo.tokens);
+
+      // Remove old document if exists
+      if (existingDoc) {
+        const uniqueTokens = new Set(existingDoc.tokens);
+        for (const token of uniqueTokens) {
+          const entry = invertedEntries.get(token);
+          if (entry) {
+            entry.postings = entry.postings.filter(
+              p => p.docId !== docInfo.docId
+            );
+            if (entry.postings.length === 0) {
+              invertedIndexStore.delete(token);
+            } else {
+              entry.documentFrequency = entry.postings.length;
+              invertedIndexStore.put(entry);
+            }
+          }
+        }
+      }
+
+      // Add new document
+      docTokensStore.put(docInfo);
+
+      // Update inverted index
+      for (const [token, freq] of termFreq.entries()) {
+        const existing = invertedEntries.get(token);
+        const newPosting: PostingEntry = {
+          docId: docInfo.docId,
+          frequency: freq,
+        };
+
+        if (existing) {
+          existing.postings.push(newPosting);
+          existing.documentFrequency = existing.postings.length;
+          invertedIndexStore.put(existing);
+        } else {
+          const newEntry: InvertedIndexEntry = {
+            token,
+            postings: [newPosting],
+            documentFrequency: 1,
+          };
+          invertedIndexStore.put(newEntry);
+          invertedEntries.set(token, newEntry);
+        }
+      }
+    }
+
+    // Update stats
+    statsStore.put(newStats, STATS_KEY);
+
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => {
+        this.invalidateStatsCache();
+        this.logger.log(
+          `BM25Store: Batch indexing complete. Total documents: ${newStats.totalDocuments}`
+        );
+        resolve();
+      };
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  /**
    * Removes a document from the index
    */
   async removeDocument(docId: string): Promise<void> {
@@ -228,13 +372,10 @@ export class BM25Store {
 
     const stats = await this.getStats();
 
-    // Fetch all inverted index entries for this document's tokens
+    // Fetch all inverted index entries for this document's tokens using bulk read
     const uniqueTokens = new Set(existingDoc.tokens);
-    const invertedEntries = new Map<string, InvertedIndexEntry | undefined>();
-    for (const token of uniqueTokens) {
-      const entry = await this.getInvertedIndexEntry(token);
-      invertedEntries.set(token, entry);
-    }
+    const invertedEntries =
+      await this.bulkGetInvertedIndexEntries(uniqueTokens);
 
     // Compute new stats
     const newTotalDocs = Math.max(0, stats.totalDocuments - 1);
@@ -293,15 +434,46 @@ export class BM25Store {
    * DocId format: filePath#chunkIndex
    */
   async removeDocumentsByFilePath(filePath: string): Promise<void> {
-    // Phase 1: Read all data we need
-    const allDocs = await this.getAllDocumentTokenInfos();
-    const docsToRemove = allDocs.filter(doc =>
-      doc.docId.startsWith(filePath + '#')
-    );
+    return this.removeDocumentsByFilePathBatch([filePath]);
+  }
 
-    if (docsToRemove.length === 0) {
+  /**
+   * Removes all chunks for multiple file paths in a single pass
+   * This is much more efficient than calling removeDocumentsByFilePath
+   * repeatedly, as it only reads getAllDocumentTokenInfos once
+   */
+  async removeDocumentsByFilePathBatch(filePaths: string[]): Promise<void> {
+    if (filePaths.length === 0) {
       return;
     }
+
+    this.logger.log(
+      `BM25Store: Batch removing ${filePaths.length} files from index`
+    );
+
+    // Phase 1: Read all data we need
+    const allDocs = await this.getAllDocumentTokenInfos();
+    this.logger.log(
+      `BM25Store: Read ${allDocs.length} total documents from index`
+    );
+
+    const filePathSet = new Set(filePaths);
+    const docsToRemove = allDocs.filter(doc => {
+      // Extract filePath from docId (format: filePath#chunkIndex)
+      const hashIndex = doc.docId.lastIndexOf('#');
+      if (hashIndex === -1) return false;
+      const docFilePath = doc.docId.substring(0, hashIndex);
+      return filePathSet.has(docFilePath);
+    });
+
+    if (docsToRemove.length === 0) {
+      this.logger.log('BM25Store: No documents to remove');
+      return;
+    }
+
+    this.logger.log(
+      `BM25Store: Found ${docsToRemove.length} documents to remove`
+    );
 
     const stats = await this.getStats();
 
@@ -311,12 +483,8 @@ export class BM25Store {
       doc.tokens.forEach(t => allTokens.add(t));
     }
 
-    // Fetch all inverted index entries
-    const invertedEntries = new Map<string, InvertedIndexEntry | undefined>();
-    for (const token of allTokens) {
-      const entry = await this.getInvertedIndexEntry(token);
-      invertedEntries.set(token, entry);
-    }
+    // Fetch all inverted index entries using bulk read
+    const invertedEntries = await this.bulkGetInvertedIndexEntries(allTokens);
 
     // Compute new stats
     const totalLengthRemoved = docsToRemove.reduce(
@@ -372,6 +540,9 @@ export class BM25Store {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
         this.invalidateStatsCache();
+        this.logger.log(
+          `BM25Store: Batch removal complete. Removed ${docsToRemove.length} documents. New total: ${newStats.totalDocuments}`
+        );
         resolve();
       };
       transaction.onerror = () => reject(transaction.error);
@@ -477,6 +648,48 @@ export class BM25Store {
       const req = indexStore.get(token);
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
+    });
+  }
+
+  /**
+   * Bulk fetch inverted index entries using cursor (much faster than individual gets)
+   */
+  private async bulkGetInvertedIndexEntries(
+    tokens: Set<string>
+  ): Promise<Map<string, InvertedIndexEntry | undefined>> {
+    if (tokens.size === 0) {
+      return new Map();
+    }
+
+    const transaction = this.db.transaction([INVERTED_INDEX_STORE], 'readonly');
+    const store = transaction.objectStore(INVERTED_INDEX_STORE);
+    const results = new Map<string, InvertedIndexEntry | undefined>();
+
+    // Initialize all tokens as undefined
+    for (const token of tokens) {
+      results.set(token, undefined);
+    }
+
+    return new Promise((resolve, reject) => {
+      const request = store.openCursor();
+
+      request.onsuccess = (event: Event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+        if (cursor) {
+          if (tokens.has(cursor.key as string)) {
+            results.set(
+              cursor.key as string,
+              cursor.value as InvertedIndexEntry
+            );
+          }
+          cursor.continue();
+        } else {
+          // Cursor exhausted
+          resolve(results);
+        }
+      };
+
+      request.onerror = () => reject(request.error);
     });
   }
 

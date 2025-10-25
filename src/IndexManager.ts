@@ -249,16 +249,67 @@ export class IndexManager {
       `IndexManager: Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
     );
 
-    // Schedule all operations through the queue without triggering debounce
+    // Batch delete all affected files from BM25 index first
+    const bm25FilesToDelete: string[] = [];
     for (const operation of operations) {
-      this.scheduleOperation(operation, true);
+      if (operation.type === 'delete' && operation.oldPath) {
+        bm25FilesToDelete.push(operation.oldPath);
+      } else if (operation.type === 'rename' && operation.oldPath) {
+        bm25FilesToDelete.push(operation.oldPath);
+      } else if (
+        (operation.type === 'create' || operation.type === 'modify') &&
+        operation.file
+      ) {
+        bm25FilesToDelete.push(operation.file.path);
+      }
     }
 
-    // Process all scheduled operations synchronously
-    const errorCount = await this.processPendingOperations(
-      true,
-      progressCallback
-    );
+    if (bm25FilesToDelete.length > 0) {
+      this.logger.log(
+        `IndexManager: BM25 batch deletion starting for ${bm25FilesToDelete.length} files`
+      );
+      await this.bm25Store.removeDocumentsByFilePathBatch(bm25FilesToDelete);
+      this.logger.log('IndexManager: BM25 batch deletion complete');
+    }
+
+    // Process each operation
+    let errorCount = 0;
+    for (let i = 0; i < operations.length; i++) {
+      const operation = operations[i];
+      const filePath = operation.file?.path || operation.oldPath || 'unknown';
+
+      if (progressCallback) {
+        await progressCallback(i + 1, operations.length, filePath);
+      }
+
+      const fileName =
+        operation.file?.basename ||
+        operation.oldPath?.split('/').pop() ||
+        'unknown';
+      this.updateStatus({
+        action: this.getOperationAction(operation.type),
+        file: fileName,
+        current: i + 1,
+        total: operations.length,
+      });
+
+      try {
+        await this.processSyncOperation(operation);
+        this.logger.log(
+          `IndexManager: ${this.getOperationAction(operation.type)} ${filePath}`
+        );
+      } catch (error) {
+        this.logger.error(
+          `IndexManager: Failed to ${operation.type} ${filePath}: ${error}`
+        );
+        errorCount++;
+      }
+    }
+
+    // Clear metadata cache after all operations complete
+    if (operations.length > 0) {
+      this.clearMetadataCache();
+    }
 
     // Update indexedFiles to reflect the current DB state
     // Add unchanged files that are still in the DB
@@ -458,6 +509,50 @@ export class IndexManager {
     return errorCount;
   }
 
+  /**
+   * Process operation during sync (BM25 deletion already done in batch)
+   */
+  private async processSyncOperation(operation: FileOperation): Promise<void> {
+    const filePath = operation.file?.path || operation.oldPath || 'unknown';
+
+    switch (operation.type) {
+      case 'create':
+      case 'modify':
+        if (operation.file) {
+          // Delete from VectorStore, then re-index (BM25 already deleted)
+          this.logger.log(
+            `IndexManager: Sync indexing ${filePath} (BM25 deletion skipped)`
+          );
+          await this.vectorStore.deleteDocumentsByFile(operation.file.path);
+          await this.indexFileInternalWithoutBM25Deletion(operation.file);
+        }
+        break;
+
+      case 'delete':
+        if (operation.oldPath) {
+          // Only delete from VectorStore (BM25 already deleted in batch)
+          this.logger.log(
+            `IndexManager: Sync deleting ${filePath} (BM25 already deleted)`
+          );
+          await this.vectorStore.deleteDocumentsByFile(operation.oldPath);
+          this.indexedFiles.delete(operation.oldPath);
+        }
+        break;
+
+      case 'rename':
+        if (operation.oldPath && operation.file) {
+          // Delete old path from VectorStore
+          this.logger.log(
+            `IndexManager: Sync renaming ${operation.oldPath} → ${operation.file.path} (BM25 already deleted)`
+          );
+          await this.vectorStore.deleteDocumentsByFile(operation.oldPath);
+          // Add new path
+          await this.indexFileInternalWithoutBM25Deletion(operation.file);
+        }
+        break;
+    }
+  }
+
   private async processOperation(
     operation: FileOperation,
     skipChangeCheck = false
@@ -531,7 +626,19 @@ export class IndexManager {
     // Do the actual indexing
     await this.vectorStore.deleteDocumentsByFile(file.path);
     await this.bm25Store.removeDocumentsByFilePath(file.path);
+    await this.indexFileInternalCore(file);
+  }
 
+  /**
+   * Index file without deleting from BM25 (used during sync after batch deletion)
+   */
+  private async indexFileInternalWithoutBM25Deletion(
+    file: TFile
+  ): Promise<void> {
+    await this.indexFileInternalCore(file);
+  }
+
+  private async indexFileInternalCore(file: TFile): Promise<void> {
     const content = await this.vault.cachedRead(file);
     const chunks = await createChunks(
       content,
@@ -550,9 +657,10 @@ export class IndexManager {
 
     const indexedAt = Date.now();
 
-    // Index title for BM25 with chunkId format: filePath#title
-    const titleChunkId = `${file.path}#title`;
-    await this.bm25Store.indexDocument(titleChunkId, file.basename);
+    // Prepare all BM25 documents for batch indexing
+    const bm25Documents = [
+      { docId: `${file.path}#title`, content: file.basename },
+    ];
 
     if (chunks.length == 0) {
       await this.vectorStore.addDocument('', [], titleEmbedding, {
@@ -564,6 +672,15 @@ export class IndexManager {
         indexedAt,
       });
     } else {
+      // Add all chunks to BM25 batch
+      for (let i = 0; i < chunks.length; i++) {
+        bm25Documents.push({
+          docId: `${file.path}#${i}`,
+          content: chunks[i].content,
+        });
+      }
+
+      // Index vector embeddings
       for (let i = 0; i < chunks.length; i++) {
         const metadata: DocumentMetadata = {
           filePath: file.path,
@@ -579,12 +696,11 @@ export class IndexManager {
           titleEmbedding,
           metadata
         );
-
-        // Index each chunk for BM25 with chunkId format: filePath#chunkIndex
-        const chunkId = `${file.path}#${i}`;
-        await this.bm25Store.indexDocument(chunkId, chunks[i].content);
       }
     }
+
+    // Batch index all chunks for BM25 in a single transaction
+    await this.bm25Store.indexDocumentBatch(bm25Documents);
 
     this.indexedFiles.add(file.path);
   }
@@ -718,18 +834,20 @@ export class IndexManager {
           this.getTokenizer()
         );
 
-        // Index title
-        const titleChunkId = `${file.path}#title`;
-        await this.bm25Store.indexDocument(titleChunkId, file.basename);
+        // Prepare all documents for batch indexing
+        const bm25Documents = [
+          { docId: `${file.path}#title`, content: file.basename },
+        ];
 
-        // Index each chunk
         for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-          const chunkId = `${file.path}#${chunkIndex}`;
-          await this.bm25Store.indexDocument(
-            chunkId,
-            chunks[chunkIndex].content
-          );
+          bm25Documents.push({
+            docId: `${file.path}#${chunkIndex}`,
+            content: chunks[chunkIndex].content,
+          });
         }
+
+        // Batch index all chunks in a single transaction
+        await this.bm25Store.indexDocumentBatch(bm25Documents);
       } catch (error) {
         this.logger.error(
           `IndexManager: Failed to index ${file.path} in BM25: ${error}`
@@ -748,6 +866,14 @@ export class IndexManager {
 
     const vaultFiles = getFilesToIndex(this.vault, this.configManager);
 
+    // First, remove all old chunks in a single batch operation
+    this.logger.log(
+      `IndexManager: BM25 sync - batch removing ${vaultFiles.length} files`
+    );
+    const filePaths = vaultFiles.map(f => f.path);
+    await this.bm25Store.removeDocumentsByFilePathBatch(filePaths);
+    this.logger.log('IndexManager: BM25 sync - batch removal complete');
+
     let newCount = 0;
     let errorCount = 0;
 
@@ -761,21 +887,20 @@ export class IndexManager {
           this.getTokenizer()
         );
 
-        // Remove old chunks for this file
-        await this.bm25Store.removeDocumentsByFilePath(file.path);
+        // Prepare all documents for batch indexing
+        const bm25Documents = [
+          { docId: `${file.path}#title`, content: file.basename },
+        ];
 
-        // Index title
-        const titleChunkId = `${file.path}#title`;
-        await this.bm25Store.indexDocument(titleChunkId, file.basename);
-
-        // Index each chunk
         for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-          const chunkId = `${file.path}#${chunkIndex}`;
-          await this.bm25Store.indexDocument(
-            chunkId,
-            chunks[chunkIndex].content
-          );
+          bm25Documents.push({
+            docId: `${file.path}#${chunkIndex}`,
+            content: chunks[chunkIndex].content,
+          });
         }
+
+        // Batch index all chunks in a single transaction
+        await this.bm25Store.indexDocumentBatch(bm25Documents);
 
         newCount++;
       } catch (error) {
