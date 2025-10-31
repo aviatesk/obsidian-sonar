@@ -116,11 +116,16 @@ export default class SonarPlugin extends Plugin {
     this.configManager.getLogger().log('Vector store initialized');
 
     try {
+      // Use the same tokenizer as embedding model for BM25
       this.bm25Store = await BM25Store.initialize(
-        this.configManager.getLogger()
+        this.configManager.getLogger(),
+        this.tokenizer
       );
       this.configManager.getLogger().log('BM25 store initialized');
-    } catch {
+    } catch (error) {
+      this.configManager
+        .getLogger()
+        .error(`Failed to initialize BM25 store: ${error}`);
       new Notice('Failed to initialize BM25 store - check console');
       return;
     }
@@ -315,6 +320,61 @@ export default class SonarPlugin extends Plugin {
         new Notice('BM25 index cleared');
       },
     });
+
+    this.addCommand({
+      id: 'show-indexable-files-stats',
+      name: 'Show indexable files statistics',
+      callback: async () => {
+        if (!this.isInitialized()) {
+          new Notice('Sonar is still initializing. Please wait...');
+          return;
+        }
+
+        const startTime = Date.now();
+        this.updateStatusBar('Calculating statistics...');
+
+        try {
+          const stats = await this.indexManager!.getIndexableFilesStats();
+          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+
+          const message = [
+            `Indexable Files Statistics (calculated in ${duration}s):`,
+            ``,
+            `Files: ${stats.fileCount.toLocaleString()}`,
+            ``,
+            `Tokens:`,
+            `  Total: ${stats.totalTokens.toLocaleString()}`,
+            `  Average: ${stats.averageTokens.toLocaleString()}`,
+            ``,
+            `Characters:`,
+            `  Total: ${stats.totalCharacters.toLocaleString()}`,
+            `  Average: ${stats.averageCharacters.toLocaleString()}`,
+            ``,
+            `File Size:`,
+            `  Total: ${this.formatBytes(stats.totalSize)}`,
+            `  Average: ${this.formatBytes(stats.averageSize)}`,
+          ].join('\n');
+
+          this.configManager.getLogger().log(message);
+          new Notice(message, 0);
+        } catch (error) {
+          this.configManager
+            .getLogger()
+            .error(`Failed to calculate statistics: ${error}`);
+          new Notice('Failed to calculate statistics - check console');
+        } finally {
+          await this.updateStatusBarWithFileCount();
+        }
+      },
+    });
+  }
+
+  private formatBytes(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${Math.round((bytes / Math.pow(k, i)) * 100) / 100} ${sizes[i]}`;
   }
 
   async activateRelatedNotesView() {

@@ -141,12 +141,69 @@ export class Tokenizer {
     return new Tokenizer(tokenizer, logger);
   }
 
+  /**
+   * Estimates the number of tokens in the given text.
+   *
+   * WARNING: For large texts (e.g., entire file contents), this method may hang
+   * or perform poorly. When processing large documents, split the text by lines
+   * and call this method for each line separately to avoid performance issues.
+   *
+   * @example
+   * // Good: Process line by line for large texts
+   * const lines = content.split('\n');
+   * let totalTokens = 0;
+   * for (const line of lines) {
+   *   totalTokens += await tokenizer.estimateTokens(line);
+   * }
+   *
+   * // Avoid: Processing entire large file at once
+   * const tokens = await tokenizer.estimateTokens(largeFileContent); // May hang!
+   */
   async estimateTokens(text: string): Promise<number> {
     if (!text) return 0;
 
     try {
       const { input_ids } = await this.tokenizer(text);
       return input_ids.size;
+    } catch (error) {
+      this.logger.error(`Failed to tokenize with transformers.js: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Returns token IDs for the given text, excluding special tokens.
+   *
+   * WARNING: For large texts, this method may hang. Process line by line instead.
+   *
+   * @returns Array of token IDs (as numbers)
+   */
+  async getTokenIds(text: string): Promise<number[]> {
+    if (!text) return [];
+
+    try {
+      const { input_ids } = await this.tokenizer(text);
+
+      // Get special token IDs for filtering
+      const bosTokenId = this.tokenizer.model?.config?.bos_token_id;
+      const eosTokenId = this.tokenizer.model?.config?.eos_token_id;
+      const padTokenId = this.tokenizer.model?.config?.pad_token_id;
+
+      const tokenIds: number[] = [];
+      for (let i = 0; i < input_ids.size; i++) {
+        const tokenId = input_ids.data[i];
+
+        // Skip special tokens
+        if (
+          tokenId !== bosTokenId &&
+          tokenId !== eosTokenId &&
+          tokenId !== padTokenId
+        ) {
+          tokenIds.push(tokenId);
+        }
+      }
+
+      return tokenIds;
     } catch (error) {
       this.logger.error(`Failed to tokenize with transformers.js: ${error}`);
       throw error;

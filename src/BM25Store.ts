@@ -1,5 +1,5 @@
 import type { Logger } from './Logger';
-import { BM25Tokenizer } from './BM25Tokenizer';
+import type { Tokenizer } from './Tokenizer';
 
 /**
  * Posting list entry for inverted index
@@ -50,17 +50,20 @@ const B = 0.75;
 export class BM25Store {
   private db!: IDBDatabase;
   private logger: Logger;
-  private tokenizer: BM25Tokenizer;
+  private tokenizer: Tokenizer;
   private statsCache: BM25Stats | null = null;
 
-  private constructor(db: IDBDatabase, logger: Logger) {
+  private constructor(db: IDBDatabase, logger: Logger, tokenizer: Tokenizer) {
     this.db = db;
     this.logger = logger;
-    this.tokenizer = new BM25Tokenizer();
+    this.tokenizer = tokenizer;
   }
 
-  static async initialize(logger: Logger): Promise<BM25Store> {
-    return new Promise((resolve, reject) => {
+  static async initialize(
+    logger: Logger,
+    tokenizer: Tokenizer
+  ): Promise<BM25Store> {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = window.indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
@@ -68,9 +71,7 @@ export class BM25Store {
       };
 
       request.onsuccess = () => {
-        const store = new BM25Store(request.result, logger);
-        store.logger.log('BM25 store initialized');
-        resolve(store);
+        resolve(request.result);
       };
 
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
@@ -94,14 +95,19 @@ export class BM25Store {
         logger.log('BM25 store schema created');
       };
     });
+
+    const store = new BM25Store(db, logger, tokenizer);
+    logger.log('BM25 store initialized');
+
+    return store;
   }
 
   /**
    * Indexes a document for BM25 search
    */
   async indexDocument(docId: string, content: string): Promise<void> {
-    const tokens = this.tokenizer.tokenize(content);
-    const termFreq = this.tokenizer.calculateTermFrequency(tokens);
+    const tokens = await this.tokenize(content);
+    const termFreq = this.calculateTermFrequency(tokens);
 
     const docTokenInfo: DocumentTokenInfo = {
       docId,
@@ -228,8 +234,8 @@ export class BM25Store {
     const allTokensToFetch = new Set<string>();
 
     for (const doc of documents) {
-      const tokens = this.tokenizer.tokenize(doc.content);
-      const termFreq = this.tokenizer.calculateTermFrequency(tokens);
+      const tokens = await this.tokenize(doc.content);
+      const termFreq = this.calculateTermFrequency(tokens);
 
       docsTokenInfo.push({
         docId: doc.docId,
@@ -297,7 +303,7 @@ export class BM25Store {
     for (let i = 0; i < documents.length; i++) {
       const docInfo = docsTokenInfo[i];
       const existingDoc = existingDocs[i];
-      const termFreq = this.tokenizer.calculateTermFrequency(docInfo.tokens);
+      const termFreq = this.calculateTermFrequency(docInfo.tokens);
 
       // Remove old document if exists
       if (existingDoc) {
@@ -556,7 +562,7 @@ export class BM25Store {
     query: string,
     topK: number
   ): Promise<Array<{ docId: string; score: number }>> {
-    const queryTokens = this.tokenizer.tokenize(query);
+    const queryTokens = await this.tokenize(query);
     const stats = await this.getStats();
 
     if (stats.totalDocuments === 0) {
@@ -652,7 +658,7 @@ export class BM25Store {
   }
 
   /**
-   * Bulk fetch inverted index entries using cursor (much faster than individual gets)
+   * Bulk fetch inverted index entries using parallel get operations
    */
   private async bulkGetInvertedIndexEntries(
     tokens: Set<string>
@@ -663,34 +669,20 @@ export class BM25Store {
 
     const transaction = this.db.transaction([INVERTED_INDEX_STORE], 'readonly');
     const store = transaction.objectStore(INVERTED_INDEX_STORE);
-    const results = new Map<string, InvertedIndexEntry | undefined>();
 
-    // Initialize all tokens as undefined
-    for (const token of tokens) {
-      results.set(token, undefined);
-    }
-
-    return new Promise((resolve, reject) => {
-      const request = store.openCursor();
-
-      request.onsuccess = (event: Event) => {
-        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
-        if (cursor) {
-          if (tokens.has(cursor.key as string)) {
-            results.set(
-              cursor.key as string,
-              cursor.value as InvertedIndexEntry
-            );
+    const promises = Array.from(tokens).map(
+      token =>
+        new Promise<[string, InvertedIndexEntry | undefined]>(
+          (resolve, reject) => {
+            const request = store.get(token);
+            request.onsuccess = () => resolve([token, request.result]);
+            request.onerror = () => reject(request.error);
           }
-          cursor.continue();
-        } else {
-          // Cursor exhausted
-          resolve(results);
-        }
-      };
+        )
+    );
 
-      request.onerror = () => reject(request.error);
-    });
+    const entries = await Promise.all(promises);
+    return new Map(entries);
   }
 
   private async getDocumentTokenInfo(
@@ -748,6 +740,8 @@ export class BM25Store {
   }
 
   async clearAll(): Promise<void> {
+    this.logger.log('BM25Store: Clearing all data...');
+
     const transaction = this.db.transaction(
       [INVERTED_INDEX_STORE, DOC_TOKENS_STORE, STATS_STORE],
       'readwrite'
@@ -760,13 +754,63 @@ export class BM25Store {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
         this.invalidateStatsCache();
+        this.logger.log('BM25Store: All data cleared');
         resolve();
       };
-      transaction.onerror = () => reject(transaction.error);
+      transaction.onerror = () => {
+        this.logger.error(
+          `BM25Store: Failed to clear data: ${transaction.error}`
+        );
+        reject(transaction.error);
+      };
     });
   }
 
   async close(): Promise<void> {
     this.db.close();
+  }
+
+  /**
+   * Tokenizes text for BM25 indexing and search
+   * Uses transformers.js tokenizer (e.g., BGE-M3)
+   * Processes line by line to avoid hanging on large files
+   * Returns token IDs as strings for efficient exact matching
+   */
+  private async tokenize(
+    text: string,
+    toLowerCase: boolean = true
+  ): Promise<string[]> {
+    // Normalize text
+    let normalizedText = text;
+    if (toLowerCase) {
+      normalizedText = text.toLowerCase();
+    }
+
+    // Split by lines and tokenize line by line to avoid hanging on large files
+    const lines = normalizedText.split('\n');
+    const allTokens: string[] = [];
+
+    for (const line of lines) {
+      // Get token IDs using Tokenizer API (special tokens already filtered)
+      const tokenIds = await this.tokenizer.getTokenIds(line);
+
+      // Convert to strings for BM25 matching
+      for (const tokenId of tokenIds) {
+        allTokens.push(String(tokenId));
+      }
+    }
+
+    return allTokens;
+  }
+
+  /**
+   * Calculates term frequency in a document
+   */
+  private calculateTermFrequency(tokens: string[]): Map<string, number> {
+    const tf = new Map<string, number>();
+    for (const token of tokens) {
+      tf.set(token, (tf.get(token) || 0) + 1);
+    }
+    return tf;
   }
 }

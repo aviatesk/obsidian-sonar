@@ -73,6 +73,8 @@ export class BM25Search {
 
   /**
    * Helper to create SearchResult array from score map
+   * Note: Uses relative normalization (max score = 1.0) for BM25-only searches
+   * When used in hybrid search with RRF, only ranks matter, so normalization doesn't affect results
    */
   private async createSearchResults(
     scoreMap: Map<string, number>,
@@ -120,7 +122,8 @@ export class BM25Search {
     // Sort by score and limit to topK
     searchResults.sort((a, b) => b.score - a.score);
 
-    // Normalize scores to [0, 1] range
+    // Normalize scores to [0, 1] range using relative normalization
+    // TODO: Implement absolute normalization based on theoretical BM25 maximum
     if (searchResults.length > 0) {
       const maxScore = searchResults[0].score;
       if (maxScore > 0) {

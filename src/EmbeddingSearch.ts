@@ -72,13 +72,13 @@ export class EmbeddingSearch {
     topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    const titleWeight = options?.titleWeight ?? 0;
-    const contentWeight = options?.contentWeight ?? 1;
-    const embeddingWeight = options?.embeddingWeight ?? 0.7;
-    const bm25Weight = options?.bm25Weight ?? 0.3;
+    const titleWeight = options?.titleWeight ?? 0.0;
+    const contentWeight = options?.contentWeight ?? 1.0;
+    const embeddingWeight = options?.embeddingWeight ?? 0.6;
+    const bm25Weight = options?.bm25Weight ?? 0.4;
 
-    // If no BM25 or weights are 0, use embedding-only search
-    if (!this.bm25Search || (embeddingWeight === 0 && bm25Weight === 0)) {
+    // If no BM25 or either weight is 0, use embedding-only search
+    if (!this.bm25Search || embeddingWeight === 0 || bm25Weight === 0) {
       return this.embeddingOnlySearch(query, topK, options);
     }
 
@@ -113,11 +113,15 @@ export class EmbeddingSearch {
     ]);
 
     const finalScores = new Map<string, number>();
+    const totalWeight = titleWeight + contentWeight;
+
     for (const filePath of allFilePaths) {
       const titleScore = titleHybrid.get(filePath) || 0;
       const contentScore = contentHybrid.get(filePath) || 0;
-      const finalScore =
+      const weightedScore =
         titleWeight * titleScore + contentWeight * contentScore;
+      // Normalize to [0, 1] based on total weight
+      const finalScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
       finalScores.set(filePath, finalScore);
     }
 
@@ -127,7 +131,7 @@ export class EmbeddingSearch {
 
   /**
    * Hybrid search for either title or content
-   * Returns Map<filePath, score>
+   * Returns Map<filePath, score> normalized to [0, 1] based on theoretical maximum
    */
   private async hybridSearchSingle(
     query: string,
@@ -148,12 +152,23 @@ export class EmbeddingSearch {
     ]);
 
     // Apply RRF
-    return this.reciprocalRankFusion(
+    const rrfScores = this.reciprocalRankFusion(
       embeddingResults,
       bm25Results,
       embeddingWeight,
       bm25Weight
     );
+
+    // Normalize by theoretical maximum RRF score
+    // Max occurs when both ranks = 1: (embeddingWeight + bm25Weight) / (RRF_K + 1)
+    const maxTheoreticalRRF = (embeddingWeight + bm25Weight) / (RRF_K + 1);
+
+    const normalizedScores = new Map<string, number>();
+    for (const [filePath, score] of rrfScores.entries()) {
+      normalizedScores.set(filePath, score / maxTheoreticalRRF);
+    }
+
+    return normalizedScores;
   }
 
   /**
@@ -186,12 +201,12 @@ export class EmbeddingSearch {
 
       const embeddingRank = embeddingRanks.get(filePath);
       if (embeddingRank !== undefined) {
-        rrfScore += embeddingWeight / (RRF_K + embeddingRank);
+        rrfScore += embeddingWeight * (1 / (RRF_K + embeddingRank));
       }
 
       const bm25Rank = bm25Ranks.get(filePath);
       if (bm25Rank !== undefined) {
-        rrfScore += bm25Weight / (RRF_K + bm25Rank);
+        rrfScore += bm25Weight * (1 / (RRF_K + bm25Rank));
       }
 
       rrfScores.set(filePath, rrfScore);
@@ -302,15 +317,21 @@ export class EmbeddingSearch {
 
     aggregated.sort((a, b) => b.score - a.score);
 
+    // Calculate theoretical maximum considering title/content weights
+    // Max chunk score = titleWeight + contentWeight
+    const maxChunkScore = titleWeight + contentWeight;
     let maxTheoreticalScore = 0;
-    let weight = 1;
+    let weight = maxChunkScore;
     for (let i = 0; i < L; i++) {
       maxTheoreticalScore += weight;
       weight *= this.scoreDecay;
     }
 
-    for (const result of aggregated) {
-      result.score = result.score / maxTheoreticalScore;
+    // Normalize to [0, 1]
+    if (maxTheoreticalScore > 0) {
+      for (const result of aggregated) {
+        result.score = result.score / maxTheoreticalScore;
+      }
     }
 
     return aggregated.slice(0, topK);
@@ -362,18 +383,8 @@ export class EmbeddingSearch {
       });
     }
 
-    // Sort and normalize
+    // Sort by score (already normalized to [0, 1] based on theoretical maximum)
     results.sort((a, b) => b.score - a.score);
-
-    if (results.length > 0) {
-      const maxScore = results[0].score;
-      if (maxScore > 0) {
-        for (const result of results) {
-          result.score = result.score / maxScore;
-          result.topChunk.score = result.topChunk.score / maxScore;
-        }
-      }
-    }
 
     return results.slice(0, topK);
   }

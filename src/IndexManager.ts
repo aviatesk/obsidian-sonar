@@ -789,7 +789,9 @@ export class IndexManager {
   }
 
   async clearBM25Index(): Promise<void> {
+    this.logger.log('IndexManager: Clearing BM25 index...');
     await this.bm25Store.clearAll();
+    this.logger.log('IndexManager: BM25 index cleared');
   }
 
   async rebuildBM25Index(
@@ -918,5 +920,58 @@ export class IndexManager {
 
   async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {
     return await this.vectorStore.getStats();
+  }
+
+  async getIndexableFilesStats(): Promise<{
+    fileCount: number;
+    totalTokens: number;
+    averageTokens: number;
+    totalCharacters: number;
+    averageCharacters: number;
+    totalSize: number;
+    averageSize: number;
+  }> {
+    const files = getFilesToIndex(this.vault, this.configManager);
+    const fileCount = files.length;
+
+    if (fileCount === 0) {
+      return {
+        fileCount: 0,
+        totalTokens: 0,
+        averageTokens: 0,
+        totalCharacters: 0,
+        averageCharacters: 0,
+        totalSize: 0,
+        averageSize: 0,
+      };
+    }
+
+    let totalTokens = 0;
+    let totalCharacters = 0;
+    let totalSize = 0;
+
+    for (const file of files) {
+      const content = await this.vault.cachedRead(file);
+
+      // Tokenize line by line to avoid hanging on large files
+      const lines = content.split('\n');
+      for (const line of lines) {
+        const lineTokens = await this.getTokenizer().estimateTokens(line);
+        totalTokens += lineTokens;
+      }
+
+      totalCharacters += content.length;
+      totalSize += file.stat.size;
+    }
+
+    return {
+      fileCount,
+      totalTokens,
+      averageTokens: Math.round(totalTokens / fileCount),
+      totalCharacters,
+      averageCharacters: Math.round(totalCharacters / fileCount),
+      totalSize,
+      averageSize: Math.round(totalSize / fileCount),
+    };
   }
 }
