@@ -28,20 +28,19 @@ interface DocumentTokenInfo {
 }
 
 /**
- * Global statistics for BM25 scoring
+ * In-memory index metadata for fast BM25 scoring
+ * Derived from doc-tokens store, refreshed on demand
  */
-interface BM25Stats {
+interface IndexMetadata {
   totalDocuments: number;
   averageDocLength: number;
-  version: number; // Incremented on each update for cache invalidation
+  docLengths: Map<string, number>;
 }
 
 const DB_NAME = 'sonar-bm25-index';
 const DB_VERSION = 1;
 const INVERTED_INDEX_STORE = 'inverted-index';
 const DOC_TOKENS_STORE = 'doc-tokens';
-const STATS_STORE = 'stats';
-const STATS_KEY = 'global-stats';
 
 // BM25 parameters
 const K1 = 1.2;
@@ -51,7 +50,7 @@ export class BM25Store {
   private db!: IDBDatabase;
   private logger: Logger;
   private tokenizer: Tokenizer;
-  private statsCache: BM25Stats | null = null;
+  private metadataCache: IndexMetadata | null = null;
 
   private constructor(db: IDBDatabase, logger: Logger, tokenizer: Tokenizer) {
     this.db = db;
@@ -87,19 +86,62 @@ export class BM25Store {
           db.createObjectStore(DOC_TOKENS_STORE, { keyPath: 'docId' });
         }
 
-        // Create stats store
-        if (!db.objectStoreNames.contains(STATS_STORE)) {
-          db.createObjectStore(STATS_STORE);
-        }
-
         logger.log('BM25 store schema created');
       };
     });
 
     const store = new BM25Store(db, logger, tokenizer);
+
+    // Build initial in-memory index metadata
+    await store.refreshMetaDataCache();
+
     logger.log('BM25 store initialized');
 
     return store;
+  }
+
+  /**
+   * Refreshes index metadata from doc-tokens store
+   * Called on initialization and after cache invalidation
+   */
+  private async refreshMetaDataCache(): Promise<void> {
+    const allDocs = await this.getAllDocumentTokenInfos();
+
+    const docLengths = new Map<string, number>();
+    let totalLength = 0;
+
+    for (const doc of allDocs) {
+      docLengths.set(doc.docId, doc.length);
+      totalLength += doc.length;
+    }
+
+    this.metadataCache = {
+      totalDocuments: allDocs.length,
+      averageDocLength: allDocs.length > 0 ? totalLength / allDocs.length : 0,
+      docLengths,
+    };
+
+    this.logger.log(
+      `BM25Store: Index metadata refreshed (${allDocs.length} documents)`
+    );
+  }
+
+  /**
+   * Invalidates in-memory cache
+   * Must be called after any write operation to doc-tokens store
+   */
+  private clearMetaDataCache(): void {
+    this.metadataCache = null;
+  }
+
+  /**
+   * Gets index metadata, refreshing cache if needed
+   */
+  private async getMetaData(): Promise<IndexMetadata> {
+    if (!this.metadataCache) {
+      await this.refreshMetaDataCache();
+    }
+    return this.metadataCache!;
   }
 
   /**
@@ -117,7 +159,6 @@ export class BM25Store {
 
     // Phase 1: Read all data we need
     const existingDoc = await this.getDocumentTokenInfo(docId);
-    const stats = await this.getStats();
 
     // Collect all tokens we need to fetch
     const tokensToFetch = new Set([...termFreq.keys()]);
@@ -129,43 +170,14 @@ export class BM25Store {
     const invertedEntries =
       await this.bulkGetInvertedIndexEntries(tokensToFetch);
 
-    // Compute new stats
-    let newStats: BM25Stats;
-    if (existingDoc) {
-      // Replacing existing document
-      const newTotalDocs = stats.totalDocuments;
-      const newAvgDocLength =
-        (stats.averageDocLength * stats.totalDocuments -
-          existingDoc.length +
-          tokens.length) /
-        newTotalDocs;
-      newStats = {
-        totalDocuments: newTotalDocs,
-        averageDocLength: newAvgDocLength,
-        version: stats.version + 1,
-      };
-    } else {
-      // Adding new document
-      const newTotalDocs = stats.totalDocuments + 1;
-      const newAvgDocLength =
-        (stats.averageDocLength * stats.totalDocuments + tokens.length) /
-        newTotalDocs;
-      newStats = {
-        totalDocuments: newTotalDocs,
-        averageDocLength: newAvgDocLength,
-        version: stats.version + 1,
-      };
-    }
-
     // Phase 2: Write transaction - all synchronous
     const transaction = this.db.transaction(
-      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE, STATS_STORE],
+      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE],
       'readwrite'
     );
 
     const docTokensStore = transaction.objectStore(DOC_TOKENS_STORE);
     const invertedIndexStore = transaction.objectStore(INVERTED_INDEX_STORE);
-    const statsStore = transaction.objectStore(STATS_STORE);
 
     // Remove old document if exists
     if (existingDoc) {
@@ -207,12 +219,9 @@ export class BM25Store {
       }
     }
 
-    // Update stats
-    statsStore.put(newStats, STATS_KEY);
-
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
-        this.invalidateStatsCache();
+        this.clearMetaDataCache();
         resolve();
       };
       transaction.onerror = () => reject(transaction.error);
@@ -261,43 +270,17 @@ export class BM25Store {
       }
     }
 
-    const stats = await this.getStats();
     const invertedEntries =
       await this.bulkGetInvertedIndexEntries(allTokensToFetch);
 
-    // Compute new stats
-    let totalLengthChange = 0;
-    let docsAddedCount = 0;
-
-    for (let i = 0; i < documents.length; i++) {
-      const existingDoc = existingDocs[i];
-      if (existingDoc) {
-        totalLengthChange += docsTokenInfo[i].length - existingDoc.length;
-      } else {
-        totalLengthChange += docsTokenInfo[i].length;
-        docsAddedCount++;
-      }
-    }
-
-    const newTotalDocs = stats.totalDocuments + docsAddedCount;
-    const newAvgDocLength =
-      (stats.averageDocLength * stats.totalDocuments + totalLengthChange) /
-      newTotalDocs;
-    const newStats: BM25Stats = {
-      totalDocuments: newTotalDocs,
-      averageDocLength: newAvgDocLength,
-      version: stats.version + 1,
-    };
-
     // Phase 3: Write transaction - all synchronous
     const transaction = this.db.transaction(
-      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE, STATS_STORE],
+      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE],
       'readwrite'
     );
 
     const docTokensStore = transaction.objectStore(DOC_TOKENS_STORE);
     const invertedIndexStore = transaction.objectStore(INVERTED_INDEX_STORE);
-    const statsStore = transaction.objectStore(STATS_STORE);
 
     // Process each document
     for (let i = 0; i < documents.length; i++) {
@@ -351,15 +334,10 @@ export class BM25Store {
       }
     }
 
-    // Update stats
-    statsStore.put(newStats, STATS_KEY);
-
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
-        this.invalidateStatsCache();
-        this.logger.log(
-          `BM25Store: Batch indexing complete. Total documents: ${newStats.totalDocuments}`
-        );
+        this.clearMetaDataCache();
+        this.logger.log(`BM25Store: Batch indexing complete`);
         resolve();
       };
       transaction.onerror = () => reject(transaction.error);
@@ -376,35 +354,19 @@ export class BM25Store {
       return;
     }
 
-    const stats = await this.getStats();
-
     // Fetch all inverted index entries for this document's tokens using bulk read
     const uniqueTokens = new Set(existingDoc.tokens);
     const invertedEntries =
       await this.bulkGetInvertedIndexEntries(uniqueTokens);
 
-    // Compute new stats
-    const newTotalDocs = Math.max(0, stats.totalDocuments - 1);
-    const newAvgDocLength =
-      newTotalDocs === 0
-        ? 0
-        : (stats.averageDocLength * stats.totalDocuments - existingDoc.length) /
-          newTotalDocs;
-    const newStats: BM25Stats = {
-      totalDocuments: newTotalDocs,
-      averageDocLength: newAvgDocLength,
-      version: stats.version + 1,
-    };
-
     // Phase 2: Write transaction - all synchronous
     const transaction = this.db.transaction(
-      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE, STATS_STORE],
+      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE],
       'readwrite'
     );
 
     const docTokensStore = transaction.objectStore(DOC_TOKENS_STORE);
     const invertedIndexStore = transaction.objectStore(INVERTED_INDEX_STORE);
-    const statsStore = transaction.objectStore(STATS_STORE);
 
     // Remove from inverted index
     for (const token of uniqueTokens) {
@@ -423,12 +385,9 @@ export class BM25Store {
     // Remove document tokens
     docTokensStore.delete(docId);
 
-    // Update stats
-    statsStore.put(newStats, STATS_KEY);
-
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
-        this.invalidateStatsCache();
+        this.clearMetaDataCache();
         resolve();
       };
       transaction.onerror = () => reject(transaction.error);
@@ -481,8 +440,6 @@ export class BM25Store {
       `BM25Store: Found ${docsToRemove.length} documents to remove`
     );
 
-    const stats = await this.getStats();
-
     // Collect all tokens from documents to remove
     const allTokens = new Set<string>();
     for (const doc of docsToRemove) {
@@ -492,35 +449,14 @@ export class BM25Store {
     // Fetch all inverted index entries using bulk read
     const invertedEntries = await this.bulkGetInvertedIndexEntries(allTokens);
 
-    // Compute new stats
-    const totalLengthRemoved = docsToRemove.reduce(
-      (sum, doc) => sum + doc.length,
-      0
-    );
-    const newTotalDocs = Math.max(
-      0,
-      stats.totalDocuments - docsToRemove.length
-    );
-    const newAvgDocLength =
-      newTotalDocs === 0
-        ? 0
-        : (stats.averageDocLength * stats.totalDocuments - totalLengthRemoved) /
-          newTotalDocs;
-    const newStats: BM25Stats = {
-      totalDocuments: newTotalDocs,
-      averageDocLength: newAvgDocLength,
-      version: stats.version + 1,
-    };
-
     // Phase 2: Write transaction - all synchronous
     const transaction = this.db.transaction(
-      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE, STATS_STORE],
+      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE],
       'readwrite'
     );
 
     const docTokensStore = transaction.objectStore(DOC_TOKENS_STORE);
     const invertedIndexStore = transaction.objectStore(INVERTED_INDEX_STORE);
-    const statsStore = transaction.objectStore(STATS_STORE);
 
     // Process each document to remove
     for (const doc of docsToRemove) {
@@ -540,14 +476,11 @@ export class BM25Store {
       docTokensStore.delete(doc.docId);
     }
 
-    // Update stats
-    statsStore.put(newStats, STATS_KEY);
-
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
-        this.invalidateStatsCache();
+        this.clearMetaDataCache();
         this.logger.log(
-          `BM25Store: Batch removal complete. Removed ${docsToRemove.length} documents. New total: ${newStats.totalDocuments}`
+          `BM25Store: Batch removal complete. Removed ${docsToRemove.length} documents`
         );
         resolve();
       };
@@ -563,9 +496,9 @@ export class BM25Store {
     topK: number
   ): Promise<Array<{ docId: string; score: number }>> {
     const queryTokens = await this.tokenize(query);
-    const stats = await this.getStats();
+    const metadata = await this.getMetaData();
 
-    if (stats.totalDocuments === 0) {
+    if (metadata.totalDocuments === 0) {
       return [];
     }
 
@@ -580,26 +513,26 @@ export class BM25Store {
         // Calculate IDF
         const idf = this.calculateIDF(
           entry.documentFrequency,
-          stats.totalDocuments
+          metadata.totalDocuments
         );
 
         return { token, idf, postings: entry.postings };
       })
     );
 
-    // Aggregate scores by document
+    // Aggregate scores by document using cached doc lengths
     const docScores = new Map<string, number>();
 
     for (const data of tokenData) {
       if (!data) continue;
 
       for (const posting of data.postings) {
-        const docLength = await this.getDocumentLength(posting.docId);
+        const docLength = metadata.docLengths.get(posting.docId) || 0;
         const score = this.calculateBM25Score(
           data.idf,
           posting.frequency,
           docLength,
-          stats.averageDocLength
+          metadata.averageDocLength
         );
 
         docScores.set(
@@ -709,51 +642,20 @@ export class BM25Store {
     });
   }
 
-  private async getDocumentLength(docId: string): Promise<number> {
-    const doc = await this.getDocumentTokenInfo(docId);
-    return doc?.length || 0;
-  }
-
-  private async getStats(): Promise<BM25Stats> {
-    if (this.statsCache) {
-      return this.statsCache;
-    }
-
-    const transaction = this.db.transaction([STATS_STORE], 'readonly');
-    const store = transaction.objectStore(STATS_STORE);
-
-    return new Promise((resolve, reject) => {
-      const req = store.get(STATS_KEY);
-      req.onsuccess = () => {
-        const stats =
-          req.result ||
-          ({ totalDocuments: 0, averageDocLength: 0, version: 0 } as BM25Stats);
-        this.statsCache = stats;
-        resolve(stats);
-      };
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  private invalidateStatsCache(): void {
-    this.statsCache = null;
-  }
-
   async clearAll(): Promise<void> {
     this.logger.log('BM25Store: Clearing all data...');
 
     const transaction = this.db.transaction(
-      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE, STATS_STORE],
+      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE],
       'readwrite'
     );
 
     transaction.objectStore(INVERTED_INDEX_STORE).clear();
     transaction.objectStore(DOC_TOKENS_STORE).clear();
-    transaction.objectStore(STATS_STORE).clear();
 
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
-        this.invalidateStatsCache();
+        this.clearMetaDataCache();
         this.logger.log('BM25Store: All data cleared');
         resolve();
       };
