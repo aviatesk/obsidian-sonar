@@ -85,10 +85,6 @@ export class SettingTab extends PluginSettingTab {
                 await this.plugin.indexManager.clearIndex();
                 new Notice('Index cleared');
                 await this.updateStats();
-                // Reload indexed files in IndexManager after clearing
-                if (this.plugin.indexManager) {
-                  await this.plugin.indexManager.reloadIndexedFiles();
-                }
               } else {
                 new Notice('Semantic search not initialized');
               }

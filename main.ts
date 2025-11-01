@@ -13,6 +13,7 @@ import { IndexManager } from './src/IndexManager';
 import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
 import { getIndexableFilesCount } from 'src/fileFilters';
+import { MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
 import { OllamaClient } from './src/OllamaClient';
 export default class SonarPlugin extends Plugin {
@@ -22,6 +23,7 @@ export default class SonarPlugin extends Plugin {
   bm25Store: BM25Store | null = null;
   bm25Search: BM25Search | null = null;
   indexManager: IndexManager | null = null;
+  metadataStore: MetadataStore | null = null;
   embeddingStore: EmbeddingStore | null = null;
   ollamaClient: OllamaClient | null = null;
   tokenizer: Tokenizer | null = null;
@@ -65,63 +67,53 @@ export default class SonarPlugin extends Plugin {
     }
 
     const ollamaUrl = this.configManager.get('ollamaUrl');
-
     this.ollamaClient = new OllamaClient({
       ollamaUrl,
       model: embeddingModel,
     });
-
     try {
       await this.ollamaClient.checkModel();
     } catch {
       new Notice('Failed to connect to Ollama - check console for details');
       return;
     }
-
     this.configManager
       .getLogger()
       .log(`Ollama initialized with model: ${embeddingModel}`);
 
-    let wasUpgraded = false;
     try {
-      const result = await EmbeddingStore.initialize(
+      this.metadataStore = await MetadataStore.initialize(
         this.configManager.getLogger()
       );
-      this.embeddingStore = result.store;
-      wasUpgraded = result.wasUpgraded;
     } catch {
-      new Notice('Failed to initialize vector store - check console');
+      new Notice('Failed to initialize metadata store - check console');
       return;
     }
+    this.configManager.getLogger().log('Metadata store initialized');
 
-    if (wasUpgraded) {
-      const frag = document.createDocumentFragment();
-      const container = frag.createEl('div');
-      container.createEl('div', {
-        text: 'Sonar: Database schema updated. Index cleared.',
-      });
-      const buttonContainer = container.createEl('div', {
-        cls: 'notice-button-container',
-      });
-      buttonContainer.style.marginTop = '8px';
-      const rebuildButton = buttonContainer.createEl('button', {
-        text: 'Rebuild Index',
-      });
-      rebuildButton.addEventListener('click', () => {
-        this.indexManager?.rebuildIndex();
-      });
-      new Notice(frag, 0);
+    const db = this.metadataStore.getDB();
+
+    try {
+      this.embeddingStore = await EmbeddingStore.initialize(
+        db,
+        this.configManager.getLogger()
+      );
+    } catch (error) {
+      this.configManager
+        .getLogger()
+        .error(`Failed to initialize embedding store: ${error}`);
+      new Notice('Failed to initialize embedding store - check console');
+      return;
     }
-
-    this.configManager.getLogger().log('Vector store initialized');
+    this.configManager.getLogger().log('Embedding store initialized');
 
     try {
       // Use the same tokenizer as embedding model for BM25
       this.bm25Store = await BM25Store.initialize(
+        db,
         this.configManager.getLogger(),
         this.tokenizer
       );
-      this.configManager.getLogger().log('BM25 store initialized');
     } catch (error) {
       this.configManager
         .getLogger()
@@ -129,13 +121,15 @@ export default class SonarPlugin extends Plugin {
       new Notice('Failed to initialize BM25 store - check console');
       return;
     }
+    this.configManager.getLogger().log('BM25 store initialized');
 
     // Initialize BM25 search
-    this.bm25Search = new BM25Search(this.bm25Store, this.embeddingStore);
+    this.bm25Search = new BM25Search(this.bm25Store, this.metadataStore);
     this.configManager.getLogger().log('BM25 search initialized');
 
     // Initialize embedding search with BM25 for hybrid functionality
     this.embeddingSearch = new EmbeddingSearch(
+      this.metadataStore,
       this.embeddingStore,
       this.ollamaClient,
       this.configManager.get('scoreDecay'),
@@ -146,6 +140,7 @@ export default class SonarPlugin extends Plugin {
       .log('Embedding search with hybrid support initialized');
 
     this.indexManager = new IndexManager(
+      this.metadataStore,
       this.embeddingStore,
       this.bm25Store,
       this.ollamaClient,
@@ -179,7 +174,7 @@ export default class SonarPlugin extends Plugin {
   }
 
   private isInitialized(): boolean {
-    return this.embeddingSearch !== null && this.indexManager !== null;
+    return this.indexManager !== null;
   }
 
   private registerViews(embeddingSearch: EmbeddingSearch): void {
@@ -208,7 +203,6 @@ export default class SonarPlugin extends Plugin {
   }
 
   private registerCommands(): void {
-    // Rebuild entire index from scratch
     this.addCommand({
       id: 'rebuild-index',
       name: 'Rebuild entire search index',
@@ -227,7 +221,6 @@ export default class SonarPlugin extends Plugin {
       },
     });
 
-    // Index current file
     this.addCommand({
       id: 'index-current-file',
       name: 'Index current file',
@@ -245,7 +238,6 @@ export default class SonarPlugin extends Plugin {
       },
     });
 
-    // Open related notes view
     this.addCommand({
       id: 'open-related-notes',
       name: 'Open related notes view',
@@ -254,7 +246,6 @@ export default class SonarPlugin extends Plugin {
       },
     });
 
-    // Semantic search
     this.addCommand({
       id: 'semantic-search-notes',
       name: 'Semantic search notes',
@@ -263,7 +254,6 @@ export default class SonarPlugin extends Plugin {
       },
     });
 
-    // Sync index with current vault state
     this.addCommand({
       id: 'sync-index',
       name: 'Sync search index with vault',
@@ -273,51 +263,6 @@ export default class SonarPlugin extends Plugin {
           return;
         }
         await this.indexManager!.syncIndex();
-      },
-    });
-
-    // BM25-specific commands
-    this.addCommand({
-      id: 'rebuild-bm25-index',
-      name: 'Rebuild BM25 full-text index',
-      callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
-        const startTime = Date.now();
-        await this.indexManager!.rebuildBM25Index((current, total) => {
-          this.updateStatusBar(`Rebuilding BM25: ${current}/${total}`);
-        });
-        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-        new Notice(`BM25 index rebuilt in ${duration}s`);
-        await this.updateStatusBarWithFileCount();
-      },
-    });
-
-    this.addCommand({
-      id: 'sync-bm25-index',
-      name: 'Sync BM25 full-text index',
-      callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
-        await this.indexManager!.syncBM25Index();
-        new Notice('BM25 index synced');
-      },
-    });
-
-    this.addCommand({
-      id: 'clear-bm25-index',
-      name: 'Clear BM25 full-text index',
-      callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
-        await this.indexManager!.clearBM25Index();
-        new Notice('BM25 index cleared');
       },
     });
 
@@ -468,11 +413,8 @@ export default class SonarPlugin extends Plugin {
     if (this.indexManager) {
       this.indexManager.cleanup();
     }
-    if (this.embeddingStore) {
-      await this.embeddingStore.close();
-    }
-    if (this.bm25Store) {
-      await this.bm25Store.close();
+    if (this.metadataStore) {
+      await this.metadataStore.close();
     }
   }
 }

@@ -1,4 +1,5 @@
-import { EmbeddingStore, type DocumentMetadata } from './EmbeddingStore';
+import { EmbeddingStore } from './EmbeddingStore';
+import { MetadataStore, type DocumentMetadata } from './MetadataStore';
 import { OllamaClient } from './OllamaClient';
 import type { BM25Search } from './BM25Search';
 
@@ -15,6 +16,14 @@ export interface SearchResult {
   topChunk: ChunkSearchResult;
   chunkCount: number;
   fileSize: number;
+}
+
+interface CombinedDocument {
+  id: string;
+  content: string;
+  embedding: number[];
+  titleEmbedding: number[];
+  metadata: DocumentMetadata;
 }
 
 export interface SearchOptions {
@@ -61,11 +70,40 @@ const RRF_K = 60;
  */
 export class EmbeddingSearch {
   constructor(
+    private metadataStore: MetadataStore,
     private embeddingStore: EmbeddingStore,
     private ollamaClient: OllamaClient,
     private scoreDecay: number = 0.1,
     private bm25Search: BM25Search
   ) {}
+
+  /**
+   * Combines metadata and embeddings into a unified view for search
+   */
+  private async getCombinedDocuments(): Promise<CombinedDocument[]> {
+    const [metadata, embeddings] = await Promise.all([
+      this.metadataStore.getAllDocuments(),
+      this.embeddingStore.getAllEmbeddings(),
+    ]);
+
+    const embeddingMap = new Map(embeddings.map(e => [e.id, e]));
+    const combined: CombinedDocument[] = [];
+
+    for (const meta of metadata) {
+      const emb = embeddingMap.get(meta.id);
+      if (emb) {
+        combined.push({
+          id: meta.id,
+          content: meta.content,
+          embedding: emb.embedding,
+          titleEmbedding: emb.titleEmbedding,
+          metadata: meta,
+        });
+      }
+    }
+
+    return combined;
+  }
 
   setScoreDecay(value: number) {
     this.scoreDecay = value;
@@ -260,7 +298,7 @@ export class EmbeddingSearch {
     const queryEmbeddings = await this.ollamaClient.getEmbeddings([query]);
     const queryEmbedding = queryEmbeddings[0];
 
-    const documents = await this.embeddingStore.getAllDocuments();
+    const documents = await this.getCombinedDocuments();
 
     let filteredDocuments = documents;
     if (options?.excludeFilePath) {
@@ -349,7 +387,7 @@ export class EmbeddingSearch {
     topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    const documents = await this.embeddingStore.getAllDocuments();
+    const documents = await this.getCombinedDocuments();
 
     let filteredDocuments = documents;
     if (options?.excludeFilePath) {
@@ -391,10 +429,5 @@ export class EmbeddingSearch {
     results.sort((a, b) => b.score - a.score);
 
     return results.slice(0, topK);
-  }
-
-  async close(): Promise<void> {
-    await this.embeddingStore.close();
-    await this.bm25Search.close();
   }
 }

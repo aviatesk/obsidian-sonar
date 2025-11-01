@@ -1,5 +1,5 @@
 import { BM25Store } from './BM25Store';
-import { EmbeddingStore } from './EmbeddingStore';
+import { MetadataStore } from './MetadataStore';
 import type { SearchResult } from './EmbeddingSearch';
 
 /**
@@ -10,7 +10,7 @@ import type { SearchResult } from './EmbeddingSearch';
 export class BM25Search {
   constructor(
     private bm25Store: BM25Store,
-    private embeddingStore: EmbeddingStore
+    private metadataStore: MetadataStore
   ) {}
 
   /**
@@ -84,11 +84,11 @@ export class BM25Search {
       return [];
     }
 
-    const allDocuments = await this.embeddingStore.getAllDocuments();
+    const allDocuments = await this.metadataStore.getAllDocuments();
     const docsByFilePath = new Map<string, typeof allDocuments>();
 
     for (const doc of allDocuments) {
-      const filePath = doc.metadata.filePath;
+      const filePath = doc.filePath;
       if (!docsByFilePath.has(filePath)) {
         docsByFilePath.set(filePath, []);
       }
@@ -106,15 +106,15 @@ export class BM25Search {
 
       searchResults.push({
         filePath,
-        title: topDoc.metadata.title || filePath,
+        title: topDoc.title || filePath,
         score,
         topChunk: {
           content: topDoc.content,
           score,
-          metadata: topDoc.metadata,
+          metadata: topDoc,
         },
         chunkCount: fileDocs.length,
-        fileSize: topDoc.metadata.size,
+        fileSize: topDoc.size,
       });
     }
 
@@ -143,9 +143,5 @@ export class BM25Search {
   private extractFilePathFromChunkId(chunkId: string): string {
     const lastHashIndex = chunkId.lastIndexOf('#');
     return chunkId.substring(0, lastHashIndex);
-  }
-
-  async close(): Promise<void> {
-    await this.bm25Store.close();
   }
 }

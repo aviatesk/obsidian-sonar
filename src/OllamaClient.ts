@@ -5,7 +5,6 @@ export interface OllamaConfig {
   model?: string;
 }
 
-// Shared Ollama client for both CLI and Obsidian plugin
 export class OllamaClient {
   private ollama: Ollama;
   public readonly model: string;
@@ -14,8 +13,6 @@ export class OllamaClient {
   constructor(config: OllamaConfig = {}) {
     this.ollamaUrl = config.ollamaUrl || 'http://localhost:11434';
     this.model = config.model || 'bge-m3:latest';
-
-    // Initialize Ollama client with host URL
     this.ollama = new Ollama({
       host: this.ollamaUrl,
     });
@@ -29,7 +26,6 @@ export class OllamaClient {
       });
       return true;
     } catch (error: any) {
-      // If model doesn't exist, try to pull it
       if (error.message?.includes('not found')) {
         throw new Error(
           `Model ${this.model} not found. Run: ollama pull ${this.model}`
@@ -41,7 +37,6 @@ export class OllamaClient {
     }
   }
 
-  // Get embeddings using Ollama package
   async getEmbeddings(texts: string[]): Promise<number[][]> {
     try {
       // Ollama's embed API accepts single or multiple inputs
@@ -49,12 +44,10 @@ export class OllamaClient {
         model: this.model,
         input: texts,
       });
-
       // The response always contains embeddings array for batch input
       if (response.embeddings) {
         return response.embeddings;
       }
-
       throw new Error('No embeddings in response');
     } catch (error: any) {
       throw new Error(`Batch embedding failed: ${error.message}`);
@@ -73,26 +66,6 @@ export class OllamaClient {
       return response.response;
     } catch (error: any) {
       throw new Error(`Failed to generate response: ${error.message}`);
-    }
-  }
-
-  // Chat completion with context (useful for conversational RAG)
-  async chat(
-    messages: Array<{
-      role: 'user' | 'assistant' | 'system';
-      content: string;
-    }>
-  ): Promise<string> {
-    try {
-      const response = await this.ollama.chat({
-        model: this.model,
-        messages,
-        stream: false,
-      });
-
-      return response.message.content;
-    } catch (error: any) {
-      throw new Error(`Failed to chat: ${error.message}`);
     }
   }
 }
