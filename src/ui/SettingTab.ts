@@ -271,13 +271,7 @@ export class SettingTab extends PluginSettingTab {
           .onChange(async value => {
             await this.configManager.set('scoreDecay', value);
             if (this.plugin.embeddingSearch) {
-              this.plugin.embeddingSearch = new (
-                await import('../EmbeddingSearch')
-              ).EmbeddingSearch(
-                this.plugin.vectorStore!,
-                this.plugin.ollamaClient!,
-                value
-              );
+              this.plugin.embeddingSearch.setScoreDecay(value);
             }
           })
       );

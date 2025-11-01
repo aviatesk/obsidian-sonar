@@ -1,5 +1,7 @@
 import { Notice, Plugin, WorkspaceLeaf, debounce } from 'obsidian';
 import { EmbeddingSearch } from './src/EmbeddingSearch';
+import { BM25Store } from './src/BM25Store';
+import { BM25Search } from './src/BM25Search';
 import { DEFAULT_SETTINGS } from './src/config';
 import {
   RelatedNotesView,
@@ -17,6 +19,8 @@ export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
   embeddingSearch: EmbeddingSearch | null = null;
+  bm25Store: BM25Store | null = null;
+  bm25Search: BM25Search | null = null;
   indexManager: IndexManager | null = null;
   vectorStore: VectorStore | null = null;
   ollamaClient: OllamaClient | null = null;
@@ -111,15 +115,39 @@ export default class SonarPlugin extends Plugin {
 
     this.configManager.getLogger().log('Vector store initialized');
 
+    try {
+      // Use the same tokenizer as embedding model for BM25
+      this.bm25Store = await BM25Store.initialize(
+        this.configManager.getLogger(),
+        this.tokenizer
+      );
+      this.configManager.getLogger().log('BM25 store initialized');
+    } catch (error) {
+      this.configManager
+        .getLogger()
+        .error(`Failed to initialize BM25 store: ${error}`);
+      new Notice('Failed to initialize BM25 store - check console');
+      return;
+    }
+
+    // Initialize BM25 search
+    this.bm25Search = new BM25Search(this.bm25Store, this.vectorStore);
+    this.configManager.getLogger().log('BM25 search initialized');
+
+    // Initialize embedding search with BM25 for hybrid functionality
     this.embeddingSearch = new EmbeddingSearch(
       this.vectorStore,
       this.ollamaClient,
-      this.configManager.get('scoreDecay')
+      this.configManager.get('scoreDecay'),
+      this.bm25Search
     );
-    this.configManager.getLogger().log('Semantic search system initialized');
+    this.configManager
+      .getLogger()
+      .log('Embedding search with hybrid support initialized');
 
     this.indexManager = new IndexManager(
       this.vectorStore,
+      this.bm25Store,
       this.ollamaClient,
       this.app.vault,
       this.app.workspace,
@@ -247,6 +275,106 @@ export default class SonarPlugin extends Plugin {
         await this.indexManager!.syncIndex();
       },
     });
+
+    // BM25-specific commands
+    this.addCommand({
+      id: 'rebuild-bm25-index',
+      name: 'Rebuild BM25 full-text index',
+      callback: async () => {
+        if (!this.isInitialized()) {
+          new Notice('Sonar is still initializing. Please wait...');
+          return;
+        }
+        const startTime = Date.now();
+        await this.indexManager!.rebuildBM25Index((current, total) => {
+          this.updateStatusBar(`Rebuilding BM25: ${current}/${total}`);
+        });
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        new Notice(`BM25 index rebuilt in ${duration}s`);
+        await this.updateStatusBarWithFileCount();
+      },
+    });
+
+    this.addCommand({
+      id: 'sync-bm25-index',
+      name: 'Sync BM25 full-text index',
+      callback: async () => {
+        if (!this.isInitialized()) {
+          new Notice('Sonar is still initializing. Please wait...');
+          return;
+        }
+        await this.indexManager!.syncBM25Index();
+        new Notice('BM25 index synced');
+      },
+    });
+
+    this.addCommand({
+      id: 'clear-bm25-index',
+      name: 'Clear BM25 full-text index',
+      callback: async () => {
+        if (!this.isInitialized()) {
+          new Notice('Sonar is still initializing. Please wait...');
+          return;
+        }
+        await this.indexManager!.clearBM25Index();
+        new Notice('BM25 index cleared');
+      },
+    });
+
+    this.addCommand({
+      id: 'show-indexable-files-stats',
+      name: 'Show indexable files statistics',
+      callback: async () => {
+        if (!this.isInitialized()) {
+          new Notice('Sonar is still initializing. Please wait...');
+          return;
+        }
+
+        const startTime = Date.now();
+        this.updateStatusBar('Calculating statistics...');
+
+        try {
+          const stats = await this.indexManager!.getIndexableFilesStats();
+          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+
+          const message = [
+            `Indexable Files Statistics (calculated in ${duration}s):`,
+            ``,
+            `Files: ${stats.fileCount.toLocaleString()}`,
+            ``,
+            `Tokens:`,
+            `  Total: ${stats.totalTokens.toLocaleString()}`,
+            `  Average: ${stats.averageTokens.toLocaleString()}`,
+            ``,
+            `Characters:`,
+            `  Total: ${stats.totalCharacters.toLocaleString()}`,
+            `  Average: ${stats.averageCharacters.toLocaleString()}`,
+            ``,
+            `File Size:`,
+            `  Total: ${this.formatBytes(stats.totalSize)}`,
+            `  Average: ${this.formatBytes(stats.averageSize)}`,
+          ].join('\n');
+
+          this.configManager.getLogger().log(message);
+          new Notice(message, 0);
+        } catch (error) {
+          this.configManager
+            .getLogger()
+            .error(`Failed to calculate statistics: ${error}`);
+          new Notice('Failed to calculate statistics - check console');
+        } finally {
+          await this.updateStatusBarWithFileCount();
+        }
+      },
+    });
+  }
+
+  private formatBytes(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${Math.round((bytes / Math.pow(k, i)) * 100) / 100} ${sizes[i]}`;
   }
 
   async activateRelatedNotesView() {
@@ -342,6 +470,9 @@ export default class SonarPlugin extends Plugin {
     }
     if (this.vectorStore) {
       await this.vectorStore.close();
+    }
+    if (this.bm25Store) {
+      await this.bm25Store.close();
     }
   }
 }
