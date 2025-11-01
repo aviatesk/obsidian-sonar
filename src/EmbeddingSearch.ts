@@ -64,8 +64,12 @@ export class EmbeddingSearch {
     private vectorStore: VectorStore,
     private ollamaClient: OllamaClient,
     private scoreDecay: number = 0.1,
-    private bm25Search: BM25Search | null = null
+    private bm25Search: BM25Search
   ) {}
+
+  setScoreDecay(value: number) {
+    this.scoreDecay = value;
+  }
 
   async search(
     query: string,
@@ -78,8 +82,8 @@ export class EmbeddingSearch {
     const bm25Weight = options?.bm25Weight ?? 0.4;
 
     // If no BM25 or either weight is 0, use embedding-only search
-    if (!this.bm25Search || embeddingWeight === 0 || bm25Weight === 0) {
-      return this.embeddingOnlySearch(query, topK, options);
+    if (embeddingWeight === 0 || bm25Weight === 0) {
+      return this.embeddingSearch(query, topK, options);
     }
 
     // Hybrid search: combine embedding and BM25 with RRF
@@ -147,8 +151,8 @@ export class EmbeddingSearch {
         ? this.embeddingSearchTitle(query, topK * 2, options)
         : this.embeddingSearchContent(query, topK * 2, options),
       type === 'title'
-        ? this.bm25Search!.searchTitle(query, topK * 2)
-        : this.bm25Search!.searchContent(query, topK * 2),
+        ? this.bm25Search.searchTitle(query, topK * 2)
+        : this.bm25Search.searchContent(query, topK * 2),
     ]);
 
     // Apply RRF
@@ -223,7 +227,7 @@ export class EmbeddingSearch {
     topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    return this.embeddingOnlySearch(query, topK, {
+    return this.embeddingSearch(query, topK, {
       ...options,
       titleWeight: 1,
       contentWeight: 0,
@@ -238,7 +242,7 @@ export class EmbeddingSearch {
     topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    return this.embeddingOnlySearch(query, topK, {
+    return this.embeddingSearch(query, topK, {
       ...options,
       titleWeight: 0,
       contentWeight: 1,
@@ -248,7 +252,7 @@ export class EmbeddingSearch {
   /**
    * Original embedding-only search logic
    */
-  private async embeddingOnlySearch(
+  private async embeddingSearch(
     query: string,
     topK: number,
     options?: SearchOptions
@@ -391,8 +395,6 @@ export class EmbeddingSearch {
 
   async close(): Promise<void> {
     await this.vectorStore.close();
-    if (this.bm25Search) {
-      await this.bm25Search.close();
-    }
+    await this.bm25Search.close();
   }
 }
