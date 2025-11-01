@@ -52,7 +52,6 @@ export class IndexManager {
     workspace: Workspace,
     configManager: ConfigManager,
     getTokenizer: () => Tokenizer,
-    logger: Logger,
     statusUpdateCallback: (status: string) => void,
     onProcessingCompleteCallback: () => void
   ) {
@@ -64,7 +63,7 @@ export class IndexManager {
     this.workspace = workspace;
     this.configManager = configManager;
     this.getTokenizer = getTokenizer;
-    this.logger = logger;
+    this.logger = configManager.getLogger();
     this.statusUpdateCallback = statusUpdateCallback;
     this.onProcessingCompleteCallback = onProcessingCompleteCallback;
 

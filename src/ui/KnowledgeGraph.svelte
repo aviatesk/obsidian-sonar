@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
   import * as d3 from 'd3';
-  import type { SearchResult } from '../EmbeddingSearch';
+  import type { SearchResult } from '../SearchManager';
   import type { App } from 'obsidian';
 
   export let app: App;

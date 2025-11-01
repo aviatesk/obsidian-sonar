@@ -1,6 +1,6 @@
 import { BM25Store } from './BM25Store';
 import { MetadataStore } from './MetadataStore';
-import type { SearchResult } from './EmbeddingSearch';
+import type { SearchResult } from './SearchManager';
 
 /**
  * BM25 full-text search interface

@@ -1,6 +1,6 @@
 export type LogLevel = 'error' | 'warn' | 'log';
 
-export interface CommonConfig {
+export interface ObsidianSettings {
   // Ollama
   ollamaUrl: string;
   embeddingModel: string;
@@ -9,14 +9,14 @@ export interface CommonConfig {
   // Transformer.js
   tokenizerModel: string; // Empty string means auto-detection
 
+  // Search parameters
   maxChunkSize: number;
   chunkOverlap: number;
   maxQueryTokens: number; // Maximum tokens for search queries
   topK: number; // Number of search results to return
   scoreDecay: number; // Decay factor for multi-chunk scoring (0-1)
-}
 
-export interface ObsidianSettings extends CommonConfig {
+  // Obsidian-specific
   indexPath: string;
   debugMode: LogLevel;
   withExtraction: boolean;
@@ -31,7 +31,7 @@ export interface ObsidianSettings extends CommonConfig {
   showKnowledgeGraph: boolean;
 }
 
-export const DEFAULT_COMMON_CONFIG: CommonConfig = {
+export const DEFAULT_SETTINGS: ObsidianSettings = {
   ollamaUrl: 'http://localhost:11434',
   embeddingModel: 'bge-m3:latest',
   summaryModel: 'gemma3n:e4b',
@@ -41,10 +41,6 @@ export const DEFAULT_COMMON_CONFIG: CommonConfig = {
   maxQueryTokens: 128, // tokens for search queries
   topK: 10, // default number of search results
   scoreDecay: 0.1, // small bonus for additional chunks
-};
-
-export const DEFAULT_SETTINGS: ObsidianSettings = {
-  ...DEFAULT_COMMON_CONFIG,
   indexPath: '',
   debugMode: 'error',
   withExtraction: false,

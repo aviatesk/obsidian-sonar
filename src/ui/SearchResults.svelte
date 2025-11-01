@@ -1,6 +1,6 @@
 <script lang="ts">
   import { App, TFile } from 'obsidian';
-  import type { SearchResult } from '../EmbeddingSearch';
+  import type { SearchResult } from '../SearchManager';
   import { MarkdownRenderingManager } from './MarkdownRenderingManager';
   import { onDestroy } from 'svelte';
   import type { Logger } from '../Logger';

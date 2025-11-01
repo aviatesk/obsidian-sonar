@@ -266,9 +266,6 @@ export class SettingTab extends PluginSettingTab {
           .setDynamicTooltip()
           .onChange(async value => {
             await this.configManager.set('scoreDecay', value);
-            if (this.plugin.embeddingSearch) {
-              this.plugin.embeddingSearch.setScoreDecay(value);
-            }
           })
       );
 

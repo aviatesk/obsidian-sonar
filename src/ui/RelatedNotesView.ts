@@ -14,7 +14,7 @@ import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
-import { EmbeddingSearch, type SearchResult } from '../EmbeddingSearch';
+import { SearchManager, type SearchResult } from '../SearchManager';
 import {
   processQuery,
   extractWithLLM,
@@ -38,7 +38,7 @@ interface RelatedNotesState {
 }
 
 export class RelatedNotesView extends ItemView {
-  private embeddingSearch: EmbeddingSearch;
+  private searchManager: SearchManager;
   private configManager: ConfigManager;
   private getTokenizer: () => Tokenizer;
   private logger: Logger;
@@ -63,18 +63,17 @@ export class RelatedNotesView extends ItemView {
 
   constructor(
     leaf: WorkspaceLeaf,
-    embeddingSearch: EmbeddingSearch,
+    searchManager: SearchManager,
     configManager: ConfigManager,
     getTokenizer: () => Tokenizer,
-    logger: Logger,
     registerEditorExt: (ext: Extension) => void,
     registerMdPostProcessor: (processor: MarkdownPostProcessor) => void
   ) {
     super(leaf);
-    this.embeddingSearch = embeddingSearch;
+    this.searchManager = searchManager;
     this.configManager = configManager;
     this.getTokenizer = getTokenizer;
-    this.logger = logger;
+    this.logger = configManager.getLogger();
     this.withExtraction = configManager.get('withExtraction');
     this.registerEditorExt = registerEditorExt;
     this.registerMdPostProcessor = registerMdPostProcessor;
@@ -351,7 +350,7 @@ export class RelatedNotesView extends ItemView {
 
       if (query) {
         const tokenCount = await this.getTokenizer().estimateTokens(query);
-        const searchResults = await this.embeddingSearch.search(
+        const searchResults = await this.searchManager.search(
           query,
           this.configManager.get('topK'),
           {
