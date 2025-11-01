@@ -25,6 +25,7 @@ export interface IndexedDocument {
 }
 
 const STORE_NAME = 'vectors';
+const INDEX_FILE_PATH = 'filePath';
 const DB_NAME = 'sonar-embedding-vectors';
 const DB_VERSION = 2;
 
@@ -69,7 +70,7 @@ export class EmbeddingStore {
           const store = db.createObjectStore(STORE_NAME, {
             keyPath: 'id',
           });
-          store.createIndex('filePath', 'metadata.filePath', {
+          store.createIndex(INDEX_FILE_PATH, 'metadata.filePath', {
             unique: false,
           });
         }
@@ -148,7 +149,7 @@ export class EmbeddingStore {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_NAME], 'readonly');
       const store = transaction.objectStore(STORE_NAME);
-      const index = store.index('filePath');
+      const index = store.index(INDEX_FILE_PATH);
       const request = index.getAll(filePath);
 
       request.onsuccess = () => resolve(request.result);
