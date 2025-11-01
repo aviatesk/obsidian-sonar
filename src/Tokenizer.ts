@@ -84,61 +84,92 @@ export class Tokenizer {
     logger: Logger,
     tokenizerModel?: string
   ): Promise<Tokenizer> {
-    const defaultModel =
-      TOKENIZER_MODEL_MAPPING[
-        DEFAULT_COMMON_CONFIG.embeddingModel.replace(/:[a-zA-Z0-9_-]+$/, '')
-      ];
-    let tokenizer: PreTrainedTokenizer;
-
     if (tokenizerModel) {
-      try {
-        logger.log(`Loading custom tokenizer model: ${tokenizerModel}`);
-        tokenizer = await AutoTokenizer.from_pretrained(tokenizerModel);
-        logger.log(
-          `✅ Successfully loaded custom tokenizer: ${tokenizerModel}`
-        );
-      } catch (error) {
-        logger.error(`Failed to load custom tokenizer: ${tokenizerModel}`);
-        throw error;
-      }
+      logger.log(`Tokenizer: Loading custom model: ${tokenizerModel}`);
+      const tokenizer = await AutoTokenizer.from_pretrained(tokenizerModel);
+      logger.log(
+        `Tokenizer: Successfully loaded custom model: ${tokenizerModel}`
+      );
       return new Tokenizer(tokenizer, logger);
     }
 
-    const cleanModel = model?.replace(/:[a-zA-Z0-9_-]+$/, '') || '';
+    const defaultModel = this.getDefaultModel();
+    const resolvedModelName = this.resolveModelName(model);
+    const modelName = resolvedModelName || defaultModel;
 
-    let modelName = model ? TOKENIZER_MODEL_MAPPING[model] : undefined;
-
-    if (!modelName && cleanModel) {
-      modelName = TOKENIZER_MODEL_MAPPING[cleanModel];
+    if (!resolvedModelName && model) {
+      logger.warn(
+        `Tokenizer: No mapping for '${model}', using default: ${defaultModel}`
+      );
     }
 
-    if (!modelName) {
-      modelName = defaultModel;
-      if (model && cleanModel) {
-        logger.warn(
-          `⚠️ No tokenizer mapping for '${model}', using default: ${defaultModel}`
-        );
-      }
-    }
-
-    try {
-      logger.log(`Loading tokenizer for ${model || 'default'}: ${modelName}`);
-      tokenizer = await AutoTokenizer.from_pretrained(modelName);
-      logger.log(`✅ Successfully loaded tokenizer: ${modelName}`);
-    } catch (error) {
-      logger.error(`Failed to load tokenizer for ${modelName}`);
-      if (modelName !== defaultModel) {
-        logger.warn(
-          `⚠️ Attempting fallback to default tokenizer: ${defaultModel}`
-        );
-        tokenizer = await AutoTokenizer.from_pretrained(defaultModel);
-        logger.log(`✅ Fallback successful: using ${defaultModel}`);
-      } else {
-        throw error;
-      }
-    }
+    const tokenizer = await this.loadTokenizerWithFallback(
+      modelName,
+      defaultModel,
+      model,
+      logger
+    );
 
     return new Tokenizer(tokenizer, logger);
+  }
+
+  private static getDefaultModel(): string {
+    const defaultEmbeddingModel = DEFAULT_COMMON_CONFIG.embeddingModel;
+    const cleanDefaultModel = defaultEmbeddingModel.replace(
+      /:[a-zA-Z0-9_-]+$/,
+      ''
+    );
+    return TOKENIZER_MODEL_MAPPING[cleanDefaultModel];
+  }
+
+  private static resolveModelName(model: string): string | undefined {
+    if (!model) {
+      return undefined;
+    }
+
+    // Try exact match first
+    const exactMatch = TOKENIZER_MODEL_MAPPING[model];
+    if (exactMatch) {
+      return exactMatch;
+    }
+
+    // Try without suffix (e.g., "bge-m3:latest" -> "bge-m3")
+    const cleanModel = model.replace(/:[a-zA-Z0-9_-]+$/, '');
+    const cleanMatch = TOKENIZER_MODEL_MAPPING[cleanModel];
+    if (cleanMatch) {
+      return cleanMatch;
+    }
+
+    return undefined;
+  }
+
+  private static async loadTokenizerWithFallback(
+    modelName: string,
+    defaultModel: string,
+    originalModel: string,
+    logger: Logger
+  ): Promise<PreTrainedTokenizer> {
+    try {
+      logger.log(
+        `Tokenizer: Loading for ${originalModel || 'default'}: ${modelName}`
+      );
+      const tokenizer = await AutoTokenizer.from_pretrained(modelName);
+      logger.log(`Tokenizer: Successfully loaded: ${modelName}`);
+      return tokenizer;
+    } catch (error) {
+      logger.error(`Tokenizer: Failed to load: ${modelName}`);
+
+      // If already using default, rethrow
+      if (modelName === defaultModel) {
+        throw error;
+      }
+
+      // Try fallback to default
+      logger.warn(`Tokenizer: Attempting fallback to default: ${defaultModel}`);
+      const tokenizer = await AutoTokenizer.from_pretrained(defaultModel);
+      logger.log(`Tokenizer: Fallback successful, using ${defaultModel}`);
+      return tokenizer;
+    }
   }
 
   /**
@@ -166,7 +197,7 @@ export class Tokenizer {
       const { input_ids } = await this.tokenizer(text);
       return input_ids.size;
     } catch (error) {
-      this.logger.error(`Failed to tokenize with transformers.js: ${error}`);
+      this.logger.error(`Tokenizer: Failed to tokenize: ${error}`);
       throw error;
     }
   }
@@ -181,37 +212,32 @@ export class Tokenizer {
   async getTokenIds(text: string): Promise<number[]> {
     if (!text) return [];
 
+    let input_ids;
     try {
-      const { input_ids } = await this.tokenizer(text);
-
-      // Get special token IDs for filtering
-      const bosTokenId = this.tokenizer.model?.config?.bos_token_id;
-      const eosTokenId = this.tokenizer.model?.config?.eos_token_id;
-      const padTokenId = this.tokenizer.model?.config?.pad_token_id;
-
-      const tokenIds: number[] = [];
-      for (let i = 0; i < input_ids.size; i++) {
-        const tokenId = input_ids.data[i];
-
-        // Skip special tokens
-        if (
-          tokenId !== bosTokenId &&
-          tokenId !== eosTokenId &&
-          tokenId !== padTokenId
-        ) {
-          tokenIds.push(tokenId);
-        }
-      }
-
-      return tokenIds;
+      ({ input_ids } = await this.tokenizer(text));
     } catch (error) {
-      this.logger.error(`Failed to tokenize with transformers.js: ${error}`);
+      this.logger.error(`Tokenizer: Failed to tokenize: ${error}`);
       throw error;
     }
-  }
 
-  static formatTokenCount(count: number): string {
-    return `${count} tokens`;
+    // Get special token IDs for filtering
+    const bosTokenId = this.tokenizer.model?.config?.bos_token_id;
+    const eosTokenId = this.tokenizer.model?.config?.eos_token_id;
+    const padTokenId = this.tokenizer.model?.config?.pad_token_id;
+
+    const tokenIds: number[] = [];
+    for (let i = 0; i < input_ids.size; i++) {
+      const tokenId = input_ids.data[i];
+      if (
+        tokenId !== bosTokenId &&
+        tokenId !== eosTokenId &&
+        tokenId !== padTokenId
+      ) {
+        tokenIds.push(tokenId);
+      }
+    }
+
+    return tokenIds;
   }
 
   static formatTokenCountShort(count: number): string {

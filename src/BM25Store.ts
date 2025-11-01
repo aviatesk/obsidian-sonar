@@ -252,7 +252,6 @@ export class BM25Store {
         length: tokens.length,
       });
 
-      // Collect all unique tokens
       for (const token of termFreq.keys()) {
         allTokensToFetch.add(token);
       }

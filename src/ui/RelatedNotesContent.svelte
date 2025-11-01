@@ -1,7 +1,6 @@
 <script lang="ts">
   import { App, Notice } from 'obsidian';
   import type { ConfigManager } from '../ConfigManager';
-  import { Tokenizer } from '../Tokenizer';
   import SearchResults from './SearchResults.svelte';
   import KnowledgeGraph from './KnowledgeGraph.svelte';
   import type { Logger } from '../Logger';
@@ -181,7 +180,7 @@
       <div class="current-query">
         <div class="query-header">
           <h4>Search Query</h4>
-          <span class="query-length">{Tokenizer.formatTokenCount(tokenCount)}</span>
+          <span class="query-length">{`${tokenCount} tokens`}</span>
         </div>
         <div class="query-text">
           {query}
