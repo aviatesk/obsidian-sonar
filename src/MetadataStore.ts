@@ -1,0 +1,234 @@
+import type { Logger } from './Logger';
+
+/**
+ * Metadata associated with a document chunk
+ */
+export interface DocumentMetadata {
+  id: string; // Format: filePath#chunkIndex
+  filePath: string;
+  title: string;
+  content: string;
+  headings: string[];
+  mtime: number;
+  size: number;
+  indexedAt: number;
+}
+
+// Database configuration
+export const DB_NAME = 'sonar-db';
+export const DB_VERSION = 1;
+
+// Store names
+export const STORE_METADATA = 'metadata';
+export const STORE_EMBEDDINGS = 'embeddings';
+export const STORE_BM25_INVERTED_INDEX = 'bm25-inverted-index';
+export const STORE_BM25_DOC_TOKENS = 'bm25-doc-tokens';
+
+// Index names
+export const INDEX_FILE_PATH = 'file-path';
+
+export class MetadataStore {
+  private db!: IDBDatabase;
+  private logger: Logger;
+  private metadataCache: Map<string, DocumentMetadata> | null = null;
+
+  private constructor(db: IDBDatabase, logger: Logger) {
+    this.db = db;
+    this.logger = logger;
+  }
+
+  static async initialize(logger: Logger): Promise<MetadataStore> {
+    return new Promise((resolve, reject) => {
+      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onerror = () => {
+        reject(new Error('Failed to open IndexedDB'));
+      };
+
+      request.onsuccess = () => {
+        const store = new MetadataStore(request.result, logger);
+        store.logger.log('MetadataStore initialized');
+        resolve(store);
+      };
+
+      request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+        const db = (event.target as any).result as IDBDatabase;
+
+        // Create metadata store
+        if (!db.objectStoreNames.contains(STORE_METADATA)) {
+          const store = db.createObjectStore(STORE_METADATA, {
+            keyPath: 'id',
+          });
+          store.createIndex(INDEX_FILE_PATH, 'filePath', {
+            unique: false,
+          });
+        }
+
+        // Create embeddings store
+        if (!db.objectStoreNames.contains(STORE_EMBEDDINGS)) {
+          db.createObjectStore(STORE_EMBEDDINGS, {
+            keyPath: 'id',
+          });
+        }
+
+        // Create BM25 stores
+        if (!db.objectStoreNames.contains(STORE_BM25_INVERTED_INDEX)) {
+          db.createObjectStore(STORE_BM25_INVERTED_INDEX, { keyPath: 'token' });
+        }
+        if (!db.objectStoreNames.contains(STORE_BM25_DOC_TOKENS)) {
+          db.createObjectStore(STORE_BM25_DOC_TOKENS, { keyPath: 'docId' });
+        }
+      };
+    });
+  }
+
+  getDB(): IDBDatabase {
+    return this.db;
+  }
+
+  async addDocument(metadata: DocumentMetadata): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_METADATA], 'readwrite');
+      const store = transaction.objectStore(STORE_METADATA);
+      const request = store.put(metadata);
+
+      request.onsuccess = () => {
+        this.invalidateCache();
+        resolve();
+      };
+      request.onerror = () => reject(new Error('Failed to add document'));
+    });
+  }
+
+  async addDocuments(documents: DocumentMetadata[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_METADATA], 'readwrite');
+      const store = transaction.objectStore(STORE_METADATA);
+
+      documents.forEach(doc => {
+        store.put(doc);
+      });
+
+      transaction.oncomplete = () => {
+        this.invalidateCache();
+        resolve();
+      };
+      transaction.onerror = () => reject(new Error('Failed to add documents'));
+    });
+  }
+
+  async getDocumentsByFile(filePath: string): Promise<DocumentMetadata[]> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_METADATA], 'readonly');
+      const store = transaction.objectStore(STORE_METADATA);
+      const index = store.index(INDEX_FILE_PATH);
+      const request = index.getAll(filePath);
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(new Error('Failed to get documents'));
+    });
+  }
+
+  async deleteDocuments(ids: string[]): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_METADATA], 'readwrite');
+      const store = transaction.objectStore(STORE_METADATA);
+      ids.forEach(id => {
+        store.delete(id);
+      });
+      transaction.oncomplete = () => {
+        this.invalidateCache();
+        resolve();
+      };
+      transaction.onerror = () =>
+        reject(new Error('Failed to delete documents'));
+    });
+  }
+
+  async clearAll(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_METADATA], 'readwrite');
+      const store = transaction.objectStore(STORE_METADATA);
+      const request = store.clear();
+      request.onsuccess = () => {
+        this.invalidateCache();
+        resolve();
+      };
+      request.onerror = () => reject(new Error('Failed to clear store'));
+    });
+  }
+
+  async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_METADATA], 'readonly');
+      const store = transaction.objectStore(STORE_METADATA);
+      const countRequest = store.count();
+
+      countRequest.onsuccess = () => {
+        const totalDocuments = countRequest.result;
+        const getAllRequest = store.getAll();
+
+        getAllRequest.onsuccess = () => {
+          const documents = getAllRequest.result as DocumentMetadata[];
+          const uniqueFiles = new Set(documents.map(d => d.filePath));
+
+          resolve({
+            totalDocuments,
+            totalFiles: uniqueFiles.size,
+          });
+        };
+
+        getAllRequest.onerror = () => reject(new Error('Failed to get stats'));
+      };
+
+      countRequest.onerror = () => reject(new Error('Failed to get count'));
+    });
+  }
+
+  async getAllDocuments(): Promise<DocumentMetadata[]> {
+    if (this.metadataCache) {
+      return Array.from(this.metadataCache.values());
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_METADATA], 'readonly');
+      const store = transaction.objectStore(STORE_METADATA);
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const documents = request.result as DocumentMetadata[];
+        this.metadataCache = new Map(documents.map(d => [d.id, d]));
+        resolve(documents);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getFileMetadataMap(): Promise<Map<string, DocumentMetadata>> {
+    const allDocs = await this.getAllDocuments();
+    const metadata = new Map<string, DocumentMetadata>();
+    allDocs.forEach(doc => {
+      const filePath = doc.filePath;
+      if (!metadata.has(filePath)) {
+        metadata.set(filePath, doc);
+      }
+    });
+    return metadata;
+  }
+
+  async hasFile(filePath: string): Promise<boolean> {
+    const docs = await this.getDocumentsByFile(filePath);
+    return docs.length > 0;
+  }
+
+  private invalidateCache(): void {
+    this.metadataCache = null;
+  }
+
+  async close() {
+    this.db.close();
+  }
+}

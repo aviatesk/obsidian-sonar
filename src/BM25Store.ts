@@ -1,5 +1,9 @@
 import type { Logger } from './Logger';
 import type { Tokenizer } from './Tokenizer';
+import {
+  STORE_BM25_INVERTED_INDEX,
+  STORE_BM25_DOC_TOKENS,
+} from './MetadataStore';
 
 /**
  * Posting list entry for inverted index
@@ -37,11 +41,6 @@ interface IndexMetadata {
   docLengths: Map<string, number>;
 }
 
-const DB_NAME = 'sonar-bm25-index';
-const DB_VERSION = 1;
-const INVERTED_INDEX_STORE = 'inverted-index';
-const DOC_TOKENS_STORE = 'doc-tokens';
-
 // BM25 parameters
 const K1 = 1.2;
 const B = 0.75;
@@ -59,43 +58,16 @@ export class BM25Store {
   }
 
   static async initialize(
+    db: IDBDatabase,
     logger: Logger,
     tokenizer: Tokenizer
   ): Promise<BM25Store> {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onerror = () => {
-        reject(new Error('Failed to open BM25 IndexedDB'));
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-
-      request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
-        const db = (event.target as any).result as IDBDatabase;
-
-        // Create inverted index store
-        if (!db.objectStoreNames.contains(INVERTED_INDEX_STORE)) {
-          db.createObjectStore(INVERTED_INDEX_STORE, { keyPath: 'token' });
-        }
-
-        // Create document tokens store
-        if (!db.objectStoreNames.contains(DOC_TOKENS_STORE)) {
-          db.createObjectStore(DOC_TOKENS_STORE, { keyPath: 'docId' });
-        }
-
-        logger.log('BM25 store schema created');
-      };
-    });
-
     const store = new BM25Store(db, logger, tokenizer);
 
     // Build initial in-memory index metadata
     await store.refreshMetaDataCache();
 
-    logger.log('BM25 store initialized');
+    logger.log('BM25Store initialized');
 
     return store;
   }
@@ -145,90 +117,6 @@ export class BM25Store {
   }
 
   /**
-   * Indexes a document for BM25 search
-   */
-  async indexDocument(docId: string, content: string): Promise<void> {
-    const tokens = await this.tokenize(content);
-    const termFreq = this.calculateTermFrequency(tokens);
-
-    const docTokenInfo: DocumentTokenInfo = {
-      docId,
-      tokens,
-      length: tokens.length,
-    };
-
-    // Phase 1: Read all data we need
-    const existingDoc = await this.getDocumentTokenInfo(docId);
-
-    // Collect all tokens we need to fetch
-    const tokensToFetch = new Set([...termFreq.keys()]);
-    if (existingDoc) {
-      existingDoc.tokens.forEach(t => tokensToFetch.add(t));
-    }
-
-    // Fetch all inverted index entries using bulk read
-    const invertedEntries =
-      await this.bulkGetInvertedIndexEntries(tokensToFetch);
-
-    // Phase 2: Write transaction - all synchronous
-    const transaction = this.db.transaction(
-      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE],
-      'readwrite'
-    );
-
-    const docTokensStore = transaction.objectStore(DOC_TOKENS_STORE);
-    const invertedIndexStore = transaction.objectStore(INVERTED_INDEX_STORE);
-
-    // Remove old document if exists
-    if (existingDoc) {
-      const uniqueTokens = new Set(existingDoc.tokens);
-      for (const token of uniqueTokens) {
-        const entry = invertedEntries.get(token);
-        if (entry) {
-          entry.postings = entry.postings.filter(p => p.docId !== docId);
-          if (entry.postings.length === 0) {
-            invertedIndexStore.delete(token);
-          } else {
-            entry.documentFrequency = entry.postings.length;
-            invertedIndexStore.put(entry);
-          }
-        }
-      }
-      docTokensStore.delete(docId);
-    }
-
-    // Add new document
-    docTokensStore.put(docTokenInfo);
-
-    // Update inverted index
-    for (const [token, freq] of termFreq.entries()) {
-      const existing = invertedEntries.get(token);
-      const newPosting: PostingEntry = { docId, frequency: freq };
-
-      if (existing) {
-        existing.postings.push(newPosting);
-        existing.documentFrequency = existing.postings.length;
-        invertedIndexStore.put(existing);
-      } else {
-        const newEntry: InvertedIndexEntry = {
-          token,
-          postings: [newPosting],
-          documentFrequency: 1,
-        };
-        invertedIndexStore.put(newEntry);
-      }
-    }
-
-    return new Promise((resolve, reject) => {
-      transaction.oncomplete = () => {
-        this.clearMetaDataCache();
-        resolve();
-      };
-      transaction.onerror = () => reject(transaction.error);
-    });
-  }
-
-  /**
    * Indexes multiple documents in a single transaction (much faster than individual indexing)
    */
   async indexDocumentBatch(
@@ -274,12 +162,14 @@ export class BM25Store {
 
     // Phase 3: Write transaction - all synchronous
     const transaction = this.db.transaction(
-      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE],
+      [STORE_BM25_INVERTED_INDEX, STORE_BM25_DOC_TOKENS],
       'readwrite'
     );
 
-    const docTokensStore = transaction.objectStore(DOC_TOKENS_STORE);
-    const invertedIndexStore = transaction.objectStore(INVERTED_INDEX_STORE);
+    const docTokensStore = transaction.objectStore(STORE_BM25_DOC_TOKENS);
+    const invertedIndexStore = transaction.objectStore(
+      STORE_BM25_INVERTED_INDEX
+    );
 
     // Process each document
     for (let i = 0; i < documents.length; i++) {
@@ -344,104 +234,34 @@ export class BM25Store {
   }
 
   /**
-   * Removes a document from the index
+   * Deletes documents by their IDs
+   * IDs come from MetadataStore as the source of truth
    */
-  async removeDocument(docId: string): Promise<void> {
-    // Phase 1: Read all data we need
-    const existingDoc = await this.getDocumentTokenInfo(docId);
-    if (!existingDoc) {
+  async deleteDocuments(docIds: string[]): Promise<void> {
+    if (docIds.length === 0) {
       return;
     }
 
-    // Fetch all inverted index entries for this document's tokens using bulk read
-    const uniqueTokens = new Set(existingDoc.tokens);
-    const invertedEntries =
-      await this.bulkGetInvertedIndexEntries(uniqueTokens);
-
-    // Phase 2: Write transaction - all synchronous
-    const transaction = this.db.transaction(
-      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE],
-      'readwrite'
-    );
-
-    const docTokensStore = transaction.objectStore(DOC_TOKENS_STORE);
-    const invertedIndexStore = transaction.objectStore(INVERTED_INDEX_STORE);
-
-    // Remove from inverted index
-    for (const token of uniqueTokens) {
-      const entry = invertedEntries.get(token);
-      if (entry) {
-        entry.postings = entry.postings.filter(p => p.docId !== docId);
-        if (entry.postings.length === 0) {
-          invertedIndexStore.delete(token);
-        } else {
-          entry.documentFrequency = entry.postings.length;
-          invertedIndexStore.put(entry);
-        }
-      }
-    }
-
-    // Remove document tokens
-    docTokensStore.delete(docId);
-
-    return new Promise((resolve, reject) => {
-      transaction.oncomplete = () => {
-        this.clearMetaDataCache();
-        resolve();
-      };
-      transaction.onerror = () => reject(transaction.error);
-    });
-  }
-
-  /**
-   * Removes all chunks for a given file path
-   * DocId format: filePath#chunkIndex
-   */
-  async removeDocumentsByFilePath(filePath: string): Promise<void> {
-    return this.removeDocumentsByFilePathBatch([filePath]);
-  }
-
-  /**
-   * Removes all chunks for multiple file paths in a single pass
-   * This is much more efficient than calling removeDocumentsByFilePath
-   * repeatedly, as it only reads getAllDocumentTokenInfos once
-   */
-  async removeDocumentsByFilePathBatch(filePaths: string[]): Promise<void> {
-    if (filePaths.length === 0) {
-      return;
-    }
-
-    this.logger.log(
-      `BM25Store: Batch removing ${filePaths.length} files from index`
-    );
+    this.logger.log(`BM25Store: Deleting ${docIds.length} documents`);
 
     // Phase 1: Read all data we need
-    const allDocs = await this.getAllDocumentTokenInfos();
-    this.logger.log(
-      `BM25Store: Read ${allDocs.length} total documents from index`
+    const docsToRemove = await Promise.all(
+      docIds.map(id => this.getDocumentTokenInfo(id))
+    );
+    const validDocs = docsToRemove.filter(
+      (doc): doc is DocumentTokenInfo => doc !== undefined
     );
 
-    const filePathSet = new Set(filePaths);
-    const docsToRemove = allDocs.filter(doc => {
-      // Extract filePath from docId (format: filePath#chunkIndex)
-      const hashIndex = doc.docId.lastIndexOf('#');
-      if (hashIndex === -1) return false;
-      const docFilePath = doc.docId.substring(0, hashIndex);
-      return filePathSet.has(docFilePath);
-    });
-
-    if (docsToRemove.length === 0) {
-      this.logger.log('BM25Store: No documents to remove');
+    if (validDocs.length === 0) {
+      this.logger.log('BM25Store: No documents found to remove');
       return;
     }
 
-    this.logger.log(
-      `BM25Store: Found ${docsToRemove.length} documents to remove`
-    );
+    this.logger.log(`BM25Store: Found ${validDocs.length} documents to remove`);
 
     // Collect all tokens from documents to remove
     const allTokens = new Set<string>();
-    for (const doc of docsToRemove) {
+    for (const doc of validDocs) {
       doc.tokens.forEach(t => allTokens.add(t));
     }
 
@@ -450,15 +270,17 @@ export class BM25Store {
 
     // Phase 2: Write transaction - all synchronous
     const transaction = this.db.transaction(
-      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE],
+      [STORE_BM25_INVERTED_INDEX, STORE_BM25_DOC_TOKENS],
       'readwrite'
     );
 
-    const docTokensStore = transaction.objectStore(DOC_TOKENS_STORE);
-    const invertedIndexStore = transaction.objectStore(INVERTED_INDEX_STORE);
+    const docTokensStore = transaction.objectStore(STORE_BM25_DOC_TOKENS);
+    const invertedIndexStore = transaction.objectStore(
+      STORE_BM25_INVERTED_INDEX
+    );
 
     // Process each document to remove
-    for (const doc of docsToRemove) {
+    for (const doc of validDocs) {
       const uniqueTokens = new Set(doc.tokens);
       for (const token of uniqueTokens) {
         const entry = invertedEntries.get(token);
@@ -479,7 +301,7 @@ export class BM25Store {
       transaction.oncomplete = () => {
         this.clearMetaDataCache();
         this.logger.log(
-          `BM25Store: Batch removal complete. Removed ${docsToRemove.length} documents`
+          `BM25Store: Deletion complete. Removed ${validDocs.length} documents`
         );
         resolve();
       };
@@ -579,8 +401,8 @@ export class BM25Store {
     const indexStore =
       store ||
       this.db
-        .transaction([INVERTED_INDEX_STORE], 'readonly')
-        .objectStore(INVERTED_INDEX_STORE);
+        .transaction([STORE_BM25_INVERTED_INDEX], 'readonly')
+        .objectStore(STORE_BM25_INVERTED_INDEX);
 
     return new Promise((resolve, reject) => {
       const req = indexStore.get(token);
@@ -599,8 +421,11 @@ export class BM25Store {
       return new Map();
     }
 
-    const transaction = this.db.transaction([INVERTED_INDEX_STORE], 'readonly');
-    const store = transaction.objectStore(INVERTED_INDEX_STORE);
+    const transaction = this.db.transaction(
+      [STORE_BM25_INVERTED_INDEX],
+      'readonly'
+    );
+    const store = transaction.objectStore(STORE_BM25_INVERTED_INDEX);
 
     const promises = Array.from(tokens).map(
       token =>
@@ -620,8 +445,11 @@ export class BM25Store {
   private async getDocumentTokenInfo(
     docId: string
   ): Promise<DocumentTokenInfo | undefined> {
-    const transaction = this.db.transaction([DOC_TOKENS_STORE], 'readonly');
-    const store = transaction.objectStore(DOC_TOKENS_STORE);
+    const transaction = this.db.transaction(
+      [STORE_BM25_DOC_TOKENS],
+      'readonly'
+    );
+    const store = transaction.objectStore(STORE_BM25_DOC_TOKENS);
 
     return new Promise((resolve, reject) => {
       const req = store.get(docId);
@@ -631,8 +459,11 @@ export class BM25Store {
   }
 
   private async getAllDocumentTokenInfos(): Promise<DocumentTokenInfo[]> {
-    const transaction = this.db.transaction([DOC_TOKENS_STORE], 'readonly');
-    const store = transaction.objectStore(DOC_TOKENS_STORE);
+    const transaction = this.db.transaction(
+      [STORE_BM25_DOC_TOKENS],
+      'readonly'
+    );
+    const store = transaction.objectStore(STORE_BM25_DOC_TOKENS);
 
     return new Promise((resolve, reject) => {
       const req = store.getAll();
@@ -645,12 +476,12 @@ export class BM25Store {
     this.logger.log('BM25Store: Clearing all data...');
 
     const transaction = this.db.transaction(
-      [INVERTED_INDEX_STORE, DOC_TOKENS_STORE],
+      [STORE_BM25_INVERTED_INDEX, STORE_BM25_DOC_TOKENS],
       'readwrite'
     );
 
-    transaction.objectStore(INVERTED_INDEX_STORE).clear();
-    transaction.objectStore(DOC_TOKENS_STORE).clear();
+    transaction.objectStore(STORE_BM25_INVERTED_INDEX).clear();
+    transaction.objectStore(STORE_BM25_DOC_TOKENS).clear();
 
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
@@ -665,10 +496,6 @@ export class BM25Store {
         reject(transaction.error);
       };
     });
-  }
-
-  async close(): Promise<void> {
-    this.db.close();
   }
 
   /**

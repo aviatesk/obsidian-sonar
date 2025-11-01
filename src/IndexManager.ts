@@ -9,7 +9,8 @@ import {
 } from 'obsidian';
 import { ConfigManager } from './ConfigManager';
 import { shouldIndexFile, getFilesToIndex } from './fileFilters';
-import { type DocumentMetadata, EmbeddingStore } from './EmbeddingStore';
+import { type DocumentMetadata, MetadataStore } from './MetadataStore';
+import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
 import { OllamaClient } from './OllamaClient';
 import { Tokenizer } from './Tokenizer';
@@ -23,6 +24,7 @@ interface FileOperation {
 }
 
 export class IndexManager {
+  private metadataStore: MetadataStore;
   private embeddingStore: EmbeddingStore;
   private bm25Store: BM25Store;
   private ollamaClient: OllamaClient;
@@ -35,15 +37,14 @@ export class IndexManager {
   private debouncedProcess: () => void;
   private eventRefs: EventRef[] = [];
   private isProcessing: boolean = false;
-  private indexedFiles: Set<string> = new Set();
   private configUnsubscribers: Array<() => void> = [];
   private isInitialized: boolean = false;
   private statusUpdateCallback: (status: string) => void;
   private onProcessingCompleteCallback: () => void;
-  private metadataCache: Map<string, DocumentMetadata> | null = null;
   private previousActiveFile: TFile | null = null;
 
   constructor(
+    metadataStore: MetadataStore,
     embeddingStore: EmbeddingStore,
     bm25Store: BM25Store,
     ollamaClient: OllamaClient,
@@ -55,6 +56,7 @@ export class IndexManager {
     statusUpdateCallback: (status: string) => void,
     onProcessingCompleteCallback: () => void
   ) {
+    this.metadataStore = metadataStore;
     this.embeddingStore = embeddingStore;
     this.bm25Store = bm25Store;
     this.ollamaClient = ollamaClient;
@@ -80,10 +82,7 @@ export class IndexManager {
    * Initialize after layout is ready to avoid startup event spam
    */
   async onLayoutReady(): Promise<void> {
-    // Load current DB state first
-    await this.loadIndexedFiles();
-
-    // Then sync to detect changes made while Obsidian was closed
+    // Sync to detect changes made while Obsidian was closed
     await this.syncOnLoad();
 
     this.isInitialized = true;
@@ -144,38 +143,6 @@ export class IndexManager {
     );
   }
 
-  private async loadIndexedFiles(): Promise<void> {
-    const metadata = await this.getDbFileMetadata();
-    this.indexedFiles = new Set(metadata.keys());
-  }
-
-  async reloadIndexedFiles(): Promise<void> {
-    await this.loadIndexedFiles();
-  }
-
-  private async getDbFileMetadata(): Promise<Map<string, DocumentMetadata>> {
-    if (this.metadataCache) {
-      return this.metadataCache;
-    }
-
-    const allDocs = await this.embeddingStore.getAllDocuments();
-    const metadata = new Map<string, DocumentMetadata>();
-
-    for (const doc of allDocs) {
-      const filePath = doc.metadata.filePath;
-      if (!metadata.has(filePath)) {
-        metadata.set(filePath, doc.metadata);
-      }
-    }
-
-    this.metadataCache = metadata;
-    return metadata;
-  }
-
-  private clearMetadataCache(): void {
-    this.metadataCache = null;
-  }
-
   private needsReindex(
     file: TFile,
     metadata: DocumentMetadata | undefined
@@ -206,7 +173,7 @@ export class IndexManager {
     skippedCount: number;
     errorCount: number;
   }> {
-    const dbFileMap = await this.getDbFileMetadata();
+    const dbFileMap = await this.metadataStore.getFileMetadataMap();
     const vaultFiles = getFilesToIndex(this.vault, this.configManager);
     const vaultFileMap = new Map(vaultFiles.map(f => [f.path, f]));
 
@@ -215,7 +182,6 @@ export class IndexManager {
     let skippedCount = 0;
 
     // Check vault files for new/modified
-    const unchangedFiles: string[] = [];
     for (const file of vaultFiles) {
       const meta = dbFileMap.get(file.path);
       if (this.needsReindex(file, meta)) {
@@ -225,7 +191,6 @@ export class IndexManager {
         });
       } else {
         skippedCount++;
-        unchangedFiles.push(file.path); // Track unchanged files
       }
     }
 
@@ -266,9 +231,20 @@ export class IndexManager {
 
     if (bm25FilesToDelete.length > 0) {
       this.logger.log(
-        `IndexManager: BM25 batch deletion starting for ${bm25FilesToDelete.length} files`
+        `IndexManager: Batch deletion starting for ${bm25FilesToDelete.length} files`
       );
-      await this.bm25Store.removeDocumentsByFilePathBatch(bm25FilesToDelete);
+
+      // Get all document IDs from MetadataStore for these files
+      const allDocIds: string[] = [];
+      for (const filePath of bm25FilesToDelete) {
+        const docs = await this.metadataStore.getDocumentsByFile(filePath);
+        allDocIds.push(...docs.map(d => d.id));
+      }
+
+      this.logger.log(
+        `IndexManager: Deleting ${allDocIds.length} documents from BM25`
+      );
+      await this.bm25Store.deleteDocuments(allDocIds);
       this.logger.log('IndexManager: BM25 batch deletion complete');
     }
 
@@ -304,17 +280,6 @@ export class IndexManager {
         );
         errorCount++;
       }
-    }
-
-    // Clear metadata cache after all operations complete
-    if (operations.length > 0) {
-      this.clearMetadataCache();
-    }
-
-    // Update indexedFiles to reflect the current DB state
-    // Add unchanged files that are still in the DB
-    for (const path of unchangedFiles) {
-      this.indexedFiles.add(path);
     }
 
     return {
@@ -361,21 +326,24 @@ export class IndexManager {
     );
 
     this.eventRefs.push(
-      this.vault.on('delete', (file: TAbstractFile) => {
-        if (file instanceof TFile && this.indexedFiles.has(file.path)) {
-          this.scheduleOperation({
-            type: 'delete',
-            file: null,
-            oldPath: file.path,
-          });
+      this.vault.on('delete', async (file: TAbstractFile) => {
+        if (file instanceof TFile) {
+          const wasIndexed = await this.metadataStore.hasFile(file.path);
+          if (wasIndexed) {
+            this.scheduleOperation({
+              type: 'delete',
+              file: null,
+              oldPath: file.path,
+            });
+          }
         }
       })
     );
 
     this.eventRefs.push(
-      this.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
+      this.vault.on('rename', async (file: TAbstractFile, oldPath: string) => {
         if (file instanceof TFile) {
-          const wasIndexed = this.indexedFiles.has(oldPath);
+          const wasIndexed = await this.metadataStore.hasFile(oldPath);
           const shouldIndex = shouldIndexFile(file, this.configManager);
 
           if (wasIndexed && !shouldIndex) {
@@ -490,11 +458,6 @@ export class IndexManager {
       }
     }
 
-    // Clear metadata cache after all operations complete
-    if (operations.length > 0) {
-      this.clearMetadataCache();
-    }
-
     if (errorCount > 0 && !isSync) {
       // Only show notice for event-driven operations, not sync
       new Notice(`Sonar index failed to update ${errorCount} files`);
@@ -509,9 +472,7 @@ export class IndexManager {
     return errorCount;
   }
 
-  /**
-   * Process operation during sync (BM25 deletion already done in batch)
-   */
+  // Process operation during sync (BM25 deletion already done in batch)
   private async processSyncOperation(operation: FileOperation): Promise<void> {
     const filePath = operation.file?.path || operation.oldPath || 'unknown';
 
@@ -519,35 +480,33 @@ export class IndexManager {
       case 'create':
       case 'modify':
         if (operation.file) {
-          // Delete from EmbeddingStore, then re-index (BM25 already deleted)
+          // Delete from MetadataStore and EmbeddingStore, then re-index (BM25 already deleted)
           this.logger.log(
             `IndexManager: Sync indexing ${filePath} (BM25 deletion skipped)`
           );
-          await this.embeddingStore.deleteDocumentsByFile(operation.file.path);
-          await this.indexFileInternalWithoutBM25Deletion(operation.file);
+          await this.deleteDocumentsFromStores(operation.file.path, false);
+          await this.indexFileInternalCore(operation.file);
         }
         break;
 
       case 'delete':
         if (operation.oldPath) {
-          // Only delete from EmbeddingStore (BM25 already deleted in batch)
+          // Delete from MetadataStore and EmbeddingStore (BM25 already deleted in batch)
           this.logger.log(
             `IndexManager: Sync deleting ${filePath} (BM25 already deleted)`
           );
-          await this.embeddingStore.deleteDocumentsByFile(operation.oldPath);
-          this.indexedFiles.delete(operation.oldPath);
+          await this.deleteDocumentsFromStores(operation.oldPath, false);
         }
         break;
 
       case 'rename':
         if (operation.oldPath && operation.file) {
-          // Delete old path from EmbeddingStore
+          // Delete old path from MetadataStore and EmbeddingStore
           this.logger.log(
             `IndexManager: Sync renaming ${operation.oldPath} → ${operation.file.path} (BM25 already deleted)`
           );
-          await this.embeddingStore.deleteDocumentsByFile(operation.oldPath);
-          // Add new path
-          await this.indexFileInternalWithoutBM25Deletion(operation.file);
+          await this.deleteDocumentsFromStores(operation.oldPath, false);
+          await this.indexFileInternalCore(operation.file);
         }
         break;
     }
@@ -564,7 +523,7 @@ export class IndexManager {
           // For modify operations from events, check if re-indexing is actually needed
           // Skip this check during sync since we already checked
           if (!skipChangeCheck && operation.type === 'modify') {
-            const dbFileMap = await this.getDbFileMetadata();
+            const dbFileMap = await this.metadataStore.getFileMetadataMap();
             const meta = dbFileMap.get(operation.file.path);
 
             if (!this.needsReindex(operation.file, meta)) {
@@ -616,28 +575,36 @@ export class IndexManager {
     }
   }
 
+  /**
+   * Helper to delete documents from stores by file path
+   * Gets document IDs from MetadataStore and deletes from all/selected stores
+   */
+  private async deleteDocumentsFromStores(
+    filePath: string,
+    includeBM25: boolean = true
+  ): Promise<void> {
+    const docs = await this.metadataStore.getDocumentsByFile(filePath);
+    const docIds = docs.map(d => d.id);
+
+    await this.metadataStore.deleteDocuments(docIds);
+    await this.embeddingStore.deleteEmbeddings(docIds);
+    if (includeBM25) {
+      await this.bm25Store.deleteDocuments(docIds);
+    }
+  }
+
   private async deleteFromIndex(filePath: string): Promise<void> {
-    await this.embeddingStore.deleteDocumentsByFile(filePath);
-    await this.bm25Store.removeDocumentsByFilePath(filePath);
-    this.indexedFiles.delete(filePath);
+    await this.deleteDocumentsFromStores(filePath, true);
   }
 
   private async indexFileInternal(file: TFile): Promise<void> {
-    // Do the actual indexing
-    await this.embeddingStore.deleteDocumentsByFile(file.path);
-    await this.bm25Store.removeDocumentsByFilePath(file.path);
+    await this.deleteDocumentsFromStores(file.path, true);
     await this.indexFileInternalCore(file);
   }
 
   /**
    * Index file without deleting from BM25 (used during sync after batch deletion)
    */
-  private async indexFileInternalWithoutBM25Deletion(
-    file: TFile
-  ): Promise<void> {
-    await this.indexFileInternalCore(file);
-  }
-
   private async indexFileInternalCore(file: TFile): Promise<void> {
     const content = await this.vault.cachedRead(file);
     const chunks = await createChunks(
@@ -662,15 +629,21 @@ export class IndexManager {
       { docId: `${file.path}#title`, content: file.basename },
     ];
 
-    if (chunks.length == 0) {
-      await this.embeddingStore.addDocument('', [], titleEmbedding, {
+    if (chunks.length === 0) {
+      // Empty file: index only title
+      const docId = `${file.path}#0`;
+      const metadata: DocumentMetadata = {
+        id: docId,
         filePath: file.path,
         title: file.basename,
+        content: '',
         headings: [],
         mtime: file.stat.mtime,
         size: file.stat.size,
         indexedAt,
-      });
+      };
+      await this.metadataStore.addDocument(metadata);
+      await this.embeddingStore.addEmbedding(docId, [], titleEmbedding);
     } else {
       // Add all chunks to BM25 batch
       for (let i = 0; i < chunks.length; i++) {
@@ -680,29 +653,39 @@ export class IndexManager {
         });
       }
 
-      // Index vector embeddings
+      // Index metadata, embeddings for each chunk
+      const metadataDocuments: DocumentMetadata[] = [];
+      const embeddingData: Array<{
+        id: string;
+        embedding: number[];
+        titleEmbedding: number[];
+      }> = [];
+
       for (let i = 0; i < chunks.length; i++) {
-        const metadata: DocumentMetadata = {
+        const docId = `${file.path}#${i}`;
+        metadataDocuments.push({
+          id: docId,
           filePath: file.path,
           title: file.basename,
+          content: chunks[i].content,
           headings: chunks[i].headings,
           mtime: file.stat.mtime,
           size: file.stat.size,
           indexedAt,
-        };
-        await this.embeddingStore.addDocument(
-          chunks[i].content,
-          embeddings[i],
-          titleEmbedding,
-          metadata
-        );
+        });
+        embeddingData.push({
+          id: docId,
+          embedding: embeddings[i],
+          titleEmbedding: titleEmbedding,
+        });
       }
+
+      await this.metadataStore.addDocuments(metadataDocuments);
+      await this.embeddingStore.addEmbeddings(embeddingData);
     }
 
     // Batch index all chunks for BM25 in a single transaction
     await this.bm25Store.indexDocumentBatch(bm25Documents);
-
-    this.indexedFiles.add(file.path);
   }
 
   async indexFile(file: TFile): Promise<void> {
@@ -710,19 +693,13 @@ export class IndexManager {
       new Notice(`File excluded from indexing: ${file.path}`);
       return;
     }
-
-    // Check if file needs re-indexing
-    const dbFileMap = await this.getDbFileMetadata();
+    const dbFileMap = await this.metadataStore.getFileMetadataMap();
     const meta = dbFileMap.get(file.path);
-
     if (!this.needsReindex(file, meta)) {
       new Notice(`${file.path} is already up to date`);
       return;
     }
-
     await this.indexFileInternal(file);
-    this.clearMetadataCache(); // Clear cache after DB change
-
     new Notice(`Indexed: ${file.path}`);
   }
 
@@ -734,20 +711,14 @@ export class IndexManager {
     ) => void | Promise<void>
   ): Promise<void> {
     this.logger.log('IndexManager: Starting full index rebuild...');
-
-    // Clear existing index
     await this.clearIndex();
-
-    // Re-index all files
     const stats = await this.performSync(progressCallback);
-
     const message = `Rebuild complete: ${stats.newCount} files indexed${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
     new Notice(message);
   }
 
   async syncIndex(): Promise<void> {
     const stats = await this.performSync();
-
     const message = `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
     new Notice(message);
   }
@@ -762,8 +733,6 @@ export class IndexManager {
 
   cleanup(): void {
     this.unregisterEventHandlers();
-
-    // Unsubscribe from config changes
     for (const unsubscribe of this.configUnsubscribers) {
       unsubscribe();
     }
@@ -782,144 +751,13 @@ export class IndexManager {
   }
 
   async clearIndex(): Promise<void> {
+    await this.metadataStore.clearAll();
     await this.embeddingStore.clearAll();
     await this.bm25Store.clearAll();
-    this.indexedFiles.clear();
-    this.clearMetadataCache();
-  }
-
-  async clearBM25Index(): Promise<void> {
-    this.logger.log('IndexManager: Clearing BM25 index...');
-    await this.bm25Store.clearAll();
-    this.logger.log('IndexManager: BM25 index cleared');
-  }
-
-  async rebuildBM25Index(
-    progressCallback?: (
-      current: number,
-      total: number,
-      filePath: string
-    ) => void | Promise<void>
-  ): Promise<void> {
-    this.logger.log('IndexManager: Starting BM25 index rebuild...');
-
-    await this.bm25Store.clearAll();
-
-    const vaultFiles = getFilesToIndex(this.vault, this.configManager);
-    const totalFiles = vaultFiles.length;
-
-    this.logger.log(
-      `IndexManager: Rebuilding BM25 index for ${totalFiles} files`
-    );
-
-    let errorCount = 0;
-    for (let i = 0; i < vaultFiles.length; i++) {
-      const file = vaultFiles[i];
-
-      if (progressCallback) {
-        await progressCallback(i + 1, totalFiles, file.path);
-      }
-
-      this.updateStatus({
-        action: 'Indexing',
-        file: file.basename,
-        current: i + 1,
-        total: totalFiles,
-      });
-
-      try {
-        const content = await this.vault.cachedRead(file);
-        const chunks = await createChunks(
-          content,
-          this.configManager.get('maxChunkSize'),
-          this.configManager.get('chunkOverlap'),
-          this.getTokenizer()
-        );
-
-        // Prepare all documents for batch indexing
-        const bm25Documents = [
-          { docId: `${file.path}#title`, content: file.basename },
-        ];
-
-        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-          bm25Documents.push({
-            docId: `${file.path}#${chunkIndex}`,
-            content: chunks[chunkIndex].content,
-          });
-        }
-
-        // Batch index all chunks in a single transaction
-        await this.bm25Store.indexDocumentBatch(bm25Documents);
-      } catch (error) {
-        this.logger.error(
-          `IndexManager: Failed to index ${file.path} in BM25: ${error}`
-        );
-        errorCount++;
-      }
-    }
-
-    const message = `BM25 rebuild complete: ${totalFiles - errorCount}/${totalFiles} files indexed`;
-    this.logger.log(`IndexManager: ${message}`);
-    this.onProcessingCompleteCallback();
-  }
-
-  async syncBM25Index(): Promise<void> {
-    this.logger.log('IndexManager: Starting BM25 sync...');
-
-    const vaultFiles = getFilesToIndex(this.vault, this.configManager);
-
-    // First, remove all old chunks in a single batch operation
-    this.logger.log(
-      `IndexManager: BM25 sync - batch removing ${vaultFiles.length} files`
-    );
-    const filePaths = vaultFiles.map(f => f.path);
-    await this.bm25Store.removeDocumentsByFilePathBatch(filePaths);
-    this.logger.log('IndexManager: BM25 sync - batch removal complete');
-
-    let newCount = 0;
-    let errorCount = 0;
-
-    for (const file of vaultFiles) {
-      try {
-        const content = await this.vault.cachedRead(file);
-        const chunks = await createChunks(
-          content,
-          this.configManager.get('maxChunkSize'),
-          this.configManager.get('chunkOverlap'),
-          this.getTokenizer()
-        );
-
-        // Prepare all documents for batch indexing
-        const bm25Documents = [
-          { docId: `${file.path}#title`, content: file.basename },
-        ];
-
-        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-          bm25Documents.push({
-            docId: `${file.path}#${chunkIndex}`,
-            content: chunks[chunkIndex].content,
-          });
-        }
-
-        // Batch index all chunks in a single transaction
-        await this.bm25Store.indexDocumentBatch(bm25Documents);
-
-        newCount++;
-      } catch (error) {
-        this.logger.error(
-          `IndexManager: Failed to sync ${file.path} in BM25: ${error}`
-        );
-        errorCount++;
-      }
-    }
-
-    const message = `BM25 sync complete: ${newCount} files indexed${errorCount > 0 ? `, ${errorCount} errors` : ''}`;
-    this.logger.log(`IndexManager: ${message}`);
-    this.onProcessingCompleteCallback();
   }
 
   async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {
-    return await this.embeddingStore.getStats();
+    return await this.metadataStore.getStats();
   }
 
   async getIndexableFilesStats(): Promise<{
@@ -934,32 +772,16 @@ export class IndexManager {
     const files = getFilesToIndex(this.vault, this.configManager);
     const fileCount = files.length;
 
-    if (fileCount === 0) {
-      return {
-        fileCount: 0,
-        totalTokens: 0,
-        averageTokens: 0,
-        totalCharacters: 0,
-        averageCharacters: 0,
-        totalSize: 0,
-        averageSize: 0,
-      };
-    }
-
     let totalTokens = 0;
     let totalCharacters = 0;
     let totalSize = 0;
-
     for (const file of files) {
       const content = await this.vault.cachedRead(file);
-
-      // Tokenize line by line to avoid hanging on large files
       const lines = content.split('\n');
       for (const line of lines) {
         const lineTokens = await this.getTokenizer().estimateTokens(line);
         totalTokens += lineTokens;
       }
-
       totalCharacters += content.length;
       totalSize += file.stat.size;
     }
@@ -967,11 +789,12 @@ export class IndexManager {
     return {
       fileCount,
       totalTokens,
-      averageTokens: Math.round(totalTokens / fileCount),
+      averageTokens: fileCount === 0 ? 0 : Math.round(totalTokens / fileCount),
       totalCharacters,
-      averageCharacters: Math.round(totalCharacters / fileCount),
+      averageCharacters:
+        fileCount === 0 ? 0 : Math.round(totalCharacters / fileCount),
       totalSize,
-      averageSize: Math.round(totalSize / fileCount),
+      averageSize: fileCount === 0 ? 0 : Math.round(totalSize / fileCount),
     };
   }
 }
