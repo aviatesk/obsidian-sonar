@@ -28,7 +28,7 @@ const STORE_NAME = 'vectors';
 const DB_NAME = 'sonar-embedding-vectors';
 const DB_VERSION = 2;
 
-export class VectorStore {
+export class EmbeddingStore {
   private db!: IDBDatabase;
   private documentsCache: IndexedDocument[] | null = null;
   private logger: Logger;
@@ -39,7 +39,7 @@ export class VectorStore {
   }
   static async initialize(
     logger: Logger
-  ): Promise<{ store: VectorStore; wasUpgraded: boolean }> {
+  ): Promise<{ store: EmbeddingStore; wasUpgraded: boolean }> {
     return new Promise((resolve, reject) => {
       let wasUpgraded = false;
       const request = window.indexedDB.open(DB_NAME, DB_VERSION);
@@ -47,7 +47,7 @@ export class VectorStore {
         reject(new Error('Failed to open IndexedDB'));
       };
       request.onsuccess = () => {
-        const store = new VectorStore(request.result, logger);
+        const store = new EmbeddingStore(request.result, logger);
         store.logger.log('Vector store initialized');
         resolve({ store, wasUpgraded });
       };
@@ -66,10 +66,10 @@ export class VectorStore {
         }
 
         if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const vectorStore = db.createObjectStore(STORE_NAME, {
+          const store = db.createObjectStore(STORE_NAME, {
             keyPath: 'id',
           });
-          vectorStore.createIndex('filePath', 'metadata.filePath', {
+          store.createIndex('filePath', 'metadata.filePath', {
             unique: false,
           });
         }

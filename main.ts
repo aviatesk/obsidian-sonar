@@ -13,7 +13,7 @@ import { IndexManager } from './src/IndexManager';
 import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
 import { getIndexableFilesCount } from 'src/fileFilters';
-import { VectorStore } from './src/VectorStore';
+import { EmbeddingStore } from './src/EmbeddingStore';
 import { OllamaClient } from './src/OllamaClient';
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
@@ -22,7 +22,7 @@ export default class SonarPlugin extends Plugin {
   bm25Store: BM25Store | null = null;
   bm25Search: BM25Search | null = null;
   indexManager: IndexManager | null = null;
-  vectorStore: VectorStore | null = null;
+  embeddingStore: EmbeddingStore | null = null;
   ollamaClient: OllamaClient | null = null;
   tokenizer: Tokenizer | null = null;
 
@@ -84,10 +84,10 @@ export default class SonarPlugin extends Plugin {
 
     let wasUpgraded = false;
     try {
-      const result = await VectorStore.initialize(
+      const result = await EmbeddingStore.initialize(
         this.configManager.getLogger()
       );
-      this.vectorStore = result.store;
+      this.embeddingStore = result.store;
       wasUpgraded = result.wasUpgraded;
     } catch {
       new Notice('Failed to initialize vector store - check console');
@@ -131,12 +131,12 @@ export default class SonarPlugin extends Plugin {
     }
 
     // Initialize BM25 search
-    this.bm25Search = new BM25Search(this.bm25Store, this.vectorStore);
+    this.bm25Search = new BM25Search(this.bm25Store, this.embeddingStore);
     this.configManager.getLogger().log('BM25 search initialized');
 
     // Initialize embedding search with BM25 for hybrid functionality
     this.embeddingSearch = new EmbeddingSearch(
-      this.vectorStore,
+      this.embeddingStore,
       this.ollamaClient,
       this.configManager.get('scoreDecay'),
       this.bm25Search
@@ -146,7 +146,7 @@ export default class SonarPlugin extends Plugin {
       .log('Embedding search with hybrid support initialized');
 
     this.indexManager = new IndexManager(
-      this.vectorStore,
+      this.embeddingStore,
       this.bm25Store,
       this.ollamaClient,
       this.app.vault,
@@ -468,8 +468,8 @@ export default class SonarPlugin extends Plugin {
     if (this.indexManager) {
       this.indexManager.cleanup();
     }
-    if (this.vectorStore) {
-      await this.vectorStore.close();
+    if (this.embeddingStore) {
+      await this.embeddingStore.close();
     }
     if (this.bm25Store) {
       await this.bm25Store.close();

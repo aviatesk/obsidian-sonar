@@ -9,7 +9,7 @@ import {
 } from 'obsidian';
 import { ConfigManager } from './ConfigManager';
 import { shouldIndexFile, getFilesToIndex } from './fileFilters';
-import { type DocumentMetadata, VectorStore } from './VectorStore';
+import { type DocumentMetadata, EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
 import { OllamaClient } from './OllamaClient';
 import { Tokenizer } from './Tokenizer';
@@ -23,7 +23,7 @@ interface FileOperation {
 }
 
 export class IndexManager {
-  private vectorStore: VectorStore;
+  private embeddingStore: EmbeddingStore;
   private bm25Store: BM25Store;
   private ollamaClient: OllamaClient;
   private vault: Vault;
@@ -44,7 +44,7 @@ export class IndexManager {
   private previousActiveFile: TFile | null = null;
 
   constructor(
-    vectorStore: VectorStore,
+    embeddingStore: EmbeddingStore,
     bm25Store: BM25Store,
     ollamaClient: OllamaClient,
     vault: Vault,
@@ -55,7 +55,7 @@ export class IndexManager {
     statusUpdateCallback: (status: string) => void,
     onProcessingCompleteCallback: () => void
   ) {
-    this.vectorStore = vectorStore;
+    this.embeddingStore = embeddingStore;
     this.bm25Store = bm25Store;
     this.ollamaClient = ollamaClient;
     this.vault = vault;
@@ -158,7 +158,7 @@ export class IndexManager {
       return this.metadataCache;
     }
 
-    const allDocs = await this.vectorStore.getAllDocuments();
+    const allDocs = await this.embeddingStore.getAllDocuments();
     const metadata = new Map<string, DocumentMetadata>();
 
     for (const doc of allDocs) {
@@ -519,33 +519,33 @@ export class IndexManager {
       case 'create':
       case 'modify':
         if (operation.file) {
-          // Delete from VectorStore, then re-index (BM25 already deleted)
+          // Delete from EmbeddingStore, then re-index (BM25 already deleted)
           this.logger.log(
             `IndexManager: Sync indexing ${filePath} (BM25 deletion skipped)`
           );
-          await this.vectorStore.deleteDocumentsByFile(operation.file.path);
+          await this.embeddingStore.deleteDocumentsByFile(operation.file.path);
           await this.indexFileInternalWithoutBM25Deletion(operation.file);
         }
         break;
 
       case 'delete':
         if (operation.oldPath) {
-          // Only delete from VectorStore (BM25 already deleted in batch)
+          // Only delete from EmbeddingStore (BM25 already deleted in batch)
           this.logger.log(
             `IndexManager: Sync deleting ${filePath} (BM25 already deleted)`
           );
-          await this.vectorStore.deleteDocumentsByFile(operation.oldPath);
+          await this.embeddingStore.deleteDocumentsByFile(operation.oldPath);
           this.indexedFiles.delete(operation.oldPath);
         }
         break;
 
       case 'rename':
         if (operation.oldPath && operation.file) {
-          // Delete old path from VectorStore
+          // Delete old path from EmbeddingStore
           this.logger.log(
             `IndexManager: Sync renaming ${operation.oldPath} → ${operation.file.path} (BM25 already deleted)`
           );
-          await this.vectorStore.deleteDocumentsByFile(operation.oldPath);
+          await this.embeddingStore.deleteDocumentsByFile(operation.oldPath);
           // Add new path
           await this.indexFileInternalWithoutBM25Deletion(operation.file);
         }
@@ -617,14 +617,14 @@ export class IndexManager {
   }
 
   private async deleteFromIndex(filePath: string): Promise<void> {
-    await this.vectorStore.deleteDocumentsByFile(filePath);
+    await this.embeddingStore.deleteDocumentsByFile(filePath);
     await this.bm25Store.removeDocumentsByFilePath(filePath);
     this.indexedFiles.delete(filePath);
   }
 
   private async indexFileInternal(file: TFile): Promise<void> {
     // Do the actual indexing
-    await this.vectorStore.deleteDocumentsByFile(file.path);
+    await this.embeddingStore.deleteDocumentsByFile(file.path);
     await this.bm25Store.removeDocumentsByFilePath(file.path);
     await this.indexFileInternalCore(file);
   }
@@ -663,7 +663,7 @@ export class IndexManager {
     ];
 
     if (chunks.length == 0) {
-      await this.vectorStore.addDocument('', [], titleEmbedding, {
+      await this.embeddingStore.addDocument('', [], titleEmbedding, {
         filePath: file.path,
         title: file.basename,
         headings: [],
@@ -690,7 +690,7 @@ export class IndexManager {
           size: file.stat.size,
           indexedAt,
         };
-        await this.vectorStore.addDocument(
+        await this.embeddingStore.addDocument(
           chunks[i].content,
           embeddings[i],
           titleEmbedding,
@@ -782,7 +782,7 @@ export class IndexManager {
   }
 
   async clearIndex(): Promise<void> {
-    await this.vectorStore.clearAll();
+    await this.embeddingStore.clearAll();
     await this.bm25Store.clearAll();
     this.indexedFiles.clear();
     this.clearMetadataCache();
@@ -919,7 +919,7 @@ export class IndexManager {
   }
 
   async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {
-    return await this.vectorStore.getStats();
+    return await this.embeddingStore.getStats();
   }
 
   async getIndexableFilesStats(): Promise<{

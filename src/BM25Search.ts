@@ -1,5 +1,5 @@
 import { BM25Store } from './BM25Store';
-import { VectorStore } from './VectorStore';
+import { EmbeddingStore } from './EmbeddingStore';
 import type { SearchResult } from './EmbeddingSearch';
 
 /**
@@ -10,7 +10,7 @@ import type { SearchResult } from './EmbeddingSearch';
 export class BM25Search {
   constructor(
     private bm25Store: BM25Store,
-    private vectorStore: VectorStore
+    private embeddingStore: EmbeddingStore
   ) {}
 
   /**
@@ -84,8 +84,7 @@ export class BM25Search {
       return [];
     }
 
-    // Get documents from VectorStore
-    const allDocuments = await this.vectorStore.getAllDocuments();
+    const allDocuments = await this.embeddingStore.getAllDocuments();
     const docsByFilePath = new Map<string, typeof allDocuments>();
 
     for (const doc of allDocuments) {

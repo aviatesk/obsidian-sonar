@@ -1,4 +1,4 @@
-import { VectorStore, type DocumentMetadata } from './VectorStore';
+import { EmbeddingStore, type DocumentMetadata } from './EmbeddingStore';
 import { OllamaClient } from './OllamaClient';
 import type { BM25Search } from './BM25Search';
 
@@ -61,7 +61,7 @@ const RRF_K = 60;
  */
 export class EmbeddingSearch {
   constructor(
-    private vectorStore: VectorStore,
+    private embeddingStore: EmbeddingStore,
     private ollamaClient: OllamaClient,
     private scoreDecay: number = 0.1,
     private bm25Search: BM25Search
@@ -260,7 +260,7 @@ export class EmbeddingSearch {
     const queryEmbeddings = await this.ollamaClient.getEmbeddings([query]);
     const queryEmbedding = queryEmbeddings[0];
 
-    const documents = await this.vectorStore.getAllDocuments();
+    const documents = await this.embeddingStore.getAllDocuments();
 
     let filteredDocuments = documents;
     if (options?.excludeFilePath) {
@@ -349,7 +349,7 @@ export class EmbeddingSearch {
     topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    const documents = await this.vectorStore.getAllDocuments();
+    const documents = await this.embeddingStore.getAllDocuments();
 
     let filteredDocuments = documents;
     if (options?.excludeFilePath) {
@@ -394,7 +394,7 @@ export class EmbeddingSearch {
   }
 
   async close(): Promise<void> {
-    await this.vectorStore.close();
+    await this.embeddingStore.close();
     await this.bm25Search.close();
   }
 }
