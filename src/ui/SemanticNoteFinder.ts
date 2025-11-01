@@ -74,12 +74,8 @@ export class SemanticNoteFinder extends Modal {
         query,
         this.configManager.get('topK'),
         {
-          titleWeight: 0.4,
-          contentWeight: 0.6,
-          embeddingWeight: 1.0,
-          bm25Weight: 0.0,
-          // embeddingWeight: 0.5,
-          // bm25Weight: 0.5,
+          titleWeight: 0.25,
+          contentWeight: 0.75,
         }
       );
       this.updateStore({
