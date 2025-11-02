@@ -1,7 +1,7 @@
 import { App, Modal, Notice, debounce } from 'obsidian';
 import { mount, unmount } from 'svelte';
 import { writable } from 'svelte/store';
-import { EmbeddingSearch, type SearchResult } from '../EmbeddingSearch';
+import { SearchManager, type SearchResult } from '../SearchManager';
 import { ConfigManager } from '../ConfigManager';
 import SemanticNoteFinderComponent from './SemanticNoteFinderComponent.svelte';
 import type { Logger } from '../Logger';
@@ -14,7 +14,7 @@ interface SemanticSearchState {
 }
 
 export class SemanticNoteFinder extends Modal {
-  private embeddingSearch: EmbeddingSearch;
+  private searchManager: SearchManager;
   private configManager: ConfigManager;
   private logger: Logger;
   private svelteComponent:
@@ -30,14 +30,13 @@ export class SemanticNoteFinder extends Modal {
 
   constructor(
     app: App,
-    embeddingSearch: EmbeddingSearch,
-    configManager: ConfigManager,
-    logger: Logger
+    searchManager: SearchManager,
+    configManager: ConfigManager
   ) {
     super(app);
-    this.embeddingSearch = embeddingSearch;
+    this.searchManager = searchManager;
     this.configManager = configManager;
-    this.logger = logger;
+    this.logger = configManager.getLogger();
 
     this.debouncedSearch = debounce(
       this.handleSearch.bind(this),
@@ -70,7 +69,7 @@ export class SemanticNoteFinder extends Modal {
     });
 
     try {
-      const results = await this.embeddingSearch.search(
+      const results = await this.searchManager.search(
         query,
         this.configManager.get('topK'),
         {

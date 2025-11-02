@@ -1,4 +1,5 @@
 import { Notice, Plugin, WorkspaceLeaf, debounce } from 'obsidian';
+import { SearchManager } from './src/SearchManager';
 import { EmbeddingSearch } from './src/EmbeddingSearch';
 import { BM25Store } from './src/BM25Store';
 import { BM25Search } from './src/BM25Search';
@@ -19,13 +20,9 @@ import { OllamaClient } from './src/OllamaClient';
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
-  embeddingSearch: EmbeddingSearch | null = null;
-  bm25Store: BM25Store | null = null;
-  bm25Search: BM25Search | null = null;
+  searchManager: SearchManager | null = null;
   indexManager: IndexManager | null = null;
   metadataStore: MetadataStore | null = null;
-  embeddingStore: EmbeddingStore | null = null;
-  ollamaClient: OllamaClient | null = null;
   tokenizer: Tokenizer | null = null;
 
   async onload() {
@@ -67,12 +64,12 @@ export default class SonarPlugin extends Plugin {
     }
 
     const ollamaUrl = this.configManager.get('ollamaUrl');
-    this.ollamaClient = new OllamaClient({
+    const ollamaClient = new OllamaClient({
       ollamaUrl,
       model: embeddingModel,
     });
     try {
-      await this.ollamaClient.checkModel();
+      await ollamaClient.checkModel();
     } catch {
       new Notice('Failed to connect to Ollama - check console for details');
       return;
@@ -93,8 +90,9 @@ export default class SonarPlugin extends Plugin {
 
     const db = this.metadataStore.getDB();
 
+    let embeddingStore: EmbeddingStore;
     try {
-      this.embeddingStore = await EmbeddingStore.initialize(
+      embeddingStore = await EmbeddingStore.initialize(
         db,
         this.configManager.getLogger()
       );
@@ -107,9 +105,9 @@ export default class SonarPlugin extends Plugin {
     }
     this.configManager.getLogger().log('Embedding store initialized');
 
+    let bm25Store: BM25Store;
     try {
-      // Use the same tokenizer as embedding model for BM25
-      this.bm25Store = await BM25Store.initialize(
+      bm25Store = await BM25Store.initialize(
         db,
         this.configManager.getLogger(),
         this.tokenizer
@@ -123,39 +121,40 @@ export default class SonarPlugin extends Plugin {
     }
     this.configManager.getLogger().log('BM25 store initialized');
 
-    // Initialize BM25 search
-    this.bm25Search = new BM25Search(this.bm25Store, this.metadataStore);
+    const bm25Search = new BM25Search(bm25Store, this.metadataStore);
     this.configManager.getLogger().log('BM25 search initialized');
 
-    // Initialize embedding search with BM25 for hybrid functionality
-    this.embeddingSearch = new EmbeddingSearch(
+    const embeddingSearch = new EmbeddingSearch(
       this.metadataStore,
-      this.embeddingStore,
-      this.ollamaClient,
-      this.configManager.get('scoreDecay'),
-      this.bm25Search
+      embeddingStore,
+      ollamaClient,
+      this.configManager
     );
-    this.configManager
-      .getLogger()
-      .log('Embedding search with hybrid support initialized');
+    this.configManager.getLogger().log('Embedding search initialized');
+
+    this.searchManager = new SearchManager(
+      embeddingSearch,
+      bm25Search,
+      this.metadataStore
+    );
+    this.configManager.getLogger().log('Search manager initialized');
 
     this.indexManager = new IndexManager(
       this.metadataStore,
-      this.embeddingStore,
-      this.bm25Store,
-      this.ollamaClient,
+      embeddingStore,
+      bm25Store,
+      ollamaClient,
       this.app.vault,
       this.app.workspace,
       this.configManager,
       () => this.tokenizer!,
-      this.configManager.getLogger(),
       (status: string) => this.updateStatusBar(status),
       () => this.updateStatusBarWithFileCount()
     );
 
     this.updateStatusBarWithFileCount();
 
-    this.registerViews(this.embeddingSearch);
+    this.registerViews(this.searchManager);
 
     if (this.configManager.get('autoOpenRelatedNotes')) {
       this.activateRelatedNotesView();
@@ -177,14 +176,13 @@ export default class SonarPlugin extends Plugin {
     return this.indexManager !== null;
   }
 
-  private registerViews(embeddingSearch: EmbeddingSearch): void {
+  private registerViews(searchManager: SearchManager): void {
     this.registerView(RELATED_NOTES_VIEW_TYPE, leaf => {
       return new RelatedNotesView(
         leaf,
-        embeddingSearch,
+        searchManager,
         this.configManager,
         () => this.tokenizer!,
-        this.configManager.getLogger(),
         ext => this.registerEditorExtension(ext),
         processor => this.registerMarkdownPostProcessor(processor)
       );
@@ -357,9 +355,8 @@ export default class SonarPlugin extends Plugin {
 
     const modal = new SemanticNoteFinder(
       this.app,
-      this.embeddingSearch!,
-      this.configManager,
-      this.configManager.getLogger()
+      this.searchManager!,
+      this.configManager
     );
     modal.open();
   }

@@ -1,5 +1,5 @@
 import { AutoTokenizer, PreTrainedTokenizer } from '@huggingface/transformers';
-import { DEFAULT_COMMON_CONFIG } from './config';
+import { DEFAULT_SETTINGS } from './config';
 import type { Logger } from './Logger';
 
 /**
@@ -114,7 +114,7 @@ export class Tokenizer {
   }
 
   private static getDefaultModel(): string {
-    const defaultEmbeddingModel = DEFAULT_COMMON_CONFIG.embeddingModel;
+    const defaultEmbeddingModel = DEFAULT_SETTINGS.embeddingModel;
     const cleanDefaultModel = defaultEmbeddingModel.replace(
       /:[a-zA-Z0-9_-]+$/,
       ''
