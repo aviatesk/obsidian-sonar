@@ -4,6 +4,7 @@ import { EmbeddingSearch } from './src/EmbeddingSearch';
 import { BM25Store } from './src/BM25Store';
 import { BM25Search } from './src/BM25Search';
 import { DEFAULT_SETTINGS } from './src/config';
+import { probeGraphics } from './src/WebGPUProbe';
 import {
   RelatedNotesView,
   RELATED_NOTES_VIEW_TYPE,
@@ -46,6 +47,33 @@ export default class SonarPlugin extends Plugin {
   }
 
   private async initializeAsync(): Promise<void> {
+    // Probe graphics capabilities
+    const graphics = await probeGraphics();
+    if (graphics.webgpu.available) {
+      this.configManager
+        .getLogger()
+        .log(
+          `WebGPU: Available (fallback: ${graphics.webgpu.isFallbackAdapter}, ` +
+            `features: ${graphics.webgpu.features?.length ?? 0})`
+        );
+    } else {
+      this.configManager
+        .getLogger()
+        .log(`WebGPU: Not available - ${graphics.webgpu.reason}`);
+    }
+
+    if (graphics.webgl.available) {
+      this.configManager
+        .getLogger()
+        .log(
+          `WebGL: Available (${graphics.webgl.version}, ${graphics.webgl.renderer ?? 'unknown'})`
+        );
+    } else {
+      this.configManager
+        .getLogger()
+        .log(`WebGL: Not available - ${graphics.webgl.reason}`);
+    }
+
     const embeddingModel = this.configManager.get('embeddingModel');
     const tokenizerModel = this.configManager.get('tokenizerModel');
 
@@ -233,6 +261,43 @@ export default class SonarPlugin extends Plugin {
       name: 'Semantic search notes',
       callback: () => {
         this.openSemanticNoteFinder();
+      },
+    });
+
+    this.addCommand({
+      id: 'probe-graphics-capabilities',
+      name: 'Probe graphics capabilities (WebGPU/WebGL)',
+      callback: async () => {
+        const graphics = await probeGraphics();
+
+        const webgpuStatus = graphics.webgpu.available
+          ? `Available${graphics.webgpu.isFallbackAdapter ? ' (fallback adapter)' : ''}`
+          : `Not available - ${graphics.webgpu.reason}`;
+
+        const webglStatus = graphics.webgl.available
+          ? `Available (${graphics.webgl.version}${graphics.webgl.renderer ? `, ${graphics.webgl.renderer}` : ''})`
+          : `Not available - ${graphics.webgl.reason}`;
+
+        const message = [
+          'Graphics Capabilities:',
+          '',
+          `WebGPU: ${webgpuStatus}`,
+          graphics.webgpu.available && graphics.webgpu.features
+            ? `  Features: ${graphics.webgpu.features.length} available`
+            : '',
+          '',
+          `WebGL: ${webglStatus}`,
+          '',
+          `Electron: ${(window as any).process?.versions?.electron ?? 'N/A'}`,
+          `Chrome: ${(window as any).process?.versions?.chrome ?? 'N/A'}`,
+        ]
+          .filter(l => l !== '')
+          .join('\n');
+
+        new Notice(message, 0);
+        this.configManager
+          .getLogger()
+          .log('Graphics probe result: ' + JSON.stringify(graphics, null, 2));
       },
     });
 
