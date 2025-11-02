@@ -181,23 +181,6 @@ export class EmbeddingSearch {
 
     aggregated.sort((a, b) => b.score - a.score);
 
-    // Calculate theoretical maximum considering title/content weights
-    // Max chunk score = titleWeight + contentWeight
-    const maxChunkScore = titleWeight + contentWeight;
-    let maxTheoreticalScore = 0;
-    let weight = maxChunkScore;
-    for (let i = 0; i < L; i++) {
-      maxTheoreticalScore += weight;
-      weight *= scoreDecay;
-    }
-
-    // Normalize to [0, 1]
-    if (maxTheoreticalScore > 0) {
-      for (const result of aggregated) {
-        result.score = result.score / maxTheoreticalScore;
-      }
-    }
-
     return aggregated.slice(0, topK);
   }
 }
