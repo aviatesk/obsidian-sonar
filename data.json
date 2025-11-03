@@ -1,0 +1,26 @@
+{
+  "ollamaUrl": "http://localhost:11434",
+  "embeddingModel": "bge-m3:latest",
+  "summaryModel": "gemma3n:e4b",
+  "tokenizerModel": "",
+  "maxChunkSize": 512,
+  "chunkOverlap": 64,
+  "maxQueryTokens": 128,
+  "topK": 10,
+  "scoreDecay": 0.1,
+  "indexPath": "",
+  "debugMode": "warn",
+  "withExtraction": false,
+  "excludedPaths": [
+    ".git",
+    "node_modules"
+  ],
+  "autoOpenRelatedNotes": false,
+  "autoIndex": true,
+  "indexDebounceMs": 1000,
+  "relatedNotesDebounceMs": 1000,
+  "statusBarMaxLength": 40,
+  "showRelatedNotesQuery": false,
+  "showRelatedNotesExcerpts": false,
+  "showKnowledgeGraph": false
+}

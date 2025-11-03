@@ -2,15 +2,8 @@
 node_modules/
 
 # Obsidian
-out/
-data.json
+# data.json # TODO When releasing
 main.js
-
-# CLI
-db/
-.config.json
 
 # Claude
 CLAUDE.local.md
-
-notes
