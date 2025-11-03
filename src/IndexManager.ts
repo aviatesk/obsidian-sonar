@@ -261,6 +261,7 @@ export class IndexManager {
       this.updateStatus({
         action: this.getOperationAction(operation.type),
         file: fileName,
+        filePath,
         current: i + 1,
         total: operations.length,
       });
@@ -440,6 +441,7 @@ export class IndexManager {
       this.updateStatus({
         action: this.getOperationAction(operation.type),
         file: fileName,
+        filePath,
         current: i + 1,
         total: totalOperations,
       });
@@ -795,12 +797,29 @@ export class IndexManager {
   private updateStatus(progress: {
     action: string;
     file: string;
+    filePath: string;
     current: number;
     total: number;
   }): void {
-    this.updateStatusBar(
-      `${progress.action} ${progress.file} [${progress.current}/${progress.total}]`
-    );
+    const text = `${progress.action} ${progress.file} [${progress.current}/${progress.total}]`;
+    const fullText = `Sonar: ${progress.action} ${progress.filePath} [${progress.current}/${progress.total}]`;
+    this.statusBarItem.title = fullText;
+
+    const maxLength = this.configManager.get('statusBarMaxLength');
+    let paddedText = text;
+    if (maxLength > 0 && text.length > maxLength) {
+      if (maxLength >= 4) {
+        const halfLength = Math.floor((maxLength - 3) / 2);
+        const prefix = text.slice(0, halfLength);
+        const suffix = text.slice(-(maxLength - halfLength - 3));
+        paddedText = prefix + '...' + suffix;
+      } else {
+        paddedText = text.slice(0, maxLength);
+      }
+    } else if (maxLength > 0) {
+      paddedText = text.padEnd(maxLength);
+    }
+    this.statusBarItem.setText(`Sonar: ${paddedText}`);
   }
 
   async clearIndex(): Promise<void> {
