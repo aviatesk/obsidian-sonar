@@ -1,16 +1,16 @@
 import { Ollama } from 'ollama';
 
-export interface OllamaConfig {
-  ollamaUrl?: string;
-  model?: string;
-}
-
 export class OllamaClient {
   private ollama: Ollama;
   public readonly model: string;
   public readonly ollamaUrl: string;
 
-  constructor(config: OllamaConfig = {}) {
+  constructor(
+    config: {
+      ollamaUrl?: string;
+      model?: string;
+    } = {}
+  ) {
     this.ollamaUrl = config.ollamaUrl || 'http://localhost:11434';
     this.model = config.model || 'bge-m3:latest';
     this.ollama = new Ollama({
