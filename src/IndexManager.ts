@@ -807,6 +807,7 @@ export class IndexManager {
     await this.metadataStore.clearAll();
     await this.embeddingStore.clearAll();
     await this.bm25Store.clearAll();
+    await this.updateStatusBarWithFileCount();
   }
 
   async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {
