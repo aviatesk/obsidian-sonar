@@ -612,23 +612,15 @@ export class IndexManager {
       this.getTokenizer()
     );
 
-    const chunkContents = chunks.map(c => c.content);
-    const embeddings = await this.ollamaClient.getEmbeddings(chunkContents);
-
-    const titleEmbeddings = await this.ollamaClient.getEmbeddings([
-      file.basename,
-    ]);
-    const titleEmbedding = titleEmbeddings[0];
-
     const indexedAt = Date.now();
-
-    // Prepare all BM25 documents for batch indexing
-    const bm25Documents = [
-      { docId: `${file.path}#title`, content: file.basename },
-    ];
 
     if (chunks.length === 0) {
       // Empty file: index only title
+      const titleEmbeddings = await this.ollamaClient.getEmbeddings([
+        file.basename,
+      ]);
+      const titleEmbedding = titleEmbeddings[0];
+
       const docId = `${file.path}#0`;
       const metadata: DocumentMetadata = {
         id: docId,
@@ -642,21 +634,19 @@ export class IndexManager {
       };
       await this.metadataStore.addDocument(metadata);
 
-      // Add title as separate embedding entry
+      // Add title as separate BM25/embedding entries
       await this.embeddingStore.addEmbedding(
         `${file.path}#title`,
         titleEmbedding
       );
+      await this.bm25Store.indexDocumentBatch([
+        { docId: `${file.path}#title`, content: file.basename },
+      ]);
     } else {
-      // Add all chunks to BM25 batch
-      for (let i = 0; i < chunks.length; i++) {
-        bm25Documents.push({
-          docId: `${file.path}#${i}`,
-          content: chunks[i].content,
-        });
-      }
+      // Non-empty file: process chunks
 
-      // Index metadata for each chunk
+      const chunkContents = chunks.map(c => c.content);
+
       const metadataDocuments: DocumentMetadata[] = [];
       for (let i = 0; i < chunks.length; i++) {
         const docId = `${file.path}#${i}`;
@@ -664,7 +654,7 @@ export class IndexManager {
           id: docId,
           filePath: file.path,
           title: file.basename,
-          content: chunks[i].content,
+          content: chunkContents[i],
           headings: chunks[i].headings,
           mtime: file.stat.mtime,
           size: file.stat.size,
@@ -672,13 +662,25 @@ export class IndexManager {
         });
       }
 
-      // Add title as separate embedding entry
+      const bm25Documents = [
+        { docId: `${file.path}#title`, content: file.basename },
+      ];
+      for (let i = 0; i < chunks.length; i++) {
+        bm25Documents.push({
+          docId: `${file.path}#${i}`,
+          content: chunkContents[i],
+        });
+      }
+
+      const embeddings = await this.ollamaClient.getEmbeddings(chunkContents);
+      const titleEmbeddings = await this.ollamaClient.getEmbeddings([
+        file.basename,
+      ]);
+      const titleEmbedding = titleEmbeddings[0];
       const embeddingData: Array<{
         id: string;
         embedding: number[];
       }> = [{ id: `${file.path}#title`, embedding: titleEmbedding }];
-
-      // Add chunk embeddings
       for (let i = 0; i < chunks.length; i++) {
         embeddingData.push({
           id: `${file.path}#${i}`,
@@ -686,12 +688,11 @@ export class IndexManager {
         });
       }
 
+      // Batch index all chunks in single transactions
       await this.metadataStore.addDocuments(metadataDocuments);
       await this.embeddingStore.addEmbeddings(embeddingData);
+      await this.bm25Store.indexDocumentBatch(bm25Documents);
     }
-
-    // Batch index all chunks for BM25 in a single transaction
-    await this.bm25Store.indexDocumentBatch(bm25Documents);
   }
 
   async indexFile(file: TFile): Promise<void> {
