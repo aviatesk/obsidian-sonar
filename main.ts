@@ -1,4 +1,4 @@
-import { Notice, Plugin, WorkspaceLeaf, debounce } from 'obsidian';
+import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
 import { SearchManager } from './src/SearchManager';
 import { EmbeddingSearch } from './src/EmbeddingSearch';
 import { BM25Store } from './src/BM25Store';
@@ -13,10 +13,10 @@ import { Tokenizer } from './src/Tokenizer';
 import { IndexManager } from './src/IndexManager';
 import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
-import { getIndexableFilesCount } from 'src/fileFilters';
 import { MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
 import { OllamaClient } from './src/OllamaClient';
+import { formatDuration } from './src/ObsidianUtils';
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
@@ -34,7 +34,7 @@ export default class SonarPlugin extends Plugin {
 
     // UI elements - needed immediately
     this.statusBarItem = this.addStatusBarItem();
-    this.statusBarItem.setText('Sonar: Loading...');
+    this.statusBarItem.setText('Sonar: Initializing...');
 
     // Register commands immediately (lightweight)
     this.registerCommands();
@@ -148,11 +148,8 @@ export default class SonarPlugin extends Plugin {
       this.app.workspace,
       this.configManager,
       () => this.tokenizer!,
-      (status: string) => this.updateStatusBar(status),
-      () => this.updateStatusBarWithFileCount()
+      this.statusBarItem
     );
-
-    this.updateStatusBarWithFileCount();
 
     this.registerViews(this.searchManager);
 
@@ -160,12 +157,10 @@ export default class SonarPlugin extends Plugin {
       this.activateRelatedNotesView();
     }
 
-    this.setupEventHandlers();
-
     try {
       await this.indexManager.onLayoutReady();
     } catch {
-      this.updateStatusBar('Failed to initialize');
+      this.statusBarItem.setText('Sonar: Failed to initialize');
       new Notice(
         'Failed to initialize semantic search - Check Ollama is running'
       );
@@ -189,18 +184,20 @@ export default class SonarPlugin extends Plugin {
     });
   }
 
-  private setupEventHandlers(): void {
-    const debouncedStatusUpdate = debounce(
-      () => this.updateStatusBarWithFileCount(),
-      500,
-      true
-    );
-    this.registerEvent(this.app.vault.on('create', debouncedStatusUpdate));
-    this.registerEvent(this.app.vault.on('delete', debouncedStatusUpdate));
-    this.registerEvent(this.app.vault.on('rename', debouncedStatusUpdate));
-  }
-
   private registerCommands(): void {
+    this.addCommand({
+      id: 'sync-index',
+      name: 'Sync search index with vault',
+      callback: async () => {
+        if (!this.isInitialized()) {
+          new Notice('Sonar is still initializing. Please wait...');
+          return;
+        }
+        await this.indexManager!.syncIndex();
+      },
+    });
+
+    // TODO Delete this command when releasing
     this.addCommand({
       id: 'rebuild-index',
       name: 'Rebuild entire search index',
@@ -209,13 +206,11 @@ export default class SonarPlugin extends Plugin {
           new Notice('Sonar is still initializing. Please wait...');
           return;
         }
-        const startTime = Date.now();
-        await this.indexManager!.rebuildIndex((current, total) => {
-          this.updateStatusBar(`Rebuilding index: ${current}/${total}`);
+        await this.indexManager!.rebuildIndex((current, total, filePath) => {
+          this.configManager.logger.log(
+            `Rebuilding index: ${current}/${total} - ${filePath}`
+          );
         });
-        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-        new Notice(`Index rebuilt in ${duration}s`);
-        await this.updateStatusBarWithFileCount();
       },
     });
 
@@ -253,18 +248,6 @@ export default class SonarPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: 'sync-index',
-      name: 'Sync search index with vault',
-      callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
-        await this.indexManager!.syncIndex();
-      },
-    });
-
-    this.addCommand({
       id: 'show-indexable-files-stats',
       name: 'Show indexable files statistics',
       callback: async () => {
@@ -274,14 +257,11 @@ export default class SonarPlugin extends Plugin {
         }
 
         const startTime = Date.now();
-        this.updateStatusBar('Calculating statistics...');
-
         try {
           const stats = await this.indexManager!.getIndexableFilesStats();
-          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-
+          const duration = formatDuration(Date.now() - startTime);
           const message = [
-            `Indexable Files Statistics (calculated in ${duration}s):`,
+            `Indexable Files Statistics (calculated in ${duration}):`,
             ``,
             `Files: ${stats.fileCount.toLocaleString()}`,
             ``,
@@ -305,8 +285,6 @@ export default class SonarPlugin extends Plugin {
             .getLogger()
             .error(`Failed to calculate statistics: ${error}`);
           new Notice('Failed to calculate statistics - check console');
-        } finally {
-          await this.updateStatusBarWithFileCount();
         }
       },
     });
@@ -359,50 +337,6 @@ export default class SonarPlugin extends Plugin {
       this.configManager
     );
     modal.open();
-  }
-
-  updateStatusBar(text: string) {
-    if (this.statusBarItem) {
-      const maxLength = this.configManager.get('statusBarMaxLength');
-
-      // If maxLength is 0, no padding/truncation
-      if (maxLength === 0) {
-        this.statusBarItem.setText(`Sonar: ${text}`);
-        return;
-      }
-
-      let paddedText = text;
-      if (text.length > maxLength) {
-        // Truncate with ellipsis in the middle
-        const halfLength = Math.floor((maxLength - 3) / 2);
-        const prefix = text.slice(0, halfLength);
-        const suffix = text.slice(-(maxLength - halfLength - 3));
-        paddedText = prefix + '...' + suffix;
-      } else {
-        paddedText = text.padEnd(maxLength);
-      }
-      this.statusBarItem.setText(`Sonar: ${paddedText}`);
-    }
-  }
-
-  async updateStatusBarWithFileCount() {
-    if (!this.indexManager) {
-      this.updateStatusBar('Initializing...');
-      return;
-    }
-
-    try {
-      const stats = await this.indexManager.getStats();
-      const indexableCount = getIndexableFilesCount(
-        this.app.vault,
-        this.configManager
-      );
-      this.updateStatusBar(
-        `Indexed ${stats.totalFiles}/${indexableCount} files`
-      );
-    } catch {
-      this.updateStatusBar('Vector store errored');
-    }
   }
 
   async onunload() {

@@ -60,12 +60,13 @@ for testing purposes.
     TypeScript type checking (no `skipLibCheck`)
   - To fix issues: Use `npm run fix` to auto-format and fix linting in one
     command (or use `npm run format` and `npm run lint` separately)
-- After writing or modifying code, run `npm run format` to ensure consistent
+- After writing or modifying code, run `npm run fix` to ensure consistent
   formatting
   - TypeScript files: maximum line length 80 characters
   - Markdown files: maximum line length 80 characters
-- Do not commit build artifacts: Never commit `node_modules/`, `main.js`, or
-  other generated files to version control.
+- Commit messages: Do not include the "Generated with
+  [Claude Code](https://claude.com/claude-code)" footer in commit messages for
+  this project. Keep commit messages focused and concise.
 - Keep the plugin small. Avoid large dependencies. Prefer browser-compatible
   packages.
 - Avoid Node/Electron APIs where possible.
@@ -85,6 +86,9 @@ for testing purposes.
 - **When writing documentation, avoid excessive decoration**. For example, avoid
   scattering emojis or overusing `**` bold formatting. Use these only where
   truly necessary.
+- **Use backticks for code references**: When writing comments, commit messages,
+  or documentation, wrap code-related terms in backticks (e.g., `functionName`,
+  `variableName`, `file.ts`) to distinguish them from regular text.
 - Keep `main.ts` minimal: Focus only on plugin lifecycle (onload, onunload,
   addCommand calls). Delegate all feature logic to separate modules.
 - Split large files: If any file exceeds ~200-300 lines, consider breaking it
@@ -92,6 +96,29 @@ for testing purposes.
 - Use clear module boundaries: Each file should have a single, well-defined
   responsibility.
 - Prefer `async/await` over promise chains; handle errors gracefully.
+- **Minimize `try/catch` scope**: Only wrap operations that can actually throw
+  errors. Extract the error-prone operation and use early return:
+
+  ```ts
+  // Good: minimal try/catch scope
+  let result;
+  try {
+    result = await dangerousOperation();
+  } catch (error) {
+    logger.error(`Failed: ${error}`);
+    return;
+  }
+  safeOperation(result);
+
+  // Bad: unnecessarily wide try/catch
+  try {
+    const result = await dangerousOperation();
+    safeOperation(result); // Should be outside try
+  } catch (error) {
+    logger.error(`Failed: ${error}`);
+  }
+  ```
+
 - Generally, **efforts to maintain backward compatibility are not necessary
   unless explicitly requested by users**. For example, when renaming field names
   in data structures, you can simply perform the rename.

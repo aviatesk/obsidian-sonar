@@ -36,20 +36,17 @@ export class SettingTab extends PluginSettingTab {
       .addButton(button =>
         button.setButtonText('Rebuild').onClick(async () => {
           if (this.plugin.indexManager) {
-            const startTime = Date.now();
             await this.plugin.indexManager.rebuildIndex(
-              async (current, total) => {
-                this.plugin.updateStatusBar(`Indexing ${current}/${total}`);
-                // Update stats periodically
+              async (current, total, filePath) => {
+                this.configManager.logger.log(
+                  `Rebuilding index: ${current}/${total} - ${filePath}`
+                );
                 if (current % 10 === 0) {
                   await this.updateStats();
                 }
               }
             );
-            const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-            new Notice(`Index rebuilt in ${duration}s`);
             await this.updateStats();
-            await this.plugin.updateStatusBarWithFileCount();
           } else {
             new Notice('Index manager not initialized');
           }
@@ -64,7 +61,6 @@ export class SettingTab extends PluginSettingTab {
           if (this.plugin.indexManager) {
             await this.plugin.indexManager.syncIndex();
             await this.updateStats();
-            await this.plugin.updateStatusBarWithFileCount();
           } else {
             new Notice('Index manager not initialized');
           }
@@ -127,7 +123,6 @@ export class SettingTab extends PluginSettingTab {
             const normalized = value ? normalizePath(value) : '';
             await this.configManager.set('indexPath', normalized);
             await this.updateStats();
-            await this.plugin.updateStatusBarWithFileCount();
           })
       );
 
@@ -149,7 +144,6 @@ export class SettingTab extends PluginSettingTab {
               .map(path => normalizePath(path));
             await this.configManager.set('excludedPaths', paths);
             await this.updateStats();
-            await this.plugin.updateStatusBarWithFileCount();
           });
         // Make the text area larger
         text.inputEl.rows = 5;
@@ -345,7 +339,7 @@ export class SettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('Status bar max length')
       .setDesc(
-        'Maximum number of characters in status bar (default: 40, 0 = no padding)'
+        'Maximum number of characters in status bar (default: 40, 0 = no limit)'
       )
       .addSlider(slider =>
         slider
@@ -395,26 +389,28 @@ export class SettingTab extends PluginSettingTab {
   async updateStats() {
     if (!this.statsDiv || !this.plugin.indexManager) return;
 
+    const indexableCount = getIndexableFilesCount(
+      this.plugin.app.vault,
+      this.plugin.configManager
+    );
+    let stats;
     try {
-      const stats = await this.plugin.indexManager.getStats();
-      const indexableCount = getIndexableFilesCount(
-        this.plugin.app.vault,
-        this.plugin.configManager
-      );
-      this.statsDiv.empty();
-      this.statsDiv.createEl('p', {
-        text: `Files indexed: ${stats.totalFiles} / ${indexableCount}`,
-      });
-      this.statsDiv.createEl('p', {
-        text: `Total chunks: ${stats.totalDocuments}`,
-      });
-      this.statsDiv.createEl('p', {
-        text: `Index path: ${this.configManager.get('indexPath')}`,
-      });
+      stats = await this.plugin.indexManager.getStats();
     } catch (err) {
       this.configManager.getLogger().error(`Failed to get stats: ${err}`);
       this.statsDiv.empty();
       this.statsDiv.createEl('p', { text: 'Stats unavailable' });
+      return;
     }
+    this.statsDiv.empty();
+    this.statsDiv.createEl('p', {
+      text: `Files indexed: ${stats.totalFiles} / ${indexableCount}`,
+    });
+    this.statsDiv.createEl('p', {
+      text: `Total chunks: ${stats.totalDocuments}`,
+    });
+    this.statsDiv.createEl('p', {
+      text: `Index path: ${this.configManager.get('indexPath')}`,
+    });
   }
 }

@@ -8,7 +8,11 @@ import {
   Workspace,
 } from 'obsidian';
 import { ConfigManager } from './ConfigManager';
-import { shouldIndexFile, getFilesToIndex } from './fileFilters';
+import {
+  shouldIndexFile,
+  getFilesToIndex,
+  getIndexableFilesCount,
+} from './fileFilters';
 import { type DocumentMetadata, MetadataStore } from './MetadataStore';
 import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
@@ -16,6 +20,7 @@ import { OllamaClient } from './OllamaClient';
 import { Tokenizer } from './Tokenizer';
 import { Logger } from './Logger';
 import { BM25Store } from './BM25Store';
+import { formatDuration } from './ObsidianUtils';
 
 interface FileOperation {
   type: 'create' | 'modify' | 'delete' | 'rename';
@@ -39,8 +44,7 @@ export class IndexManager {
   private isProcessing: boolean = false;
   private configUnsubscribers: Array<() => void> = [];
   private isInitialized: boolean = false;
-  private statusUpdateCallback: (status: string) => void;
-  private onProcessingCompleteCallback: () => void;
+  private statusBarItem: HTMLElement;
   private previousActiveFile: TFile | null = null;
 
   constructor(
@@ -52,8 +56,7 @@ export class IndexManager {
     workspace: Workspace,
     configManager: ConfigManager,
     getTokenizer: () => Tokenizer,
-    statusUpdateCallback: (status: string) => void,
-    onProcessingCompleteCallback: () => void
+    statusBarItem: HTMLElement
   ) {
     this.metadataStore = metadataStore;
     this.embeddingStore = embeddingStore;
@@ -64,8 +67,7 @@ export class IndexManager {
     this.configManager = configManager;
     this.getTokenizer = getTokenizer;
     this.logger = configManager.getLogger();
-    this.statusUpdateCallback = statusUpdateCallback;
-    this.onProcessingCompleteCallback = onProcessingCompleteCallback;
+    this.statusBarItem = statusBarItem;
 
     const debounceMs = configManager.get('indexDebounceMs');
     this.debouncedProcess = debounce(
@@ -75,6 +77,8 @@ export class IndexManager {
     );
 
     this.setupConfigListeners();
+
+    this.updateStatusBarWithFileCount();
   }
 
   /**
@@ -82,7 +86,7 @@ export class IndexManager {
    */
   async onLayoutReady(): Promise<void> {
     // Sync to detect changes made while Obsidian was closed
-    await this.syncOnLoad();
+    await this.syncIndex(true);
 
     this.isInitialized = true;
 
@@ -150,13 +154,6 @@ export class IndexManager {
     return (
       file.stat.mtime !== metadata.mtime || file.stat.size !== metadata.size
     );
-  }
-
-  private async syncOnLoad(): Promise<void> {
-    this.logger.log('IndexManager: Starting sync...');
-    await this.performSync();
-    this.logger.log('IndexManager: Sync completed');
-    this.onProcessingCompleteCallback();
   }
 
   private async performSync(
@@ -467,7 +464,7 @@ export class IndexManager {
       this.isProcessing = false;
     }
 
-    this.onProcessingCompleteCallback();
+    await this.updateStatusBarWithFileCount();
     return errorCount;
   }
 
@@ -710,16 +707,25 @@ export class IndexManager {
     ) => void | Promise<void>
   ): Promise<void> {
     this.logger.log('IndexManager: Starting full index rebuild...');
+    const startTime = Date.now();
     await this.clearIndex();
     const stats = await this.performSync(progressCallback);
-    const message = `Rebuild complete: ${stats.newCount} files indexed${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
-    new Notice(message);
+    const duration = formatDuration(Date.now() - startTime);
+    const message = `Rebuild complete: ${stats.newCount} files indexed in ${duration}${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
+    new Notice(message, 0);
+    this.logger.log('IndexManager: Rebuild completed');
+    await this.updateStatusBarWithFileCount();
   }
 
-  async syncIndex(): Promise<void> {
+  async syncIndex(onload: boolean = false): Promise<void> {
+    this.logger.log('IndexManager: Starting sync...');
+    const startTime = Date.now();
     const stats = await this.performSync();
-    const message = `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
-    new Notice(message);
+    const duration = formatDuration(Date.now() - startTime);
+    const message = `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted in ${duration}${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
+    new Notice(message, onload ? 10 : 0);
+    this.logger.log('IndexManager: Sync completed');
+    await this.updateStatusBarWithFileCount();
   }
 
   private unregisterEventHandlers(): void {
@@ -738,13 +744,53 @@ export class IndexManager {
     this.configUnsubscribers = [];
   }
 
+  private updateStatusBar(text: string): void {
+    const maxLength = this.configManager.get('statusBarMaxLength');
+    const fullText = `Sonar: ${text}`;
+
+    // Always set tooltip to show full text
+    this.statusBarItem.title = fullText;
+
+    let paddedText = text;
+    if (maxLength > 0 && text.length > maxLength) {
+      // Need at least 4 characters for ellipsis truncation (e.g., "a...b")
+      if (maxLength >= 4) {
+        const halfLength = Math.floor((maxLength - 3) / 2);
+        const prefix = text.slice(0, halfLength);
+        const suffix = text.slice(-(maxLength - halfLength - 3));
+        paddedText = prefix + '...' + suffix;
+      } else {
+        // For very short maxLength, just truncate
+        paddedText = text.slice(0, maxLength);
+      }
+    } else if (maxLength > 0) {
+      paddedText = text.padEnd(maxLength);
+    }
+    this.statusBarItem.setText(`Sonar: ${paddedText}`);
+  }
+
+  private async updateStatusBarWithFileCount(): Promise<void> {
+    const indexableCount = getIndexableFilesCount(
+      this.vault,
+      this.configManager
+    );
+    let stats;
+    try {
+      stats = await this.getStats();
+    } catch (error) {
+      this.logger.error(`IndexManager: Failed to get stats: ${error}`);
+      return;
+    }
+    this.updateStatusBar(`Indexed ${stats.totalFiles}/${indexableCount} files`);
+  }
+
   private updateStatus(progress: {
     action: string;
     file: string;
     current: number;
     total: number;
   }): void {
-    this.statusUpdateCallback(
+    this.updateStatusBar(
       `${progress.action} ${progress.file} [${progress.current}/${progress.total}]`
     );
   }

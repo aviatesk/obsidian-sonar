@@ -19,7 +19,7 @@ export class ConfigManager extends EventEmitter {
   private saveCallback: (settings: ObsidianSettings) => Promise<void>;
   private changeListeners: Map<string, Set<ConfigChangeListener>> = new Map();
   private batchChangeListeners: Set<ConfigBatchChangeListener> = new Set();
-  private logger: Logger;
+  logger: Logger;
 
   private constructor(
     initialSettings: ObsidianSettings,
