@@ -5,5 +5,8 @@ node_modules/
 # data.json # TODO When releasing
 main.js
 
+# Build intermediates
+src/generated/
+
 # Claude
 CLAUDE.local.md

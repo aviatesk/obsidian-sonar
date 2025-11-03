@@ -1,6 +1,7 @@
 main.js
 testdir
 experiments
+src/generated/**/*
 
 data.json
 data.*.json

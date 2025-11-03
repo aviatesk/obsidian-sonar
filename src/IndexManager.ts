@@ -16,7 +16,7 @@ import {
 import { type DocumentMetadata, MetadataStore } from './MetadataStore';
 import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
-import { OllamaClient } from './OllamaClient';
+import { Embedder } from './Embedder';
 import { Tokenizer } from './Tokenizer';
 import { Logger } from './Logger';
 import { BM25Store } from './BM25Store';
@@ -32,7 +32,7 @@ export class IndexManager {
   private metadataStore: MetadataStore;
   private embeddingStore: EmbeddingStore;
   private bm25Store: BM25Store;
-  private ollamaClient: OllamaClient;
+  private embedder: Embedder;
   private vault: Vault;
   private workspace: Workspace;
   private configManager: ConfigManager;
@@ -51,7 +51,7 @@ export class IndexManager {
     metadataStore: MetadataStore,
     embeddingStore: EmbeddingStore,
     bm25Store: BM25Store,
-    ollamaClient: OllamaClient,
+    embedder: Embedder,
     vault: Vault,
     workspace: Workspace,
     configManager: ConfigManager,
@@ -61,7 +61,7 @@ export class IndexManager {
     this.metadataStore = metadataStore;
     this.embeddingStore = embeddingStore;
     this.bm25Store = bm25Store;
-    this.ollamaClient = ollamaClient;
+    this.embedder = embedder;
     this.vault = vault;
     this.workspace = workspace;
     this.configManager = configManager;
@@ -616,7 +616,7 @@ export class IndexManager {
 
     if (chunks.length === 0) {
       // Empty file: index only title
-      const titleEmbeddings = await this.ollamaClient.getEmbeddings([
+      const titleEmbeddings = await this.embedder.getEmbeddings([
         file.basename,
       ]);
       const titleEmbedding = titleEmbeddings[0];
@@ -672,8 +672,8 @@ export class IndexManager {
         });
       }
 
-      const embeddings = await this.ollamaClient.getEmbeddings(chunkContents);
-      const titleEmbeddings = await this.ollamaClient.getEmbeddings([
+      const embeddings = await this.embedder.getEmbeddings(chunkContents);
+      const titleEmbeddings = await this.embedder.getEmbeddings([
         file.basename,
       ]);
       const titleEmbedding = titleEmbeddings[0];

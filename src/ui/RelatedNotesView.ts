@@ -15,11 +15,7 @@ import type { Extension } from '@codemirror/state';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
 import { SearchManager, type SearchResult } from '../SearchManager';
-import {
-  processQuery,
-  extractWithLLM,
-  type QueryOptions,
-} from '../QueryProcessor';
+import { processQuery, type QueryOptions } from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';
 import { Tokenizer } from '../Tokenizer';
 import { getCurrentContext } from '../ObsidianUtils';
@@ -42,7 +38,6 @@ export class RelatedNotesView extends ItemView {
   private configManager: ConfigManager;
   private getTokenizer: () => Tokenizer;
   private logger: Logger;
-  private withExtraction: boolean;
   private lastActiveFile: TFile | null = null;
   private lastQuery: string = '';
   private debouncedRefresh: () => void;
@@ -74,7 +69,6 @@ export class RelatedNotesView extends ItemView {
     this.configManager = configManager;
     this.getTokenizer = getTokenizer;
     this.logger = configManager.getLogger();
-    this.withExtraction = configManager.get('withExtraction');
     this.registerEditorExt = registerEditorExt;
     this.registerMdPostProcessor = registerMdPostProcessor;
 
@@ -120,14 +114,6 @@ export class RelatedNotesView extends ItemView {
 
     this.configManager.subscribe('embeddingModel', () => {
       this.debouncedRefresh();
-    });
-
-    this.configManager.subscribe('tokenizerModel', () => {
-      this.debouncedRefresh();
-    });
-
-    this.configManager.subscribe('withExtraction', (_, value) => {
-      this.withExtraction = value;
     });
   }
 
@@ -197,10 +183,6 @@ export class RelatedNotesView extends ItemView {
         logger: this.logger,
         onRefresh: () => {
           this.manualRefresh();
-        },
-        onToggleWithExtraction: (value: boolean) => {
-          this.withExtraction = value;
-          this.configManager.set('withExtraction', value);
         },
       },
     });
@@ -324,17 +306,7 @@ export class RelatedNotesView extends ItemView {
 
     try {
       const content = await this.app.vault.cachedRead(activeFile);
-      let query = await processQuery(content, options);
-
-      if (this.withExtraction) {
-        query = await extractWithLLM(
-          query,
-          this.configManager.get('maxQueryTokens'),
-          this.configManager.get('ollamaUrl'),
-          this.configManager.get('summaryModel'),
-          this.logger
-        );
-      }
+      const query = await processQuery(content, options);
 
       if (query === this.lastQuery) {
         const currentState = get(this.relatedNotesStore);

@@ -1,13 +1,8 @@
 export type LogLevel = 'error' | 'warn' | 'log';
 
 export interface ObsidianSettings {
-  // Ollama
-  ollamaUrl: string;
-  embeddingModel: string;
-  summaryModel: string;
-
-  // Transformer.js
-  tokenizerModel: string; // Empty string means auto-detection
+  // Transformers.js
+  embeddingModel: string; // HuggingFace model ID (e.g., 'Xenova/bge-m3')
 
   // Search parameters
   maxChunkSize: number;
@@ -19,7 +14,6 @@ export interface ObsidianSettings {
   // Obsidian-specific
   indexPath: string;
   debugMode: LogLevel;
-  withExtraction: boolean;
   excludedPaths: string[];
   autoOpenRelatedNotes: boolean;
   autoIndex: boolean;
@@ -32,10 +26,7 @@ export interface ObsidianSettings {
 }
 
 export const DEFAULT_SETTINGS: ObsidianSettings = {
-  ollamaUrl: 'http://localhost:11434',
-  embeddingModel: 'bge-m3:latest',
-  summaryModel: 'gemma3n:e4b',
-  tokenizerModel: '', // Empty string for auto-detection
+  embeddingModel: 'Xenova/bge-m3', // Transformers.js compatible model
   maxChunkSize: 512, // tokens
   chunkOverlap: 64, // tokens (roughly 10% of chunk size)
   maxQueryTokens: 128, // tokens for search queries
@@ -43,7 +34,6 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   scoreDecay: 0.1, // small bonus for additional chunks
   indexPath: '',
   debugMode: 'error',
-  withExtraction: false,
   excludedPaths: [],
   autoOpenRelatedNotes: true,
   autoIndex: false,
