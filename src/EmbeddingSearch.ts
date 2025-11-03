@@ -8,7 +8,6 @@ interface CombinedDocument {
   id: string;
   content: string;
   embedding: number[];
-  titleEmbedding: number[];
   metadata: DocumentMetadata;
 }
 
@@ -52,24 +51,42 @@ export class EmbeddingSearch {
 
   /**
    * Combines metadata and embeddings into a unified view for search
+   * Filters by type: 'title' returns only title entries, 'content' returns only chunk entries
    */
-  private async getCombinedDocuments(): Promise<CombinedDocument[]> {
+  private async getCombinedDocuments(
+    type?: 'title' | 'content'
+  ): Promise<CombinedDocument[]> {
     const [metadata, embeddings] = await Promise.all([
       this.metadataStore.getAllDocuments(),
       this.embeddingStore.getAllEmbeddings(),
     ]);
 
-    const embeddingMap = new Map(embeddings.map(e => [e.id, e]));
     const combined: CombinedDocument[] = [];
 
-    for (const meta of metadata) {
-      const emb = embeddingMap.get(meta.id);
-      if (emb) {
+    // Filter embeddings by type
+    const filteredEmbeddings = embeddings.filter(emb => {
+      const isTitle = emb.id.endsWith('#title');
+      if (type === 'title') return isTitle;
+      if (type === 'content') return !isTitle;
+      return true; // no filter
+    });
+
+    for (const emb of filteredEmbeddings) {
+      // For title entries, find the first chunk metadata of the file
+      // For content entries, use the exact metadata match
+      let meta: DocumentMetadata | undefined;
+      if (emb.id.endsWith('#title')) {
+        const filePath = emb.id.replace(/#title$/, '');
+        meta = metadata.find(m => m.filePath === filePath);
+      } else {
+        meta = metadata.find(m => m.id === emb.id);
+      }
+
+      if (meta) {
         combined.push({
-          id: meta.id,
-          content: meta.content,
+          id: emb.id,
+          content: emb.id.endsWith('#title') ? meta.title : meta.content,
           embedding: emb.embedding,
-          titleEmbedding: emb.titleEmbedding,
           metadata: meta,
         });
       }
@@ -79,47 +96,40 @@ export class EmbeddingSearch {
   }
 
   /**
-   * Search title only
+   * Search title only (searches title embeddings: path#title entries)
    */
   async searchTitle(
     query: string,
     topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    return this.search(query, topK, {
-      ...options,
-      titleWeight: 1,
-      contentWeight: 0,
-    });
+    return this.searchByType(query, topK, 'title', options);
   }
 
   /**
-   * Search content only
+   * Search content only (searches chunk embeddings: path#0, path#1, ... entries)
    */
   async searchContent(
     query: string,
     topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    return this.search(query, topK, {
-      ...options,
-      titleWeight: 0,
-      contentWeight: 1,
-    });
+    return this.searchByType(query, topK, 'content', options);
   }
 
   /**
-   * Embedding search with title and content weighting
+   * Core search implementation for a specific type (title or content)
    */
-  async search(
+  private async searchByType(
     query: string,
     topK: number,
+    type: 'title' | 'content',
     options?: SearchOptions
   ): Promise<SearchResult[]> {
     const queryEmbeddings = await this.ollamaClient.getEmbeddings([query]);
     const queryEmbedding = queryEmbeddings[0];
 
-    const documents = await this.getCombinedDocuments();
+    const documents = await this.getCombinedDocuments(type);
 
     let filteredDocuments = documents;
     if (options?.excludeFilePath) {
@@ -128,59 +138,71 @@ export class EmbeddingSearch {
       );
     }
 
-    const titleWeight = options?.titleWeight ?? 0;
-    const contentWeight = options?.contentWeight ?? 1;
     const scoreDecay = this.configManager.get('scoreDecay');
 
     const results = filteredDocuments.map(doc => {
-      const contentSimilarity = cosineSimilarity(queryEmbedding, doc.embedding);
-      const titleSimilarity = cosineSimilarity(
-        queryEmbedding,
-        doc.titleEmbedding
-      );
-      const score =
-        contentWeight * contentSimilarity + titleWeight * titleSimilarity;
+      const similarity = cosineSimilarity(queryEmbedding, doc.embedding);
       return {
         document: doc,
-        score,
+        score: similarity,
       };
     });
 
     results.sort((a, b) => b.score - a.score);
-    const topResults = results.slice(0, topK * MULTIPLIER);
 
-    const groupedByFile = new Map<string, typeof results>();
-    for (const result of topResults) {
-      const filePath = result.document.metadata.filePath;
-      if (!groupedByFile.has(filePath)) {
-        groupedByFile.set(filePath, []);
-      }
-      groupedByFile.get(filePath)!.push(result);
-    }
-
-    const aggregated: SearchResult[] = [];
-    for (const [filePath, chunks] of groupedByFile.entries()) {
-      chunks.sort((a, b) => b.score - a.score);
-      const scores = chunks.map(c => c.score);
-      const aggregatedScore = aggregateWeightedDecay(scores, scoreDecay);
-      const topChunk = chunks[0];
-
-      aggregated.push({
-        filePath,
-        title: topChunk.document.metadata.title || filePath,
-        score: aggregatedScore,
+    if (type === 'title') {
+      // For title search, return one result per file (no aggregation needed)
+      const topResults = results.slice(0, topK);
+      return topResults.map(result => ({
+        filePath: result.document.metadata.filePath,
+        title:
+          result.document.metadata.title || result.document.metadata.filePath,
+        score: result.score,
         topChunk: {
-          content: topChunk.document.content,
-          score: topChunk.score,
-          metadata: topChunk.document.metadata,
+          content: result.document.content,
+          score: result.score,
+          metadata: result.document.metadata,
         },
-        chunkCount: chunks.length,
-        fileSize: topChunk.document.metadata.size,
-      });
+        chunkCount: 1,
+        fileSize: result.document.metadata.size,
+      }));
+    } else {
+      // For content search, aggregate chunks by file
+      const topResults = results.slice(0, topK * MULTIPLIER);
+
+      const groupedByFile = new Map<string, typeof results>();
+      for (const result of topResults) {
+        const filePath = result.document.metadata.filePath;
+        if (!groupedByFile.has(filePath)) {
+          groupedByFile.set(filePath, []);
+        }
+        groupedByFile.get(filePath)!.push(result);
+      }
+
+      const aggregated: SearchResult[] = [];
+      for (const [filePath, chunks] of groupedByFile.entries()) {
+        chunks.sort((a, b) => b.score - a.score);
+        const scores = chunks.map(c => c.score);
+        const aggregatedScore = aggregateWeightedDecay(scores, scoreDecay);
+        const topChunk = chunks[0];
+
+        aggregated.push({
+          filePath,
+          title: topChunk.document.metadata.title || filePath,
+          score: aggregatedScore,
+          topChunk: {
+            content: topChunk.document.content,
+            score: topChunk.score,
+            metadata: topChunk.document.metadata,
+          },
+          chunkCount: chunks.length,
+          fileSize: topChunk.document.metadata.size,
+        });
+      }
+
+      aggregated.sort((a, b) => b.score - a.score);
+
+      return aggregated.slice(0, topK);
     }
-
-    aggregated.sort((a, b) => b.score - a.score);
-
-    return aggregated.slice(0, topK);
   }
 }

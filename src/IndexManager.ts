@@ -639,7 +639,12 @@ export class IndexManager {
         indexedAt,
       };
       await this.metadataStore.addDocument(metadata);
-      await this.embeddingStore.addEmbedding(docId, [], titleEmbedding);
+
+      // Add title as separate embedding entry
+      await this.embeddingStore.addEmbedding(
+        `${file.path}#title`,
+        titleEmbedding
+      );
     } else {
       // Add all chunks to BM25 batch
       for (let i = 0; i < chunks.length; i++) {
@@ -649,14 +654,8 @@ export class IndexManager {
         });
       }
 
-      // Index metadata, embeddings for each chunk
+      // Index metadata for each chunk
       const metadataDocuments: DocumentMetadata[] = [];
-      const embeddingData: Array<{
-        id: string;
-        embedding: number[];
-        titleEmbedding: number[];
-      }> = [];
-
       for (let i = 0; i < chunks.length; i++) {
         const docId = `${file.path}#${i}`;
         metadataDocuments.push({
@@ -669,10 +668,19 @@ export class IndexManager {
           size: file.stat.size,
           indexedAt,
         });
+      }
+
+      // Add title as separate embedding entry
+      const embeddingData: Array<{
+        id: string;
+        embedding: number[];
+      }> = [{ id: `${file.path}#title`, embedding: titleEmbedding }];
+
+      // Add chunk embeddings
+      for (let i = 0; i < chunks.length; i++) {
         embeddingData.push({
-          id: docId,
+          id: `${file.path}#${i}`,
           embedding: embeddings[i],
-          titleEmbedding: titleEmbedding,
         });
       }
 

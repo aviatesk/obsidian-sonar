@@ -2,12 +2,11 @@ import type { Logger } from './Logger';
 import { STORE_EMBEDDINGS } from './MetadataStore';
 
 /**
- * Embedding data for a document chunk
+ * Embedding data for a document chunk or title
  */
 export interface EmbeddingData {
-  id: string; // Format: filePath#chunkIndex (matches MetadataStore id)
+  id: string; // Format: filePath#chunkIndex or filePath#title
   embedding: number[];
-  titleEmbedding: number[];
 }
 
 export class EmbeddingStore {
@@ -29,15 +28,10 @@ export class EmbeddingStore {
     return store;
   }
 
-  async addEmbedding(
-    id: string,
-    embedding: number[],
-    titleEmbedding: number[]
-  ): Promise<void> {
+  async addEmbedding(id: string, embedding: number[]): Promise<void> {
     const embeddingData: EmbeddingData = {
       id,
       embedding,
-      titleEmbedding,
     };
 
     return new Promise((resolve, reject) => {
@@ -57,7 +51,6 @@ export class EmbeddingStore {
     embeddings: Array<{
       id: string;
       embedding: number[];
-      titleEmbedding: number[];
     }>
   ): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -68,7 +61,6 @@ export class EmbeddingStore {
         const embeddingData: EmbeddingData = {
           id: emb.id,
           embedding: emb.embedding,
-          titleEmbedding: emb.titleEmbedding,
         };
         store.put(embeddingData);
       });
