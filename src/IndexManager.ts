@@ -16,11 +16,17 @@ import {
 import { type DocumentMetadata, MetadataStore } from './MetadataStore';
 import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
-import { OllamaClient } from './OllamaClient';
+import { Embedder } from './Embedder';
 import { Tokenizer } from './Tokenizer';
 import { Logger } from './Logger';
 import { BM25Store } from './BM25Store';
 import { formatDuration } from './ObsidianUtils';
+
+/**
+ * Debounce delay for batching file operations
+ * Helps group multiple operations (e.g., directory delete/rename) together
+ */
+const AUTO_INDEX_DEBOUNCE_MS = 1000;
 
 interface FileOperation {
   type: 'create' | 'modify' | 'delete' | 'rename';
@@ -29,55 +35,27 @@ interface FileOperation {
 }
 
 export class IndexManager {
-  private metadataStore: MetadataStore;
-  private embeddingStore: EmbeddingStore;
-  private bm25Store: BM25Store;
-  private ollamaClient: OllamaClient;
-  private vault: Vault;
-  private workspace: Workspace;
-  private configManager: ConfigManager;
-  private getTokenizer: () => Tokenizer;
   private logger: Logger;
   private pendingOperations: Map<string, FileOperation> = new Map();
-  private debouncedProcess: () => void;
   private eventRefs: EventRef[] = [];
   private isProcessing: boolean = false;
-  private configUnsubscribers: Array<() => void> = [];
+  private configSubscribers: Array<() => void> = [];
   private isInitialized: boolean = false;
-  private statusBarItem: HTMLElement;
   private previousActiveFile: TFile | null = null;
 
   constructor(
-    metadataStore: MetadataStore,
-    embeddingStore: EmbeddingStore,
-    bm25Store: BM25Store,
-    ollamaClient: OllamaClient,
-    vault: Vault,
-    workspace: Workspace,
-    configManager: ConfigManager,
-    getTokenizer: () => Tokenizer,
-    statusBarItem: HTMLElement
+    private metadataStore: MetadataStore,
+    private embeddingStore: EmbeddingStore,
+    private bm25Store: BM25Store,
+    private embedder: Embedder,
+    private vault: Vault,
+    private workspace: Workspace,
+    private configManager: ConfigManager,
+    private getTokenizer: () => Tokenizer,
+    private statusBarItem: HTMLElement
   ) {
-    this.metadataStore = metadataStore;
-    this.embeddingStore = embeddingStore;
-    this.bm25Store = bm25Store;
-    this.ollamaClient = ollamaClient;
-    this.vault = vault;
-    this.workspace = workspace;
-    this.configManager = configManager;
-    this.getTokenizer = getTokenizer;
     this.logger = configManager.getLogger();
-    this.statusBarItem = statusBarItem;
-
-    const debounceMs = configManager.get('indexDebounceMs');
-    this.debouncedProcess = debounce(
-      () => this.processPendingOperations(),
-      debounceMs,
-      true
-    );
-
     this.setupConfigListeners();
-
     this.updateStatusBarWithFileCount();
   }
 
@@ -113,7 +91,7 @@ export class IndexManager {
       true
     );
 
-    this.configUnsubscribers.push(
+    this.configSubscribers.push(
       this.configManager.subscribe('autoIndex', (_key, value) => {
         if (this.isInitialized) {
           if (value) {
@@ -127,7 +105,7 @@ export class IndexManager {
       })
     );
 
-    this.configUnsubscribers.push(
+    this.configSubscribers.push(
       this.configManager.subscribe('excludedPaths', () => {
         if (!this.isInitialized) return;
         this.logger.log(
@@ -137,7 +115,7 @@ export class IndexManager {
       })
     );
 
-    this.configUnsubscribers.push(
+    this.configSubscribers.push(
       this.configManager.subscribe('indexPath', () => {
         if (!this.isInitialized) return;
         this.logger.log('IndexManager: Index path updated, scheduling sync...');
@@ -210,74 +188,10 @@ export class IndexManager {
       `IndexManager: Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
     );
 
-    // Batch delete all affected files from BM25 index first
-    const bm25FilesToDelete: string[] = [];
-    for (const operation of operations) {
-      if (operation.type === 'delete' && operation.oldPath) {
-        bm25FilesToDelete.push(operation.oldPath);
-      } else if (operation.type === 'rename' && operation.oldPath) {
-        bm25FilesToDelete.push(operation.oldPath);
-      } else if (
-        (operation.type === 'create' || operation.type === 'modify') &&
-        operation.file
-      ) {
-        bm25FilesToDelete.push(operation.file.path);
-      }
-    }
-
-    if (bm25FilesToDelete.length > 0) {
-      this.logger.log(
-        `IndexManager: Batch deletion starting for ${bm25FilesToDelete.length} files`
-      );
-
-      // Get all document IDs from MetadataStore for these files
-      const allDocIds: string[] = [];
-      for (const filePath of bm25FilesToDelete) {
-        const docs = await this.metadataStore.getDocumentsByFile(filePath);
-        allDocIds.push(...docs.map(d => d.id));
-      }
-
-      this.logger.log(
-        `IndexManager: Deleting ${allDocIds.length} documents from BM25`
-      );
-      await this.bm25Store.deleteDocuments(allDocIds);
-      this.logger.log('IndexManager: BM25 batch deletion complete');
-    }
-
-    // Process each operation
-    let errorCount = 0;
-    for (let i = 0; i < operations.length; i++) {
-      const operation = operations[i];
-      const filePath = operation.file?.path || operation.oldPath || 'unknown';
-
-      if (progressCallback) {
-        await progressCallback(i + 1, operations.length, filePath);
-      }
-
-      const fileName =
-        operation.file?.basename ||
-        operation.oldPath?.split('/').pop() ||
-        'unknown';
-      this.updateStatus({
-        action: this.getOperationAction(operation.type),
-        file: fileName,
-        filePath,
-        current: i + 1,
-        total: operations.length,
-      });
-
-      try {
-        await this.processSyncOperation(operation);
-        this.logger.log(
-          `IndexManager: ${this.getOperationAction(operation.type)} ${filePath}`
-        );
-      } catch (error) {
-        this.logger.error(
-          `IndexManager: Failed to ${operation.type} ${filePath}: ${error}`
-        );
-        errorCount++;
-      }
-    }
+    const errorCount = await this.processBatchOperations(
+      operations,
+      progressCallback
+    );
 
     return {
       newCount,
@@ -366,14 +280,9 @@ export class IndexManager {
     );
   }
 
-  private scheduleOperation(
-    operation: FileOperation,
-    skipDebounce = false
-  ): void {
+  private scheduleOperation(operation: FileOperation): void {
     const key = operation.oldPath || operation.file?.path || '';
-
     if (!key) return;
-
     const existing = this.pendingOperations.get(key);
 
     if (existing) {
@@ -388,28 +297,20 @@ export class IndexManager {
     } else {
       this.pendingOperations.set(key, operation);
     }
-
-    if (!skipDebounce) {
-      this.debouncedProcess();
-    }
+    debounce(
+      () => this.processPendingOperations(),
+      AUTO_INDEX_DEBOUNCE_MS,
+      true
+    );
   }
 
-  private async processPendingOperations(
-    isSync: boolean = false,
-    progressCallback?: (
-      current: number,
-      total: number,
-      filePath: string
-    ) => void | Promise<void>
-  ): Promise<number> {
+  private async processPendingOperations(): Promise<number> {
     if (this.pendingOperations.size === 0) {
       return 0;
     }
 
-    // Prevent concurrent processing but allow sync to override
-    const wasProcessing = this.isProcessing;
-    if (wasProcessing && !isSync) {
-      // Regular event-driven call, skip if already processing
+    // Prevent concurrent processing
+    if (this.isProcessing) {
       return 0;
     }
 
@@ -419,19 +320,91 @@ export class IndexManager {
 
     if (operations.length > 0) {
       this.logger.log(
-        `IndexManager: Processing ${operations.length} file operation(s)${isSync ? ' synchronously' : ''}`
+        `IndexManager: Processing ${operations.length} file operation(s)`
       );
     }
 
-    let errorCount = 0;
-    const totalOperations = operations.length;
+    const errorCount = await this.processBatchOperations(operations);
 
+    if (errorCount > 0) {
+      new Notice(`Sonar index failed to update ${errorCount} files`);
+    }
+
+    this.isProcessing = false;
+
+    await this.updateStatusBarWithFileCount();
+    return errorCount;
+  }
+
+  /**
+   * Process a batch of file operations with optimized bulk deletion
+   * Common routine used by both sync and event-driven processing
+   */
+  private async processBatchOperations(
+    operations: FileOperation[],
+    progressCallback?: (
+      current: number,
+      total: number,
+      filePath: string
+    ) => void | Promise<void>
+  ): Promise<number> {
+    if (operations.length === 0) {
+      return 0;
+    }
+
+    // Batch delete all affected files from all stores first
+    const filesToDelete: string[] = [];
+    for (const operation of operations) {
+      if (operation.type === 'delete' && operation.oldPath) {
+        filesToDelete.push(operation.oldPath);
+      } else if (operation.type === 'rename' && operation.oldPath) {
+        filesToDelete.push(operation.oldPath);
+      } else if (
+        (operation.type === 'create' || operation.type === 'modify') &&
+        operation.file
+      ) {
+        filesToDelete.push(operation.file.path);
+      }
+    }
+
+    if (filesToDelete.length > 0) {
+      this.logger.log(
+        `IndexManager: Batch deletion starting for ${filesToDelete.length} files`
+      );
+
+      // Get all document IDs from MetadataStore for these files (parallel)
+      const docArrays = await Promise.all(
+        filesToDelete.map(filePath =>
+          this.metadataStore.getDocumentsByFile(filePath)
+        )
+      );
+      const allDocIds: string[] = [];
+      for (const docs of docArrays) {
+        allDocIds.push(...docs.map(d => d.id));
+      }
+
+      this.logger.log(
+        `IndexManager: Deleting ${allDocIds.length} documents from all stores`
+      );
+
+      // Delete from all stores in parallel
+      await Promise.all([
+        this.metadataStore.deleteDocuments(allDocIds),
+        this.embeddingStore.deleteEmbeddings(allDocIds),
+        this.bm25Store.deleteDocuments(allDocIds),
+      ]);
+
+      this.logger.log('IndexManager: Batch deletion complete');
+    }
+
+    // Process each operation (only re-indexing for create/modify/rename)
+    let errorCount = 0;
     for (let i = 0; i < operations.length; i++) {
       const operation = operations[i];
       const filePath = operation.file?.path || operation.oldPath || 'unknown';
 
       if (progressCallback) {
-        await progressCallback(i + 1, totalOperations, filePath);
+        await progressCallback(i + 1, operations.length, filePath);
       }
 
       const fileName =
@@ -443,11 +416,14 @@ export class IndexManager {
         file: fileName,
         filePath,
         current: i + 1,
-        total: totalOperations,
+        total: operations.length,
       });
 
       try {
-        await this.processOperation(operation, isSync);
+        await this.processOperationCore(operation);
+        this.logger.log(
+          `IndexManager: ${this.getOperationAction(operation.type)} ${filePath}`
+        );
       } catch (error) {
         this.logger.error(
           `IndexManager: Failed to ${operation.type} ${filePath}: ${error}`
@@ -456,105 +432,29 @@ export class IndexManager {
       }
     }
 
-    if (errorCount > 0 && !isSync) {
-      // Only show notice for event-driven operations, not sync
-      new Notice(`Sonar index failed to update ${errorCount} files`);
-    }
-
-    // Restore processing state if it wasn't already processing
-    if (!wasProcessing) {
-      this.isProcessing = false;
-    }
-
-    await this.updateStatusBarWithFileCount();
     return errorCount;
   }
 
-  // Process operation during sync (BM25 deletion already done in batch)
-  private async processSyncOperation(operation: FileOperation): Promise<void> {
-    const filePath = operation.file?.path || operation.oldPath || 'unknown';
-
+  /**
+   * Core operation processing logic
+   * Assumes bulk deletion has already been performed
+   */
+  private async processOperationCore(operation: FileOperation): Promise<void> {
     switch (operation.type) {
       case 'create':
       case 'modify':
         if (operation.file) {
-          // Delete from MetadataStore and EmbeddingStore, then re-index (BM25 already deleted)
-          this.logger.log(
-            `IndexManager: Sync indexing ${filePath} (BM25 deletion skipped)`
-          );
-          await this.deleteDocumentsFromStores(operation.file.path, false);
           await this.indexFileInternalCore(operation.file);
         }
         break;
 
       case 'delete':
-        if (operation.oldPath) {
-          // Delete from MetadataStore and EmbeddingStore (BM25 already deleted in batch)
-          this.logger.log(
-            `IndexManager: Sync deleting ${filePath} (BM25 already deleted)`
-          );
-          await this.deleteDocumentsFromStores(operation.oldPath, false);
-        }
+        // Nothing to do, already deleted in batch
         break;
 
       case 'rename':
-        if (operation.oldPath && operation.file) {
-          // Delete old path from MetadataStore and EmbeddingStore
-          this.logger.log(
-            `IndexManager: Sync renaming ${operation.oldPath} → ${operation.file.path} (BM25 already deleted)`
-          );
-          await this.deleteDocumentsFromStores(operation.oldPath, false);
-          await this.indexFileInternalCore(operation.file);
-        }
-        break;
-    }
-  }
-
-  private async processOperation(
-    operation: FileOperation,
-    skipChangeCheck = false
-  ): Promise<void> {
-    switch (operation.type) {
-      case 'create':
-      case 'modify':
         if (operation.file) {
-          // For modify operations from events, check if re-indexing is actually needed
-          // Skip this check during sync since we already checked
-          if (!skipChangeCheck && operation.type === 'modify') {
-            const dbFileMap = await this.metadataStore.getFileMetadataMap();
-            const meta = dbFileMap.get(operation.file.path);
-
-            if (!this.needsReindex(operation.file, meta)) {
-              this.logger.log(
-                `IndexManager: Skipped ${operation.file.path} (no changes)`
-              );
-              return;
-            }
-          }
-
-          await this.indexFileInternal(operation.file);
-          this.logger.log(`IndexManager: Indexed ${operation.file.path}`);
-        }
-        break;
-
-      case 'delete':
-        if (operation.oldPath) {
-          await this.deleteFromIndex(operation.oldPath);
-          this.logger.log(
-            `IndexManager: Deleted ${operation.oldPath} from index`
-          );
-        }
-        break;
-
-      case 'rename':
-        if (operation.oldPath && operation.file) {
-          await this.deleteFromIndex(operation.oldPath);
-
-          await this.indexFileInternal(operation.file);
-
-          this.logger.log(
-            `IndexManager: Renamed ${operation.oldPath} to ${operation.file.path}`
-          );
+          await this.indexFileInternalCore(operation.file);
         }
         break;
     }
@@ -591,17 +491,13 @@ export class IndexManager {
     }
   }
 
-  private async deleteFromIndex(filePath: string): Promise<void> {
-    await this.deleteDocumentsFromStores(filePath, true);
-  }
-
   private async indexFileInternal(file: TFile): Promise<void> {
     await this.deleteDocumentsFromStores(file.path, true);
     await this.indexFileInternalCore(file);
   }
 
   /**
-   * Index file without deleting from BM25 (used during sync after batch deletion)
+   * Index file core logic (assumes deletion already performed if needed)
    */
   private async indexFileInternalCore(file: TFile): Promise<void> {
     const content = await this.vault.cachedRead(file);
@@ -616,7 +512,7 @@ export class IndexManager {
 
     if (chunks.length === 0) {
       // Empty file: index only title
-      const titleEmbeddings = await this.ollamaClient.getEmbeddings([
+      const titleEmbeddings = await this.embedder.getEmbeddings([
         file.basename,
       ]);
       const titleEmbedding = titleEmbeddings[0];
@@ -672,8 +568,8 @@ export class IndexManager {
         });
       }
 
-      const embeddings = await this.ollamaClient.getEmbeddings(chunkContents);
-      const titleEmbeddings = await this.ollamaClient.getEmbeddings([
+      const embeddings = await this.embedder.getEmbeddings(chunkContents);
+      const titleEmbeddings = await this.embedder.getEmbeddings([
         file.basename,
       ]);
       const titleEmbedding = titleEmbeddings[0];
@@ -734,7 +630,7 @@ export class IndexManager {
     const stats = await this.performSync();
     const duration = formatDuration(Date.now() - startTime);
     const message = `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted in ${duration}${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
-    new Notice(message, onload ? 10 : 0);
+    new Notice(message, onload ? 10000 : 0);
     this.logger.log('IndexManager: Sync completed');
     await this.updateStatusBarWithFileCount();
   }
@@ -749,10 +645,10 @@ export class IndexManager {
 
   cleanup(): void {
     this.unregisterEventHandlers();
-    for (const unsubscribe of this.configUnsubscribers) {
+    for (const unsubscribe of this.configSubscribers) {
       unsubscribe();
     }
-    this.configUnsubscribers = [];
+    this.configSubscribers = [];
   }
 
   private updateStatusBar(text: string): void {

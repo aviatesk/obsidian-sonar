@@ -81,13 +81,13 @@ export class MetadataStore {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_METADATA], 'readwrite');
       const store = transaction.objectStore(STORE_METADATA);
-      const request = store.put(metadata);
+      store.put(metadata);
 
-      request.onsuccess = () => {
+      transaction.oncomplete = () => {
         this.invalidateCache();
         resolve();
       };
-      request.onerror = () => reject(new Error('Failed to add document'));
+      transaction.onerror = () => reject(new Error('Failed to add document'));
     });
   }
 
@@ -109,6 +109,12 @@ export class MetadataStore {
   }
 
   async getDocumentsByFile(filePath: string): Promise<DocumentMetadata[]> {
+    if (this.metadataCache) {
+      return Array.from(this.metadataCache.values()).filter(
+        doc => doc.filePath === filePath
+      );
+    }
+
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_METADATA], 'readonly');
       const store = transaction.objectStore(STORE_METADATA);
@@ -144,40 +150,23 @@ export class MetadataStore {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_METADATA], 'readwrite');
       const store = transaction.objectStore(STORE_METADATA);
-      const request = store.clear();
-      request.onsuccess = () => {
+      store.clear();
+
+      transaction.oncomplete = () => {
         this.invalidateCache();
         resolve();
       };
-      request.onerror = () => reject(new Error('Failed to clear store'));
+      transaction.onerror = () => reject(new Error('Failed to clear store'));
     });
   }
 
   async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([STORE_METADATA], 'readonly');
-      const store = transaction.objectStore(STORE_METADATA);
-      const countRequest = store.count();
-
-      countRequest.onsuccess = () => {
-        const totalDocuments = countRequest.result;
-        const getAllRequest = store.getAll();
-
-        getAllRequest.onsuccess = () => {
-          const documents = getAllRequest.result as DocumentMetadata[];
-          const uniqueFiles = new Set(documents.map(d => d.filePath));
-
-          resolve({
-            totalDocuments,
-            totalFiles: uniqueFiles.size,
-          });
-        };
-
-        getAllRequest.onerror = () => reject(new Error('Failed to get stats'));
-      };
-
-      countRequest.onerror = () => reject(new Error('Failed to get count'));
-    });
+    const documents = await this.getAllDocuments();
+    const uniqueFiles = new Set(documents.map(d => d.filePath));
+    return {
+      totalDocuments: documents.length,
+      totalFiles: uniqueFiles.size,
+    };
   }
 
   async getAllDocuments(): Promise<DocumentMetadata[]> {

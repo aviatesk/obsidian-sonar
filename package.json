@@ -5,7 +5,10 @@
   "main": "main.js",
   "type": "module",
   "scripts": {
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "build:worker": "node scripts/esbuild-worker.mjs production",
+    "build:inline": "node scripts/emit-worker-inline.mjs",
+    "build": "npm run build:worker && npm run build:inline && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "clean": "rm main.js && rm -rf src/generated",
     "dev": "node esbuild.config.mjs",
     "deploy": "./deploy.sh",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
@@ -14,7 +17,7 @@
     "sonar:search": "npx tsx scripts/sonar.ts search",
     "sonar:stats": "npx tsx scripts/sonar.ts stats",
     "sonar:config": "npx tsx scripts/sonar.ts config",
-    "parse-line-chat": "npx tsx cli/parse-line-chat.ts",
+    "parse-line-chat": "npx tsx scripts/parse-line-chat.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --fix",
@@ -29,11 +32,12 @@
     "obsidian-plugin",
     "semantic-search",
     "embeddings",
-    "vector-search",
-    "ai",
+    "bm25",
+    "transformers",
+    "webgpu",
+    "ollama",
     "local",
-    "offline",
-    "ollama"
+    "offline"
   ],
   "author": "aviatesk",
   "license": "MIT",
@@ -42,7 +46,7 @@
     "url": "https://github.com/aviatesk/obsidian-sonar"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.7.2",
+    "@huggingface/transformers": "^3.7.6",
     "commander": "^12.0.0",
     "d3": "^7.9.0",
     "lucide": "^0.544.0"
@@ -53,6 +57,7 @@
     "@types/node": "^24.3.0",
     "@typescript-eslint/eslint-plugin": "^8.41.0",
     "@typescript-eslint/parser": "^8.41.0",
+    "@webgpu/types": "^0.1.66",
     "builtin-modules": "^5.0.0",
     "esbuild-svelte": "^0.9.3",
     "eslint-plugin-svelte": "^3.12.4",

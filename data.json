@@ -1,8 +1,5 @@
 {
-  "ollamaUrl": "http://localhost:11434",
-  "embeddingModel": "bge-m3:latest",
-  "summaryModel": "gemma3n:e4b",
-  "tokenizerModel": "",
+  "embeddingModel": "Xenova/bge-m3",
   "maxChunkSize": 512,
   "chunkOverlap": 64,
   "maxQueryTokens": 128,
@@ -10,7 +7,6 @@
   "scoreDecay": 0.1,
   "indexPath": "",
   "debugMode": "warn",
-  "withExtraction": false,
   "excludedPaths": [
     ".git",
     "node_modules"
@@ -22,5 +18,8 @@
   "statusBarMaxLength": 40,
   "showRelatedNotesQuery": false,
   "showRelatedNotesExcerpts": false,
-  "showKnowledgeGraph": false
+  "showKnowledgeGraph": false,
+  "ollamaUrl": "http://localhost:11434",
+  "summaryModel": "gemma3n:e4b",
+  "withExtraction": false
 }

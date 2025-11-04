@@ -1,13 +1,13 @@
 import { MarkdownView } from 'obsidian';
 
-export interface DocumentContext {
+interface DocumentContext {
   lineStart: number;
   lineEnd: number;
   mode: 'source' | 'preview';
   hasSelection: boolean;
 }
 
-export function getEditModeContext(
+function getEditModeContext(
   view: MarkdownView,
   preferCursor: boolean = false
 ): DocumentContext | null {
@@ -85,9 +85,7 @@ function getFullDocumentContextFallback(
   };
 }
 
-export function getReadingModeContext(
-  view: MarkdownView
-): DocumentContext | null {
+function getReadingModeContext(view: MarkdownView): DocumentContext | null {
   const previewEl = view.containerEl.querySelector(
     '.markdown-preview-view'
   ) as HTMLElement;

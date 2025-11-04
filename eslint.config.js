@@ -11,7 +11,12 @@ export default [
 
   // Global ignores
   {
-    ignores: ['node_modules/**', 'main.js', 'dist/**', 'build/**'],
+    ignores: [
+      'node_modules/**',
+      'main.js',
+      'src/generated/**',
+      'scripts/esbuild-worker.mjs',
+    ],
   },
 
   // TypeScript configuration

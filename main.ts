@@ -4,6 +4,7 @@ import { EmbeddingSearch } from './src/EmbeddingSearch';
 import { BM25Store } from './src/BM25Store';
 import { BM25Search } from './src/BM25Search';
 import { DEFAULT_SETTINGS } from './src/config';
+import { probeGPU } from './src/GPUProbe';
 import {
   RelatedNotesView,
   RELATED_NOTES_VIEW_TYPE,
@@ -15,8 +16,8 @@ import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
 import { MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
-import { OllamaClient } from './src/OllamaClient';
 import { formatDuration } from './src/ObsidianUtils';
+import { Embedder } from './src/Embedder';
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
@@ -24,6 +25,7 @@ export default class SonarPlugin extends Plugin {
   indexManager: IndexManager | null = null;
   metadataStore: MetadataStore | null = null;
   tokenizer: Tokenizer | null = null;
+  embedder: Embedder | null = null;
 
   async onload() {
     this.configManager = await ConfigManager.initialize(
@@ -46,14 +48,53 @@ export default class SonarPlugin extends Plugin {
   }
 
   private async initializeAsync(): Promise<void> {
-    const embeddingModel = this.configManager.get('embeddingModel');
-    const tokenizerModel = this.configManager.get('tokenizerModel');
+    const result = await probeGPU();
+    if (result.webgpu.available) {
+      this.configManager
+        .getLogger()
+        .log(
+          `WebGPU: Available (fallback: ${result.webgpu.isFallbackAdapter}, ` +
+            `features: ${result.webgpu.features?.length ?? 0})`
+        );
+    } else {
+      this.configManager
+        .getLogger()
+        .log(`WebGPU: Not available - ${result.webgpu.reason}`);
+    }
+    if (result.webgl.available) {
+      this.configManager
+        .getLogger()
+        .log(
+          `WebGL: Available (${result.webgl.version}, ${result.webgl.renderer ?? 'unknown'})`
+        );
+    } else {
+      this.configManager
+        .getLogger()
+        .log(`WebGL: Not available - ${result.webgl.reason}`);
+    }
 
+    const embeddingModel = this.configManager.get('embeddingModel');
+
+    // Initialize Transformers.js embedding model
+    // Uses Blob URL Worker with inlined code for maximum compatibility
+    // Try WebGPU first (with worker_threads polyfill)
+    this.embedder = new Embedder(
+      embeddingModel,
+      this.configManager.getLogger(),
+      'webgpu', // device: WebGPU backend
+      'q8' // dtype: quantization level (webgpu will use fp16)
+    );
+    this.configManager
+      .getLogger()
+      .log(
+        `Transformers.js embedding extractor initialized: ${embeddingModel} (${this.embedder.getDevice()})`
+      );
+
+    // Initialize tokenizer using the embedder
     try {
       this.tokenizer = await Tokenizer.initialize(
-        embeddingModel,
-        this.configManager.getLogger(),
-        tokenizerModel || undefined
+        this.embedder,
+        this.configManager.getLogger()
       );
     } catch (error) {
       this.configManager
@@ -62,21 +103,6 @@ export default class SonarPlugin extends Plugin {
       new Notice('Failed to initialize tokenizer - check console for details');
       return;
     }
-
-    const ollamaUrl = this.configManager.get('ollamaUrl');
-    const ollamaClient = new OllamaClient({
-      ollamaUrl,
-      model: embeddingModel,
-    });
-    try {
-      await ollamaClient.checkModel();
-    } catch {
-      new Notice('Failed to connect to Ollama - check console for details');
-      return;
-    }
-    this.configManager
-      .getLogger()
-      .log(`Ollama initialized with model: ${embeddingModel}`);
 
     try {
       this.metadataStore = await MetadataStore.initialize();
@@ -116,7 +142,7 @@ export default class SonarPlugin extends Plugin {
     const embeddingSearch = new EmbeddingSearch(
       this.metadataStore,
       embeddingStore,
-      ollamaClient,
+      this.embedder,
       this.configManager
     );
     this.configManager.getLogger().log('EmbeddingSearch initialized');
@@ -132,7 +158,7 @@ export default class SonarPlugin extends Plugin {
       this.metadataStore,
       embeddingStore,
       bm25Store,
-      ollamaClient,
+      this.embedder,
       this.app.vault,
       this.app.workspace,
       this.configManager,
@@ -148,11 +174,12 @@ export default class SonarPlugin extends Plugin {
 
     try {
       await this.indexManager.onLayoutReady();
-    } catch {
+    } catch (error) {
       this.statusBarItem.setText('Sonar: Failed to initialize');
-      new Notice(
-        'Failed to initialize semantic search - Check Ollama is running'
-      );
+      this.configManager
+        .getLogger()
+        .error(`Failed to initialize semantic search: ${error}`);
+      new Notice('Failed to initialize semantic search - check console');
     }
   }
 
@@ -233,6 +260,39 @@ export default class SonarPlugin extends Plugin {
       name: 'Semantic search notes',
       callback: () => {
         this.openSemanticNoteFinder();
+      },
+    });
+
+    this.addCommand({
+      id: 'probe-gpu-capabilities',
+      name: 'Probe GPU capabilities (WebGPU/WebGL)',
+      callback: async () => {
+        const result = await probeGPU();
+        const webgpuStatus = result.webgpu.available
+          ? `Available${result.webgpu.isFallbackAdapter ? ' (fallback adapter)' : ''}`
+          : `Not available - ${result.webgpu.reason}`;
+        const webglStatus = result.webgl.available
+          ? `Available (${result.webgl.version}${result.webgl.renderer ? `, ${result.webgl.renderer}` : ''})`
+          : `Not available - ${result.webgl.reason}`;
+        const message = [
+          'Graphics Capabilities:',
+          '',
+          `- WebGPU: ${webgpuStatus}`,
+          result.webgpu.available && result.webgpu.features
+            ? `  * Features: ${result.webgpu.features.length} available`
+            : '',
+          '',
+          `- WebGL: ${webglStatus}`,
+          '',
+          `- Electron: ${(window as any).process?.versions?.electron ?? 'N/A'}`,
+          `- Chrome: ${(window as any).process?.versions?.chrome ?? 'N/A'}`,
+        ]
+          .filter(l => l !== '')
+          .join('\n');
+        new Notice(message, 0);
+        this.configManager
+          .getLogger()
+          .log('GPU probe result: ' + JSON.stringify(result, null, 2));
       },
     });
 
@@ -335,6 +395,9 @@ export default class SonarPlugin extends Plugin {
     }
     if (this.metadataStore) {
       await this.metadataStore.close();
+    }
+    if (this.embedder) {
+      this.embedder.cleanup();
     }
   }
 }

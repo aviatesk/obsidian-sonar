@@ -7,7 +7,6 @@ import {
   normalizePath,
 } from 'obsidian';
 import { ConfigManager } from '../ConfigManager';
-import { Tokenizer } from '../Tokenizer';
 import type SonarPlugin from '../../main';
 import { getIndexableFilesCount } from 'src/fileFilters';
 
@@ -97,18 +96,6 @@ export class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl).setName('Settings').setHeading();
 
-    new Setting(containerEl)
-      .setName('Ollama URL')
-      .setDesc('URL for Ollama API endpoint')
-      .addText(text =>
-        text
-          .setPlaceholder('http://localhost:11434')
-          .setValue(this.configManager.get('ollamaUrl'))
-          .onChange(async value => {
-            await this.configManager.set('ollamaUrl', value);
-          })
-      );
-
     // Add a description showing current indexable files count
     new Setting(containerEl)
       .setName('Index path')
@@ -161,33 +148,6 @@ export class SettingTab extends PluginSettingTab {
           .setValue(this.configManager.get('embeddingModel'))
           .onChange(async value => {
             await this.configManager.set('embeddingModel', value);
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Tokenizer model (optional)')
-      .setDesc(
-        'Custom Hugging Face tokenizer model (e.g., Xenova/bert-base-multilingual-cased). Leave empty to use default mapping.'
-      )
-      .addText(text =>
-        text
-          .setPlaceholder('Leave empty for auto-mapping')
-          .setValue(this.configManager.get('tokenizerModel'))
-          .onChange(async value => {
-            await this.configManager.set('tokenizerModel', value || '');
-            try {
-              this.plugin.tokenizer = await Tokenizer.initialize(
-                this.configManager.get('embeddingModel'),
-                this.configManager.getLogger(),
-                value || undefined
-              );
-              new Notice('Tokenizer updated');
-            } catch (err) {
-              this.configManager
-                .getLogger()
-                .error(`Failed to update tokenizer: ${err}`);
-              new Notice('Failed to update tokenizer model');
-            }
           })
       );
 
@@ -303,21 +263,6 @@ export class SettingTab extends PluginSettingTab {
           .setValue(this.configManager.get('autoIndex'))
           .onChange(async value => {
             await this.configManager.set('autoIndex', value);
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Index debounce time (ms)')
-      .setDesc(
-        'Wait time before processing indexing queue (default: 1000ms = 1s)'
-      )
-      .addSlider(slider =>
-        slider
-          .setLimits(500, 5000, 500)
-          .setValue(this.configManager.get('indexDebounceMs'))
-          .setDynamicTooltip()
-          .onChange(async value => {
-            await this.configManager.set('indexDebounceMs', value);
           })
       );
 

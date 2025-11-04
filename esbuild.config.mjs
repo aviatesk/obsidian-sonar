@@ -1,7 +1,6 @@
 import esbuild from 'esbuild';
 import process from 'process';
 import builtins from 'builtin-modules';
-import { onnxRedirectPlugin } from './esbuild-plugin-onnx-patch.mjs';
 import esbuildSvelte from 'esbuild-svelte';
 import { sveltePreprocess } from 'svelte-preprocess';
 
@@ -37,20 +36,11 @@ const context = await esbuild.context({
   ],
   format: 'cjs',
   target: 'es2018',
-  define: {
-    // CRITICAL: This fixes transformers.js environment detection in Obsidian
-    // transformers.js checks: process?.release?.name === 'node'
-    // In Obsidian's Electron renderer, process.release.name returns 'node'
-    // Setting it to undefined makes transformers.js use browser mode instead
-    // This prevents it from trying to load Node.js-specific ONNX runtime
-    'process.release': 'undefined',
-  },
   plugins: [
     esbuildSvelte({
       compilerOptions: { css: 'injected' },
       preprocess: sveltePreprocess(),
     }),
-    onnxRedirectPlugin, // Additional safety: redirects onnxruntime-node to onnxruntime-web
   ],
   logLevel: 'info',
   sourcemap: prod ? false : 'inline',

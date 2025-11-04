@@ -26,13 +26,13 @@ export class EmbeddingStore {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_EMBEDDINGS], 'readwrite');
       const store = transaction.objectStore(STORE_EMBEDDINGS);
-      const request = store.put(embeddingData);
+      store.put(embeddingData);
 
-      request.onsuccess = () => {
+      transaction.oncomplete = () => {
         this.invalidateCache();
         resolve();
       };
-      request.onerror = () => reject(new Error('Failed to add embedding'));
+      transaction.onerror = () => reject(new Error('Failed to add embedding'));
     });
   }
 
@@ -100,13 +100,14 @@ export class EmbeddingStore {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_EMBEDDINGS], 'readwrite');
       const store = transaction.objectStore(STORE_EMBEDDINGS);
-      const request = store.clear();
-      request.onsuccess = () => {
+      store.clear();
+
+      transaction.oncomplete = () => {
         this.invalidateCache();
         this.logger.log('EmbeddingStore: All data cleared');
         resolve();
       };
-      request.onerror = () => reject(new Error('Failed to clear store'));
+      transaction.onerror = () => reject(new Error('Failed to clear store'));
     });
   }
 

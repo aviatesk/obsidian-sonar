@@ -1,6 +1,6 @@
 import { EmbeddingStore } from './EmbeddingStore';
 import { MetadataStore, type DocumentMetadata } from './MetadataStore';
-import { OllamaClient } from './OllamaClient';
+import { Embedder } from './Embedder';
 import { ConfigManager } from './ConfigManager';
 import type { SearchResult, SearchOptions } from './SearchManager';
 
@@ -45,7 +45,7 @@ export class EmbeddingSearch {
   constructor(
     private metadataStore: MetadataStore,
     private embeddingStore: EmbeddingStore,
-    private ollamaClient: OllamaClient,
+    private embedder: Embedder,
     private configManager: ConfigManager
   ) {}
 
@@ -126,7 +126,7 @@ export class EmbeddingSearch {
     type: 'title' | 'content',
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    const queryEmbeddings = await this.ollamaClient.getEmbeddings([query]);
+    const queryEmbeddings = await this.embedder.getEmbeddings([query]);
     const queryEmbedding = queryEmbeddings[0];
 
     const documents = await this.getCombinedDocuments(type);
