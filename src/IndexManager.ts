@@ -42,6 +42,7 @@ export class IndexManager {
   private configSubscribers: Array<() => void> = [];
   private isInitialized: boolean = false;
   private previousActiveFile: TFile | null = null;
+  private debouncedProcess: () => void;
 
   constructor(
     private metadataStore: MetadataStore,
@@ -55,6 +56,11 @@ export class IndexManager {
     private statusBarItem: HTMLElement
   ) {
     this.logger = configManager.getLogger();
+    this.debouncedProcess = debounce(
+      () => this.processPendingOperations(),
+      AUTO_INDEX_DEBOUNCE_MS,
+      true
+    );
     this.setupConfigListeners();
     this.updateStatusBarWithFileCount();
   }
@@ -297,11 +303,7 @@ export class IndexManager {
     } else {
       this.pendingOperations.set(key, operation);
     }
-    debounce(
-      () => this.processPendingOperations(),
-      AUTO_INDEX_DEBOUNCE_MS,
-      true
-    );
+    this.debouncedProcess();
   }
 
   private async processPendingOperations(): Promise<number> {

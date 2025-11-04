@@ -41,9 +41,8 @@ export class Embedder {
       });
     }
 
-    // Process in batches
     this.logger.log(
-      `Processing ${texts.length} texts in batches of ${MAX_BATCH_SIZE}`
+      `Embedder: Generating embedding vector for ${texts.length} texts (in batches of ${MAX_BATCH_SIZE})`
     );
     const results: number[][] = [];
     for (let i = 0; i < texts.length; i += MAX_BATCH_SIZE) {
