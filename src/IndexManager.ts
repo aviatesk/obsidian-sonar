@@ -29,55 +29,27 @@ interface FileOperation {
 }
 
 export class IndexManager {
-  private metadataStore: MetadataStore;
-  private embeddingStore: EmbeddingStore;
-  private bm25Store: BM25Store;
-  private embedder: Embedder;
-  private vault: Vault;
-  private workspace: Workspace;
-  private configManager: ConfigManager;
-  private getTokenizer: () => Tokenizer;
   private logger: Logger;
   private pendingOperations: Map<string, FileOperation> = new Map();
-  private debouncedProcess: () => void;
   private eventRefs: EventRef[] = [];
   private isProcessing: boolean = false;
   private configUnsubscribers: Array<() => void> = [];
   private isInitialized: boolean = false;
-  private statusBarItem: HTMLElement;
   private previousActiveFile: TFile | null = null;
 
   constructor(
-    metadataStore: MetadataStore,
-    embeddingStore: EmbeddingStore,
-    bm25Store: BM25Store,
-    embedder: Embedder,
-    vault: Vault,
-    workspace: Workspace,
-    configManager: ConfigManager,
-    getTokenizer: () => Tokenizer,
-    statusBarItem: HTMLElement
+    private metadataStore: MetadataStore,
+    private embeddingStore: EmbeddingStore,
+    private bm25Store: BM25Store,
+    private embedder: Embedder,
+    private vault: Vault,
+    private workspace: Workspace,
+    private configManager: ConfigManager,
+    private getTokenizer: () => Tokenizer,
+    private statusBarItem: HTMLElement
   ) {
-    this.metadataStore = metadataStore;
-    this.embeddingStore = embeddingStore;
-    this.bm25Store = bm25Store;
-    this.embedder = embedder;
-    this.vault = vault;
-    this.workspace = workspace;
-    this.configManager = configManager;
-    this.getTokenizer = getTokenizer;
     this.logger = configManager.getLogger();
-    this.statusBarItem = statusBarItem;
-
-    const debounceMs = configManager.get('indexDebounceMs');
-    this.debouncedProcess = debounce(
-      () => this.processPendingOperations(),
-      debounceMs,
-      true
-    );
-
     this.setupConfigListeners();
-
     this.updateStatusBarWithFileCount();
   }
 
@@ -210,74 +182,10 @@ export class IndexManager {
       `IndexManager: Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
     );
 
-    // Batch delete all affected files from BM25 index first
-    const bm25FilesToDelete: string[] = [];
-    for (const operation of operations) {
-      if (operation.type === 'delete' && operation.oldPath) {
-        bm25FilesToDelete.push(operation.oldPath);
-      } else if (operation.type === 'rename' && operation.oldPath) {
-        bm25FilesToDelete.push(operation.oldPath);
-      } else if (
-        (operation.type === 'create' || operation.type === 'modify') &&
-        operation.file
-      ) {
-        bm25FilesToDelete.push(operation.file.path);
-      }
-    }
-
-    if (bm25FilesToDelete.length > 0) {
-      this.logger.log(
-        `IndexManager: Batch deletion starting for ${bm25FilesToDelete.length} files`
-      );
-
-      // Get all document IDs from MetadataStore for these files
-      const allDocIds: string[] = [];
-      for (const filePath of bm25FilesToDelete) {
-        const docs = await this.metadataStore.getDocumentsByFile(filePath);
-        allDocIds.push(...docs.map(d => d.id));
-      }
-
-      this.logger.log(
-        `IndexManager: Deleting ${allDocIds.length} documents from BM25`
-      );
-      await this.bm25Store.deleteDocuments(allDocIds);
-      this.logger.log('IndexManager: BM25 batch deletion complete');
-    }
-
-    // Process each operation
-    let errorCount = 0;
-    for (let i = 0; i < operations.length; i++) {
-      const operation = operations[i];
-      const filePath = operation.file?.path || operation.oldPath || 'unknown';
-
-      if (progressCallback) {
-        await progressCallback(i + 1, operations.length, filePath);
-      }
-
-      const fileName =
-        operation.file?.basename ||
-        operation.oldPath?.split('/').pop() ||
-        'unknown';
-      this.updateStatus({
-        action: this.getOperationAction(operation.type),
-        file: fileName,
-        filePath,
-        current: i + 1,
-        total: operations.length,
-      });
-
-      try {
-        await this.processSyncOperation(operation);
-        this.logger.log(
-          `IndexManager: ${this.getOperationAction(operation.type)} ${filePath}`
-        );
-      } catch (error) {
-        this.logger.error(
-          `IndexManager: Failed to ${operation.type} ${filePath}: ${error}`
-        );
-        errorCount++;
-      }
-    }
+    const errorCount = await this.processBatchOperations(
+      operations,
+      progressCallback
+    );
 
     return {
       newCount,
@@ -366,14 +274,9 @@ export class IndexManager {
     );
   }
 
-  private scheduleOperation(
-    operation: FileOperation,
-    skipDebounce = false
-  ): void {
+  private scheduleOperation(operation: FileOperation): void {
     const key = operation.oldPath || operation.file?.path || '';
-
     if (!key) return;
-
     const existing = this.pendingOperations.get(key);
 
     if (existing) {
@@ -388,10 +291,11 @@ export class IndexManager {
     } else {
       this.pendingOperations.set(key, operation);
     }
-
-    if (!skipDebounce) {
-      this.debouncedProcess();
-    }
+    debounce(
+      () => this.processPendingOperations(),
+      this.configManager.get('indexDebounceMs'),
+      true
+    );
   }
 
   private async processPendingOperations(
@@ -409,8 +313,7 @@ export class IndexManager {
     // Prevent concurrent processing but allow sync to override
     const wasProcessing = this.isProcessing;
     if (wasProcessing && !isSync) {
-      // Regular event-driven call, skip if already processing
-      return 0;
+      return 0; // Regular event-driven call, skip if already processing
     }
 
     this.isProcessing = true;
@@ -423,38 +326,11 @@ export class IndexManager {
       );
     }
 
-    let errorCount = 0;
-    const totalOperations = operations.length;
-
-    for (let i = 0; i < operations.length; i++) {
-      const operation = operations[i];
-      const filePath = operation.file?.path || operation.oldPath || 'unknown';
-
-      if (progressCallback) {
-        await progressCallback(i + 1, totalOperations, filePath);
-      }
-
-      const fileName =
-        operation.file?.basename ||
-        operation.oldPath?.split('/').pop() ||
-        'unknown';
-      this.updateStatus({
-        action: this.getOperationAction(operation.type),
-        file: fileName,
-        filePath,
-        current: i + 1,
-        total: totalOperations,
-      });
-
-      try {
-        await this.processOperation(operation, isSync);
-      } catch (error) {
-        this.logger.error(
-          `IndexManager: Failed to ${operation.type} ${filePath}: ${error}`
-        );
-        errorCount++;
-      }
-    }
+    // Use batch processing for efficient bulk deletion
+    const errorCount = await this.processBatchOperations(
+      operations,
+      progressCallback
+    );
 
     if (errorCount > 0 && !isSync) {
       // Only show notice for event-driven operations, not sync
@@ -470,91 +346,137 @@ export class IndexManager {
     return errorCount;
   }
 
-  // Process operation during sync (BM25 deletion already done in batch)
-  private async processSyncOperation(operation: FileOperation): Promise<void> {
-    const filePath = operation.file?.path || operation.oldPath || 'unknown';
-
-    switch (operation.type) {
-      case 'create':
-      case 'modify':
-        if (operation.file) {
-          // Delete from MetadataStore and EmbeddingStore, then re-index (BM25 already deleted)
-          this.logger.log(
-            `IndexManager: Sync indexing ${filePath} (BM25 deletion skipped)`
-          );
-          await this.deleteDocumentsFromStores(operation.file.path, false);
-          await this.indexFileInternalCore(operation.file);
-        }
-        break;
-
-      case 'delete':
-        if (operation.oldPath) {
-          // Delete from MetadataStore and EmbeddingStore (BM25 already deleted in batch)
-          this.logger.log(
-            `IndexManager: Sync deleting ${filePath} (BM25 already deleted)`
-          );
-          await this.deleteDocumentsFromStores(operation.oldPath, false);
-        }
-        break;
-
-      case 'rename':
-        if (operation.oldPath && operation.file) {
-          // Delete old path from MetadataStore and EmbeddingStore
-          this.logger.log(
-            `IndexManager: Sync renaming ${operation.oldPath} → ${operation.file.path} (BM25 already deleted)`
-          );
-          await this.deleteDocumentsFromStores(operation.oldPath, false);
-          await this.indexFileInternalCore(operation.file);
-        }
-        break;
+  /**
+   * Process a batch of file operations with optimized bulk BM25 deletion
+   * Common routine used by both sync and event-driven processing
+   */
+  private async processBatchOperations(
+    operations: FileOperation[],
+    progressCallback?: (
+      current: number,
+      total: number,
+      filePath: string
+    ) => void | Promise<void>
+  ): Promise<number> {
+    if (operations.length === 0) {
+      return 0;
     }
+
+    // Batch delete all affected files from BM25 index first
+    const bm25FilesToDelete: string[] = [];
+    for (const operation of operations) {
+      if (operation.type === 'delete' && operation.oldPath) {
+        bm25FilesToDelete.push(operation.oldPath);
+      } else if (operation.type === 'rename' && operation.oldPath) {
+        bm25FilesToDelete.push(operation.oldPath);
+      } else if (
+        (operation.type === 'create' || operation.type === 'modify') &&
+        operation.file
+      ) {
+        bm25FilesToDelete.push(operation.file.path);
+      }
+    }
+
+    if (bm25FilesToDelete.length > 0) {
+      this.logger.log(
+        `IndexManager: Batch deletion starting for ${bm25FilesToDelete.length} files`
+      );
+
+      // Get all document IDs from MetadataStore for these files (parallel)
+      const docArrays = await Promise.all(
+        bm25FilesToDelete.map(filePath =>
+          this.metadataStore.getDocumentsByFile(filePath)
+        )
+      );
+      const allDocIds: string[] = [];
+      for (const docs of docArrays) {
+        allDocIds.push(...docs.map(d => d.id));
+      }
+
+      this.logger.log(
+        `IndexManager: Deleting ${allDocIds.length} documents from BM25`
+      );
+      await this.bm25Store.deleteDocuments(allDocIds);
+      this.logger.log('IndexManager: BM25 batch deletion complete');
+    }
+
+    // Process each operation
+    let errorCount = 0;
+    for (let i = 0; i < operations.length; i++) {
+      const operation = operations[i];
+      const filePath = operation.file?.path || operation.oldPath || 'unknown';
+
+      if (progressCallback) {
+        await progressCallback(i + 1, operations.length, filePath);
+      }
+
+      const fileName =
+        operation.file?.basename ||
+        operation.oldPath?.split('/').pop() ||
+        'unknown';
+      this.updateStatus({
+        action: this.getOperationAction(operation.type),
+        file: fileName,
+        filePath,
+        current: i + 1,
+        total: operations.length,
+      });
+
+      try {
+        await this.processOperationCore(operation, false);
+        this.logger.log(
+          `IndexManager: ${this.getOperationAction(operation.type)} ${filePath}`
+        );
+      } catch (error) {
+        this.logger.error(
+          `IndexManager: Failed to ${operation.type} ${filePath}: ${error}`
+        );
+        errorCount++;
+      }
+    }
+
+    return errorCount;
   }
 
-  private async processOperation(
+  /**
+   * Core operation processing logic
+   * Used after bulk BM25 deletion has been performed
+   */
+  private async processOperationCore(
     operation: FileOperation,
-    skipChangeCheck = false
+    skipBM25Deletion: boolean
   ): Promise<void> {
     switch (operation.type) {
       case 'create':
       case 'modify':
         if (operation.file) {
-          // For modify operations from events, check if re-indexing is actually needed
-          // Skip this check during sync since we already checked
-          if (!skipChangeCheck && operation.type === 'modify') {
-            const dbFileMap = await this.metadataStore.getFileMetadataMap();
-            const meta = dbFileMap.get(operation.file.path);
-
-            if (!this.needsReindex(operation.file, meta)) {
-              this.logger.log(
-                `IndexManager: Skipped ${operation.file.path} (no changes)`
-              );
-              return;
-            }
-          }
-
-          await this.indexFileInternal(operation.file);
-          this.logger.log(`IndexManager: Indexed ${operation.file.path}`);
+          // Delete from MetadataStore and EmbeddingStore, then re-index
+          await this.deleteDocumentsFromStores(
+            operation.file.path,
+            skipBM25Deletion
+          );
+          await this.indexFileInternalCore(operation.file);
         }
         break;
 
       case 'delete':
         if (operation.oldPath) {
-          await this.deleteFromIndex(operation.oldPath);
-          this.logger.log(
-            `IndexManager: Deleted ${operation.oldPath} from index`
+          // Delete from MetadataStore and EmbeddingStore
+          await this.deleteDocumentsFromStores(
+            operation.oldPath,
+            skipBM25Deletion
           );
         }
         break;
 
       case 'rename':
         if (operation.oldPath && operation.file) {
-          await this.deleteFromIndex(operation.oldPath);
-
-          await this.indexFileInternal(operation.file);
-
-          this.logger.log(
-            `IndexManager: Renamed ${operation.oldPath} to ${operation.file.path}`
+          // Delete old path, then index new path
+          await this.deleteDocumentsFromStores(
+            operation.oldPath,
+            skipBM25Deletion
           );
+          await this.indexFileInternalCore(operation.file);
         }
         break;
     }
@@ -589,10 +511,6 @@ export class IndexManager {
     if (includeBM25) {
       await this.bm25Store.deleteDocuments(docIds);
     }
-  }
-
-  private async deleteFromIndex(filePath: string): Promise<void> {
-    await this.deleteDocumentsFromStores(filePath, true);
   }
 
   private async indexFileInternal(file: TFile): Promise<void> {
