@@ -734,7 +734,7 @@ export class IndexManager {
     const stats = await this.performSync();
     const duration = formatDuration(Date.now() - startTime);
     const message = `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted in ${duration}${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
-    new Notice(message, onload ? 10 : 0);
+    new Notice(message, onload ? 10000 : 0);
     this.logger.log('IndexManager: Sync completed');
     await this.updateStatusBarWithFileCount();
   }

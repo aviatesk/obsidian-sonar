@@ -1,4 +1,4 @@
-export interface WebGPUProbeResult {
+interface WebGPUProbeResult {
   available: boolean;
   reason?: string;
   adapter?: any;
@@ -8,7 +8,7 @@ export interface WebGPUProbeResult {
   limits?: Record<string, number>;
 }
 
-export interface WebGLProbeResult {
+interface WebGLProbeResult {
   available: boolean;
   version?: 'webgl' | 'webgl2';
   reason?: string;
@@ -16,7 +16,7 @@ export interface WebGLProbeResult {
   renderer?: string;
 }
 
-export interface GraphicsProbeResult {
+interface GraphicsProbeResult {
   webgpu: WebGPUProbeResult;
   webgl: WebGLProbeResult;
 }
@@ -24,7 +24,7 @@ export interface GraphicsProbeResult {
 /**
  * Probe WebGPU availability and capabilities
  */
-export async function probeWebGPU(): Promise<WebGPUProbeResult> {
+async function probeWebGPU(): Promise<WebGPUProbeResult> {
   // 1) Check if navigator.gpu exists
   if (typeof navigator === 'undefined' || !(navigator as any).gpu) {
     return { available: false, reason: 'navigator.gpu is not present' };
@@ -98,7 +98,7 @@ export async function probeWebGPU(): Promise<WebGPUProbeResult> {
 /**
  * Probe WebGL availability and version
  */
-export function probeWebGL(): WebGLProbeResult {
+function probeWebGL(): WebGLProbeResult {
   if (typeof document === 'undefined') {
     return { available: false, reason: 'document is not available' };
   }
@@ -146,31 +146,10 @@ export function probeWebGL(): WebGLProbeResult {
 /**
  * Probe both WebGPU and WebGL
  */
-export async function probeGraphics(): Promise<GraphicsProbeResult> {
+export async function probeGPU(): Promise<GraphicsProbeResult> {
   const [webgpu, webgl] = await Promise.all([
     probeWebGPU(),
     Promise.resolve(probeWebGL()),
   ]);
-
   return { webgpu, webgl };
-}
-
-/**
- * Simple check for WebGPU availability (lightweight)
- */
-export function hasWebGPU(): boolean {
-  return typeof navigator !== 'undefined' && !!(navigator as any).gpu;
-}
-
-/**
- * Simple check for WebGL availability (lightweight)
- */
-export function hasWebGL(): boolean {
-  if (typeof document === 'undefined') return false;
-  const canvas = document.createElement('canvas');
-  return !!(
-    canvas.getContext('webgl2') ||
-    canvas.getContext('webgl') ||
-    canvas.getContext('experimental-webgl')
-  );
 }

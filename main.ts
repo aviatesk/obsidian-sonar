@@ -4,7 +4,7 @@ import { EmbeddingSearch } from './src/EmbeddingSearch';
 import { BM25Store } from './src/BM25Store';
 import { BM25Search } from './src/BM25Search';
 import { DEFAULT_SETTINGS } from './src/config';
-import { probeGraphics } from './src/WebGPUProbe';
+import { probeGPU } from './src/GPUProbe';
 import {
   RelatedNotesView,
   RELATED_NOTES_VIEW_TYPE,
@@ -48,31 +48,29 @@ export default class SonarPlugin extends Plugin {
   }
 
   private async initializeAsync(): Promise<void> {
-    // Probe graphics capabilities
-    const graphics = await probeGraphics();
-    if (graphics.webgpu.available) {
+    const result = await probeGPU();
+    if (result.webgpu.available) {
       this.configManager
         .getLogger()
         .log(
-          `WebGPU: Available (fallback: ${graphics.webgpu.isFallbackAdapter}, ` +
-            `features: ${graphics.webgpu.features?.length ?? 0})`
+          `WebGPU: Available (fallback: ${result.webgpu.isFallbackAdapter}, ` +
+            `features: ${result.webgpu.features?.length ?? 0})`
         );
     } else {
       this.configManager
         .getLogger()
-        .log(`WebGPU: Not available - ${graphics.webgpu.reason}`);
+        .log(`WebGPU: Not available - ${result.webgpu.reason}`);
     }
-
-    if (graphics.webgl.available) {
+    if (result.webgl.available) {
       this.configManager
         .getLogger()
         .log(
-          `WebGL: Available (${graphics.webgl.version}, ${graphics.webgl.renderer ?? 'unknown'})`
+          `WebGL: Available (${result.webgl.version}, ${result.webgl.renderer ?? 'unknown'})`
         );
     } else {
       this.configManager
         .getLogger()
-        .log(`WebGL: Not available - ${graphics.webgl.reason}`);
+        .log(`WebGL: Not available - ${result.webgl.reason}`);
     }
 
     const embeddingModel = this.configManager.get('embeddingModel');
@@ -266,39 +264,35 @@ export default class SonarPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: 'probe-graphics-capabilities',
-      name: 'Probe graphics capabilities (WebGPU/WebGL)',
+      id: 'probe-gpu-capabilities',
+      name: 'Probe GPU capabilities (WebGPU/WebGL)',
       callback: async () => {
-        const graphics = await probeGraphics();
-
-        const webgpuStatus = graphics.webgpu.available
-          ? `Available${graphics.webgpu.isFallbackAdapter ? ' (fallback adapter)' : ''}`
-          : `Not available - ${graphics.webgpu.reason}`;
-
-        const webglStatus = graphics.webgl.available
-          ? `Available (${graphics.webgl.version}${graphics.webgl.renderer ? `, ${graphics.webgl.renderer}` : ''})`
-          : `Not available - ${graphics.webgl.reason}`;
-
+        const result = await probeGPU();
+        const webgpuStatus = result.webgpu.available
+          ? `Available${result.webgpu.isFallbackAdapter ? ' (fallback adapter)' : ''}`
+          : `Not available - ${result.webgpu.reason}`;
+        const webglStatus = result.webgl.available
+          ? `Available (${result.webgl.version}${result.webgl.renderer ? `, ${result.webgl.renderer}` : ''})`
+          : `Not available - ${result.webgl.reason}`;
         const message = [
           'Graphics Capabilities:',
           '',
-          `WebGPU: ${webgpuStatus}`,
-          graphics.webgpu.available && graphics.webgpu.features
-            ? `  Features: ${graphics.webgpu.features.length} available`
+          `- WebGPU: ${webgpuStatus}`,
+          result.webgpu.available && result.webgpu.features
+            ? `  * Features: ${result.webgpu.features.length} available`
             : '',
           '',
-          `WebGL: ${webglStatus}`,
+          `- WebGL: ${webglStatus}`,
           '',
-          `Electron: ${(window as any).process?.versions?.electron ?? 'N/A'}`,
-          `Chrome: ${(window as any).process?.versions?.chrome ?? 'N/A'}`,
+          `- Electron: ${(window as any).process?.versions?.electron ?? 'N/A'}`,
+          `- Chrome: ${(window as any).process?.versions?.chrome ?? 'N/A'}`,
         ]
           .filter(l => l !== '')
           .join('\n');
-
         new Notice(message, 0);
         this.configManager
           .getLogger()
-          .log('Graphics probe result: ' + JSON.stringify(graphics, null, 2));
+          .log('GPU probe result: ' + JSON.stringify(result, null, 2));
       },
     });
 
