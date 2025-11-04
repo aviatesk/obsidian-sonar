@@ -267,21 +267,6 @@ export class SettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Index debounce time (ms)')
-      .setDesc(
-        'Wait time before processing indexing queue (default: 1000ms = 1s)'
-      )
-      .addSlider(slider =>
-        slider
-          .setLimits(500, 5000, 500)
-          .setValue(this.configManager.get('indexDebounceMs'))
-          .setDynamicTooltip()
-          .onChange(async value => {
-            await this.configManager.set('indexDebounceMs', value);
-          })
-      );
-
-    new Setting(containerEl)
       .setName('Related notes update delay')
       .setDesc(
         'Delay in milliseconds before updating related notes view after typing (default: 5000ms = 5s)'

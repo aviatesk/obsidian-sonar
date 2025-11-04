@@ -22,6 +22,12 @@ import { Logger } from './Logger';
 import { BM25Store } from './BM25Store';
 import { formatDuration } from './ObsidianUtils';
 
+/**
+ * Debounce delay for batching file operations
+ * Helps group multiple operations (e.g., directory delete/rename) together
+ */
+const AUTO_INDEX_DEBOUNCE_MS = 1000;
+
 interface FileOperation {
   type: 'create' | 'modify' | 'delete' | 'rename';
   file: TFile | null;
@@ -33,7 +39,7 @@ export class IndexManager {
   private pendingOperations: Map<string, FileOperation> = new Map();
   private eventRefs: EventRef[] = [];
   private isProcessing: boolean = false;
-  private configUnsubscribers: Array<() => void> = [];
+  private configSubscribers: Array<() => void> = [];
   private isInitialized: boolean = false;
   private previousActiveFile: TFile | null = null;
 
@@ -85,7 +91,7 @@ export class IndexManager {
       true
     );
 
-    this.configUnsubscribers.push(
+    this.configSubscribers.push(
       this.configManager.subscribe('autoIndex', (_key, value) => {
         if (this.isInitialized) {
           if (value) {
@@ -99,7 +105,7 @@ export class IndexManager {
       })
     );
 
-    this.configUnsubscribers.push(
+    this.configSubscribers.push(
       this.configManager.subscribe('excludedPaths', () => {
         if (!this.isInitialized) return;
         this.logger.log(
@@ -109,7 +115,7 @@ export class IndexManager {
       })
     );
 
-    this.configUnsubscribers.push(
+    this.configSubscribers.push(
       this.configManager.subscribe('indexPath', () => {
         if (!this.isInitialized) return;
         this.logger.log('IndexManager: Index path updated, scheduling sync...');
@@ -293,7 +299,7 @@ export class IndexManager {
     }
     debounce(
       () => this.processPendingOperations(),
-      this.configManager.get('indexDebounceMs'),
+      AUTO_INDEX_DEBOUNCE_MS,
       true
     );
   }
@@ -639,10 +645,10 @@ export class IndexManager {
 
   cleanup(): void {
     this.unregisterEventHandlers();
-    for (const unsubscribe of this.configUnsubscribers) {
+    for (const unsubscribe of this.configSubscribers) {
       unsubscribe();
     }
-    this.configUnsubscribers = [];
+    this.configSubscribers = [];
   }
 
   private updateStatusBar(text: string): void {

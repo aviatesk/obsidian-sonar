@@ -17,7 +17,6 @@ export interface ObsidianSettings {
   excludedPaths: string[];
   autoOpenRelatedNotes: boolean;
   autoIndex: boolean;
-  indexDebounceMs: number;
   relatedNotesDebounceMs: number;
   statusBarMaxLength: number;
   showRelatedNotesQuery: boolean;
@@ -37,7 +36,6 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   excludedPaths: [],
   autoOpenRelatedNotes: true,
   autoIndex: false,
-  indexDebounceMs: 1000,
   relatedNotesDebounceMs: 5000,
   statusBarMaxLength: 40,
   showRelatedNotesQuery: true,
