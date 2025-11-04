@@ -1,5 +1,3 @@
-import type { Logger } from './Logger';
-
 /**
  * Metadata associated with a document chunk
  */
@@ -28,16 +26,11 @@ export const STORE_BM25_DOC_TOKENS = 'bm25-doc-tokens';
 export const INDEX_FILE_PATH = 'file-path';
 
 export class MetadataStore {
-  private db!: IDBDatabase;
-  private logger: Logger;
   private metadataCache: Map<string, DocumentMetadata> | null = null;
 
-  private constructor(db: IDBDatabase, logger: Logger) {
-    this.db = db;
-    this.logger = logger;
-  }
+  private constructor(private db: IDBDatabase) {}
 
-  static async initialize(logger: Logger): Promise<MetadataStore> {
+  static async initialize(): Promise<MetadataStore> {
     return new Promise((resolve, reject) => {
       const request = window.indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -46,9 +39,7 @@ export class MetadataStore {
       };
 
       request.onsuccess = () => {
-        const store = new MetadataStore(request.result, logger);
-        store.logger.log('MetadataStore initialized');
-        resolve(store);
+        resolve(new MetadataStore(request.result));
       };
 
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {

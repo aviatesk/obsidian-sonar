@@ -79,31 +79,20 @@ export default class SonarPlugin extends Plugin {
       .log(`Ollama initialized with model: ${embeddingModel}`);
 
     try {
-      this.metadataStore = await MetadataStore.initialize(
-        this.configManager.getLogger()
-      );
+      this.metadataStore = await MetadataStore.initialize();
     } catch {
       new Notice('Failed to initialize metadata store - check console');
       return;
     }
-    this.configManager.getLogger().log('Metadata store initialized');
+    this.configManager.getLogger().log('MetadataStore initialized');
 
     const db = this.metadataStore.getDB();
 
-    let embeddingStore: EmbeddingStore;
-    try {
-      embeddingStore = await EmbeddingStore.initialize(
-        db,
-        this.configManager.getLogger()
-      );
-    } catch (error) {
-      this.configManager
-        .getLogger()
-        .error(`Failed to initialize embedding store: ${error}`);
-      new Notice('Failed to initialize embedding store - check console');
-      return;
-    }
-    this.configManager.getLogger().log('Embedding store initialized');
+    const embeddingStore = new EmbeddingStore(
+      db,
+      this.configManager.getLogger()
+    );
+    this.configManager.getLogger().log('EmbeddingStore initialized');
 
     let bm25Store: BM25Store;
     try {
@@ -119,10 +108,10 @@ export default class SonarPlugin extends Plugin {
       new Notice('Failed to initialize BM25 store - check console');
       return;
     }
-    this.configManager.getLogger().log('BM25 store initialized');
+    this.configManager.getLogger().log('BM25Store initialized');
 
     const bm25Search = new BM25Search(bm25Store, this.metadataStore);
-    this.configManager.getLogger().log('BM25 search initialized');
+    this.configManager.getLogger().log('BM25Search initialized');
 
     const embeddingSearch = new EmbeddingSearch(
       this.metadataStore,
@@ -130,14 +119,14 @@ export default class SonarPlugin extends Plugin {
       ollamaClient,
       this.configManager
     );
-    this.configManager.getLogger().log('Embedding search initialized');
+    this.configManager.getLogger().log('EmbeddingSearch initialized');
 
     this.searchManager = new SearchManager(
       embeddingSearch,
       bm25Search,
       this.metadataStore
     );
-    this.configManager.getLogger().log('Search manager initialized');
+    this.configManager.getLogger().log('SearchManager initialized');
 
     this.indexManager = new IndexManager(
       this.metadataStore,

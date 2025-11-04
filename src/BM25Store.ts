@@ -46,16 +46,13 @@ const K1 = 1.2;
 const B = 0.75;
 
 export class BM25Store {
-  private db!: IDBDatabase;
-  private logger: Logger;
-  private tokenizer: Tokenizer;
   private metadataCache: IndexMetadata | null = null;
 
-  private constructor(db: IDBDatabase, logger: Logger, tokenizer: Tokenizer) {
-    this.db = db;
-    this.logger = logger;
-    this.tokenizer = tokenizer;
-  }
+  private constructor(
+    private db: IDBDatabase,
+    private logger: Logger,
+    private tokenizer: Tokenizer
+  ) {}
 
   static async initialize(
     db: IDBDatabase,
@@ -63,12 +60,7 @@ export class BM25Store {
     tokenizer: Tokenizer
   ): Promise<BM25Store> {
     const store = new BM25Store(db, logger, tokenizer);
-
-    // Build initial in-memory index metadata
-    await store.refreshMetaDataCache();
-
-    logger.log('BM25Store initialized');
-
+    await store.refreshMetaDataCache(); // Build initial in-memory index metadata
     return store;
   }
 
