@@ -298,22 +298,14 @@ export class IndexManager {
     );
   }
 
-  private async processPendingOperations(
-    isSync: boolean = false,
-    progressCallback?: (
-      current: number,
-      total: number,
-      filePath: string
-    ) => void | Promise<void>
-  ): Promise<number> {
+  private async processPendingOperations(): Promise<number> {
     if (this.pendingOperations.size === 0) {
       return 0;
     }
 
-    // Prevent concurrent processing but allow sync to override
-    const wasProcessing = this.isProcessing;
-    if (wasProcessing && !isSync) {
-      return 0; // Regular event-driven call, skip if already processing
+    // Prevent concurrent processing
+    if (this.isProcessing) {
+      return 0;
     }
 
     this.isProcessing = true;
@@ -322,25 +314,17 @@ export class IndexManager {
 
     if (operations.length > 0) {
       this.logger.log(
-        `IndexManager: Processing ${operations.length} file operation(s)${isSync ? ' synchronously' : ''}`
+        `IndexManager: Processing ${operations.length} file operation(s)`
       );
     }
 
-    // Use batch processing for efficient bulk deletion
-    const errorCount = await this.processBatchOperations(
-      operations,
-      progressCallback
-    );
+    const errorCount = await this.processBatchOperations(operations);
 
-    if (errorCount > 0 && !isSync) {
-      // Only show notice for event-driven operations, not sync
+    if (errorCount > 0) {
       new Notice(`Sonar index failed to update ${errorCount} files`);
     }
 
-    // Restore processing state if it wasn't already processing
-    if (!wasProcessing) {
-      this.isProcessing = false;
-    }
+    this.isProcessing = false;
 
     await this.updateStatusBarWithFileCount();
     return errorCount;
