@@ -427,7 +427,7 @@ export class IndexManager {
           `IndexManager: ${this.getOperationAction(operation.type)} ${filePath}`
         );
       } catch (error) {
-        this.logger.error(
+        this.logger.warn(
           `IndexManager: Failed to ${operation.type} ${filePath}: ${error}`
         );
         errorCount++;

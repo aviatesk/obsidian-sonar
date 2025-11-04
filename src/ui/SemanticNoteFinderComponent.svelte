@@ -2,12 +2,12 @@
   import { App } from 'obsidian';
   import SearchResults from './SearchResults.svelte';
 
-  import type { Logger } from '../Logger';
+  import type { ConfigManager } from '../ConfigManager';
 
   interface Props {
     app: App;
     store: any; // Svelte store
-    logger: Logger;
+    configManager: ConfigManager;
     placeholder?: string;
     titleEl: HTMLElement;
     onQueryChange: (query: string) => void;
@@ -18,7 +18,7 @@
   let {
     app,
     store,
-    logger,
+    configManager,
     placeholder = 'Enter your search query...',
     titleEl,
     onQueryChange,
@@ -82,7 +82,7 @@
     <SearchResults
       {app}
       {results}
-      {logger}
+      {configManager}
       noResultsMessage={isSearching ? 'Searching...' : 'No results found for your query'}
       onFileClick={(file) => {
         app.workspace.getLeaf(false).openFile(file);

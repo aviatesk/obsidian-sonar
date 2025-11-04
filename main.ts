@@ -27,6 +27,18 @@ export default class SonarPlugin extends Plugin {
   tokenizer: Tokenizer | null = null;
   embedder: Embedder | null = null;
 
+  private log(msg: string): void {
+    this.configManager.getLogger().log(`[Sonar.Plugin] ${msg}`);
+  }
+
+  private error(msg: string): void {
+    this.configManager.getLogger().error(`[Sonar.Plugin] ${msg}`);
+  }
+
+  private warn(msg: string): void {
+    this.configManager.getLogger().warn(`[Sonar.Plugin] ${msg}`);
+  }
+
   async onload() {
     this.configManager = await ConfigManager.initialize(
       () => this.loadData(),
@@ -50,27 +62,19 @@ export default class SonarPlugin extends Plugin {
   private async initializeAsync(): Promise<void> {
     const result = await probeGPU();
     if (result.webgpu.available) {
-      this.configManager
-        .getLogger()
-        .log(
-          `WebGPU: Available (fallback: ${result.webgpu.isFallbackAdapter}, ` +
-            `features: ${result.webgpu.features?.length ?? 0})`
-        );
+      this.log(
+        `Detected WebGPU (fallback: ${result.webgpu.isFallbackAdapter}, ` +
+          `features: ${result.webgpu.features?.length ?? 0})`
+      );
     } else {
-      this.configManager
-        .getLogger()
-        .log(`WebGPU: Not available - ${result.webgpu.reason}`);
+      this.warn(`WebGPU not detected - ${result.webgpu.reason}`);
     }
     if (result.webgl.available) {
-      this.configManager
-        .getLogger()
-        .log(
-          `WebGL: Available (${result.webgl.version}, ${result.webgl.renderer ?? 'unknown'})`
-        );
+      this.log(
+        `Detected WebGL (${result.webgl.version}, ${result.webgl.renderer ?? 'unknown'})`
+      );
     } else {
-      this.configManager
-        .getLogger()
-        .log(`WebGL: Not available - ${result.webgl.reason}`);
+      this.warn(`WebGL not detected - ${result.webgl.reason}`);
     }
 
     const embeddingModel = this.configManager.get('embeddingModel');
@@ -80,64 +84,56 @@ export default class SonarPlugin extends Plugin {
     // Try WebGPU first (with worker_threads polyfill)
     this.embedder = new Embedder(
       embeddingModel,
-      this.configManager.getLogger(),
+      this.configManager,
       'webgpu', // device: WebGPU backend
       'q8' // dtype: quantization level (webgpu will use fp16)
     );
-    this.configManager
-      .getLogger()
-      .log(
-        `Transformers.js embedding extractor initialized: ${embeddingModel} (${this.embedder.getDevice()})`
-      );
+    this.log(
+      `Transformers.js embedding extractor initialized: ${embeddingModel} (${this.embedder.getDevice()})`
+    );
 
     // Initialize tokenizer using the embedder
     try {
       this.tokenizer = await Tokenizer.initialize(
         this.embedder,
-        this.configManager.getLogger()
+        this.configManager
       );
     } catch (error) {
-      this.configManager
-        .getLogger()
-        .error(`Failed to initialize tokenizer: ${error}`);
+      this.error(`Failed to initialize tokenizer: ${error}`);
       new Notice('Failed to initialize tokenizer - check console for details');
       return;
     }
 
     try {
       this.metadataStore = await MetadataStore.initialize();
-    } catch {
+    } catch (error) {
+      this.error(`Failed to initialize metadata store: ${error}`);
       new Notice('Failed to initialize metadata store - check console');
       return;
     }
-    this.configManager.getLogger().log('MetadataStore initialized');
+    this.log('MetadataStore initialized');
 
     const db = this.metadataStore.getDB();
 
-    const embeddingStore = new EmbeddingStore(
-      db,
-      this.configManager.getLogger()
-    );
-    this.configManager.getLogger().log('EmbeddingStore initialized');
+    const embeddingStore = new EmbeddingStore(db, this.configManager);
+    this.log('EmbeddingStore initialized');
 
     let bm25Store: BM25Store;
     try {
       bm25Store = await BM25Store.initialize(
         db,
-        this.configManager.getLogger(),
+        this.configManager,
         this.tokenizer
       );
     } catch (error) {
-      this.configManager
-        .getLogger()
-        .error(`Failed to initialize BM25 store: ${error}`);
+      this.error(`Failed to initialize BM25 store: ${error}`);
       new Notice('Failed to initialize BM25 store - check console');
       return;
     }
-    this.configManager.getLogger().log('BM25Store initialized');
+    this.log('BM25Store initialized');
 
     const bm25Search = new BM25Search(bm25Store, this.metadataStore);
-    this.configManager.getLogger().log('BM25Search initialized');
+    this.log('BM25Search initialized');
 
     const embeddingSearch = new EmbeddingSearch(
       this.metadataStore,
@@ -145,14 +141,14 @@ export default class SonarPlugin extends Plugin {
       this.embedder,
       this.configManager
     );
-    this.configManager.getLogger().log('EmbeddingSearch initialized');
+    this.log('EmbeddingSearch initialized');
 
     this.searchManager = new SearchManager(
       embeddingSearch,
       bm25Search,
       this.metadataStore
     );
-    this.configManager.getLogger().log('SearchManager initialized');
+    this.log('SearchManager initialized');
 
     this.indexManager = new IndexManager(
       this.metadataStore,
@@ -176,9 +172,7 @@ export default class SonarPlugin extends Plugin {
       await this.indexManager.onLayoutReady();
     } catch (error) {
       this.statusBarItem.setText('Sonar: Failed to initialize');
-      this.configManager
-        .getLogger()
-        .error(`Failed to initialize semantic search: ${error}`);
+      this.error(`Failed to initialize semantic search: ${error}`);
       new Notice('Failed to initialize semantic search - check console');
     }
   }
@@ -223,9 +217,7 @@ export default class SonarPlugin extends Plugin {
           return;
         }
         await this.indexManager!.rebuildIndex((current, total, filePath) => {
-          this.configManager.logger.log(
-            `Rebuilding index: ${current}/${total} - ${filePath}`
-          );
+          this.log(`Rebuilding index: ${current}/${total} - ${filePath}`);
         });
       },
     });
@@ -290,9 +282,7 @@ export default class SonarPlugin extends Plugin {
           .filter(l => l !== '')
           .join('\n');
         new Notice(message, 0);
-        this.configManager
-          .getLogger()
-          .log('GPU probe result: ' + JSON.stringify(result, null, 2));
+        this.log('GPU probe result: ' + JSON.stringify(result, null, 2));
       },
     });
 
@@ -327,12 +317,10 @@ export default class SonarPlugin extends Plugin {
             `  Average: ${this.formatBytes(stats.averageSize)}`,
           ].join('\n');
 
-          this.configManager.getLogger().log(message);
+          this.log(message);
           new Notice(message, 0);
         } catch (error) {
-          this.configManager
-            .getLogger()
-            .error(`Failed to calculate statistics: ${error}`);
+          this.error(`Failed to calculate statistics: ${error}`);
           new Notice('Failed to calculate statistics - check console');
         }
       },
@@ -389,7 +377,7 @@ export default class SonarPlugin extends Plugin {
   }
 
   async onunload() {
-    this.configManager.getLogger().log('Obsidian Sonar plugin unloaded');
+    this.log('Obsidian Sonar plugin unloaded');
     if (this.indexManager) {
       this.indexManager.cleanup();
     }

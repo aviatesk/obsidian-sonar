@@ -1,5 +1,6 @@
-import type { Logger } from './Logger';
+import type { ConfigManager } from './ConfigManager';
 import { STORE_EMBEDDINGS } from './MetadataStore';
+import { WithLogging } from './WithLogging';
 
 /**
  * Embedding data for a document chunk or title
@@ -9,13 +10,16 @@ export interface EmbeddingData {
   embedding: number[];
 }
 
-export class EmbeddingStore {
+export class EmbeddingStore extends WithLogging {
+  protected readonly componentName = 'EmbeddingStore';
   private embeddingsCache: EmbeddingData[] | null = null;
 
   constructor(
     private db: IDBDatabase,
-    private logger: Logger
-  ) {}
+    protected configManager: ConfigManager
+  ) {
+    super();
+  }
 
   async addEmbedding(id: string, embedding: number[]): Promise<void> {
     const embeddingData: EmbeddingData = {
@@ -44,9 +48,7 @@ export class EmbeddingStore {
   ): Promise<void> {
     if (embeddings.length === 0) return;
 
-    this.logger.log(
-      `EmbeddingStore: Batch indexing ${embeddings.length} embeddings`
-    );
+    this.log(`Indexing ${embeddings.length} embeddings...`);
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_EMBEDDINGS], 'readwrite');
@@ -62,7 +64,7 @@ export class EmbeddingStore {
 
       transaction.oncomplete = () => {
         this.invalidateCache();
-        this.logger.log('EmbeddingStore: Batch indexing complete');
+        this.log(`Indexed ${embeddings.length} embeddings`);
         resolve();
       };
       transaction.onerror = () => reject(new Error('Failed to add embeddings'));
@@ -74,9 +76,7 @@ export class EmbeddingStore {
       return;
     }
 
-    this.logger.log(
-      `EmbeddingStore: Deleting ${documentIds.length} embeddings`
-    );
+    this.log(`Deleting ${documentIds.length} embeddings...`);
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_EMBEDDINGS], 'readwrite');
@@ -86,7 +86,7 @@ export class EmbeddingStore {
       });
       transaction.oncomplete = () => {
         this.invalidateCache();
-        this.logger.log('EmbeddingStore: Deletion complete');
+        this.log(`Deleted ${documentIds.length} embeddings`);
         resolve();
       };
       transaction.onerror = () =>
@@ -95,7 +95,7 @@ export class EmbeddingStore {
   }
 
   async clearAll(): Promise<void> {
-    this.logger.log('EmbeddingStore: Clearing all data...');
+    this.log('Clearing all data...');
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_EMBEDDINGS], 'readwrite');
@@ -104,7 +104,7 @@ export class EmbeddingStore {
 
       transaction.oncomplete = () => {
         this.invalidateCache();
-        this.logger.log('EmbeddingStore: All data cleared');
+        this.log('All data cleared');
         resolve();
       };
       transaction.onerror = () => reject(new Error('Failed to clear store'));

@@ -125,6 +125,45 @@ for testing purposes.
 
 See also [Obsidian style guide](./obsidian-style-guide.md)
 
+### Logging guidelines
+
+All logging uses the `WithLogging` base class (or helper methods in `main.ts`),
+which automatically adds `[Sonar.ComponentName]` prefixes. Follow these message
+format conventions:
+
+#### Message format
+
+- In-progress operations: Use present progressive (verb-ing) with ellipsis
+  - Example: `Indexing 100 documents...`, `Deleting 5 embeddings...`
+  - Indicates ongoing work
+
+- Completed operations: Use past participle (verb-ed)
+  - Example: `Indexed 100 documents`, `Deleted 5 embeddings`
+  - Pair with the corresponding in-progress message for clarity
+
+- State reporting: Use past participle (verb-ed)
+  - Example: `Initialized with model-name`, `Detected WebGPU`,
+    `WebGL not detected`
+
+- Error messages: Use `Failed to <verb>: ${error}`
+  - Example: `Failed to tokenize: ${error}`, `Failed to initialize: ${error}`
+  - Include relevant context when helpful (e.g., text length, file count)
+
+- Avoid generic standalone words like `complete` or `done`. Instead, use
+  specific past participles that describe what was completed (e.g.,
+  `Indexed 100 documents` instead of `Batch indexing complete`)
+
+#### Log level
+
+- Use `error()`: Critical failures that require user attention
+  - Always pair with user-facing notification showing "check console"
+  - Example: initialization failures, critical errors that stop execution
+- Use `warn()`: Problems that don't stop overall execution
+  - Example: fallback scenarios (WebGPU → WASM), individual failures in batch
+    operations, missing hardware/features, external service failures with
+    fallback
+- Use `log()`: Normal operations and informational messages
+
 ### Commands & settings
 
 - Any user-facing commands should be added via `this.addCommand(...)`.

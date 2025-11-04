@@ -6,19 +6,19 @@
   "topK": 10,
   "scoreDecay": 0.1,
   "indexPath": "",
-  "debugMode": "warn",
+  "debugMode": "log",
   "excludedPaths": [
     ".git",
     "node_modules"
   ],
   "autoOpenRelatedNotes": false,
   "autoIndex": true,
-  "indexDebounceMs": 1000,
   "relatedNotesDebounceMs": 1000,
   "statusBarMaxLength": 40,
   "showRelatedNotesQuery": false,
   "showRelatedNotesExcerpts": false,
   "showKnowledgeGraph": false,
+  "indexDebounceMs": 1000,
   "ollamaUrl": "http://localhost:11434",
   "summaryModel": "gemma3n:e4b",
   "withExtraction": false

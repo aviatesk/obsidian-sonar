@@ -20,7 +20,6 @@ import { ConfigManager } from '../ConfigManager';
 import { Tokenizer } from '../Tokenizer';
 import { getCurrentContext } from '../ObsidianUtils';
 import RelatedNotesContent from './RelatedNotesContent.svelte';
-import type { Logger } from '../Logger';
 
 export const RELATED_NOTES_VIEW_TYPE = 'related-notes-view';
 
@@ -37,7 +36,6 @@ export class RelatedNotesView extends ItemView {
   private searchManager: SearchManager;
   private configManager: ConfigManager;
   private getTokenizer: () => Tokenizer;
-  private logger: Logger;
   private lastActiveFile: TFile | null = null;
   private lastQuery: string = '';
   private debouncedRefresh: () => void;
@@ -68,7 +66,6 @@ export class RelatedNotesView extends ItemView {
     this.searchManager = searchManager;
     this.configManager = configManager;
     this.getTokenizer = getTokenizer;
-    this.logger = configManager.getLogger();
     this.registerEditorExt = registerEditorExt;
     this.registerMdPostProcessor = registerMdPostProcessor;
 
@@ -180,7 +177,6 @@ export class RelatedNotesView extends ItemView {
         app: this.app,
         configManager: this.configManager,
         store: this.relatedNotesStore,
-        logger: this.logger,
         onRefresh: () => {
           this.manualRefresh();
         },
@@ -348,7 +344,9 @@ export class RelatedNotesView extends ItemView {
         });
       }
     } catch (err) {
-      this.logger.error(`Error refreshing related notes: ${err}`);
+      this.configManager
+        .getLogger()
+        .error(`Error refreshing related notes: ${err}`);
       new Notice('Failed to retrieve related notes');
       this.updateStore({
         query: '',

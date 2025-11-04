@@ -3,7 +3,6 @@
   import type { ConfigManager } from '../ConfigManager';
   import SearchResults from './SearchResults.svelte';
   import KnowledgeGraph from './KnowledgeGraph.svelte';
-  import type { Logger } from '../Logger';
   import { RefreshCw, Eye, EyeOff, FileText, ChartNetwork, createElement } from 'lucide';
   import { onMount } from 'svelte';
 
@@ -11,11 +10,10 @@
     app: App;
     configManager: ConfigManager;
     store: any; // Svelte store
-    logger: Logger;
     onRefresh: () => void;
   }
 
-  let { app, configManager, store, logger, onRefresh }: Props = $props();
+  let { app, configManager, store, onRefresh }: Props = $props();
 
   const storeState = $derived($store);
   const query = $derived(storeState.query);
@@ -172,7 +170,7 @@
         <SearchResults
           {app}
           {results}
-          {logger}
+          {configManager}
           noResultsMessage="No related notes found"
           maxHeight="200px"
           showExcerpts={showExcerpts}

@@ -1,5 +1,6 @@
 import { App, Component, MarkdownRenderer as MR } from 'obsidian';
-import type { Logger } from '../Logger';
+import type { ConfigManager } from '../ConfigManager';
+import { WithLogging } from '../WithLogging';
 
 export interface MarkdownRenderingOptions {
   maxLength?: number;
@@ -7,23 +8,23 @@ export interface MarkdownRenderingOptions {
   fallbackClass: string;
 }
 
-export class MarkdownRenderingManager {
+export class MarkdownRenderingManager extends WithLogging {
+  protected readonly componentName = 'MarkdownRenderingManager';
   private components: Map<HTMLElement, Component> = new Map();
   private app: App;
   private options: MarkdownRenderingOptions;
-  private logger: Logger;
 
   constructor(
     app: App,
-    logger: Logger,
+    protected configManager: ConfigManager,
     options?: {
       maxLength?: number;
       cssClass?: string;
       fallbackClass?: string;
     }
   ) {
+    super();
     this.app = app;
-    this.logger = logger;
     this.options = {
       maxLength: undefined,
       cssClass: 'result-excerpt-markdown',
@@ -60,7 +61,7 @@ export class MarkdownRenderingManager {
       await MR.render(this.app, excerpt, containerEl, sourcePath, component);
       containerEl.addClass(this.options.cssClass);
     } catch (err) {
-      this.logger.error(`Failed to render markdown excerpt: ${err}`);
+      this.error(`Failed to render markdown excerpt: ${err}`);
       containerEl.createEl('p', {
         text: excerpt,
         cls: this.options.fallbackClass,

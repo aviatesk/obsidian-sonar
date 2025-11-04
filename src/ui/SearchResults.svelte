@@ -3,12 +3,12 @@
   import type { SearchResult } from '../SearchManager';
   import { MarkdownRenderingManager } from './MarkdownRenderingManager';
   import { onDestroy } from 'svelte';
-  import type { Logger } from '../Logger';
+  import type { ConfigManager } from '../ConfigManager';
 
   interface Props {
     app: App;
     results: SearchResult[];
-    logger: Logger;
+    configManager: ConfigManager;
     onFileClick?: (file: TFile) => void;
     noResultsMessage?: string;
     maxHeight?: string;
@@ -19,7 +19,7 @@
   let {
     app,
     results = [],
-    logger,
+    configManager,
     onFileClick,
     noResultsMessage = 'No results found',
     maxHeight = '100px',
@@ -27,7 +27,7 @@
     showExcerpts = true,
   }: Props = $props();
 
-  const markdownManager = new MarkdownRenderingManager(app, logger, { maxLength });
+  const markdownManager = new MarkdownRenderingManager(app, configManager, { maxLength });
 
   onDestroy(() => {
     markdownManager.cleanup();

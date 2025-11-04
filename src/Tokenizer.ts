@@ -1,25 +1,30 @@
-import type { Logger } from './Logger';
+import type { ConfigManager } from './ConfigManager';
 import type { Embedder } from './Embedder';
+import { WithLogging } from './WithLogging';
 
 /**
  * Transformers.js based tokenizer for accurate token counting
  * Uses Worker-based Embedder for tokenization
  */
-export class Tokenizer {
+export class Tokenizer extends WithLogging {
+  protected readonly componentName = 'Tokenizer';
   private embedder: Embedder;
-  private logger: Logger;
 
-  private constructor(embedder: Embedder, logger: Logger) {
+  private constructor(
+    embedder: Embedder,
+    protected configManager: ConfigManager
+  ) {
+    super();
     this.embedder = embedder;
-    this.logger = logger;
   }
 
   static async initialize(
     embedder: Embedder,
-    logger: Logger
+    configManager: ConfigManager
   ): Promise<Tokenizer> {
-    logger.log('Tokenizer: Initialized with embedder');
-    return new Tokenizer(embedder, logger);
+    const tokenizer = new Tokenizer(embedder, configManager);
+    tokenizer.log('Initialized with embedder');
+    return tokenizer;
   }
 
   /**
@@ -46,7 +51,7 @@ export class Tokenizer {
     try {
       return await this.embedder.countTokens(text);
     } catch (error) {
-      this.logger.error(`Tokenizer: Failed to tokenize: ${error}`);
+      this.error(`Failed to tokenize: ${error}`);
       throw error;
     }
   }
@@ -64,7 +69,7 @@ export class Tokenizer {
     try {
       return await this.embedder.getTokenIds(text);
     } catch (error) {
-      this.logger.error(`Tokenizer: Failed to tokenize: ${error}`);
+      this.error(`Failed to tokenize: ${error}`);
       throw error;
     }
   }

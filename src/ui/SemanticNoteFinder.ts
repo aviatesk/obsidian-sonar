@@ -4,7 +4,6 @@ import { writable } from 'svelte/store';
 import { SearchManager, type SearchResult } from '../SearchManager';
 import { ConfigManager } from '../ConfigManager';
 import SemanticNoteFinderComponent from './SemanticNoteFinderComponent.svelte';
-import type { Logger } from '../Logger';
 
 interface SemanticSearchState {
   query: string;
@@ -16,7 +15,6 @@ interface SemanticSearchState {
 export class SemanticNoteFinder extends Modal {
   private searchManager: SearchManager;
   private configManager: ConfigManager;
-  private logger: Logger;
   private svelteComponent:
     | ReturnType<typeof SemanticNoteFinderComponent>
     | undefined;
@@ -36,7 +34,6 @@ export class SemanticNoteFinder extends Modal {
     super(app);
     this.searchManager = searchManager;
     this.configManager = configManager;
-    this.logger = configManager.getLogger();
 
     this.debouncedSearch = debounce(
       this.handleSearch.bind(this),
@@ -82,7 +79,7 @@ export class SemanticNoteFinder extends Modal {
         isSearching: false,
       });
     } catch (err) {
-      this.logger.error(`Search failed: ${err}`);
+      this.configManager.getLogger().error(`Search failed: ${err}`);
       new Notice('Search failed. Please check your settings.');
       this.updateStore({
         results: [],
@@ -105,7 +102,7 @@ export class SemanticNoteFinder extends Modal {
       props: {
         app: this.app,
         store: this.searchStore,
-        logger: this.logger,
+        configManager: this.configManager,
         placeholder: 'Enter your search query...',
         titleEl: titleEl,
         onQueryChange: (query: string) => {

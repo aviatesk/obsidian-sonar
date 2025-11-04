@@ -1,29 +1,32 @@
-import type { Logger } from './Logger';
+import type { ConfigManager } from './ConfigManager';
 import { TransformersWorker } from './TransformersWorker';
+import { WithLogging } from './WithLogging';
 
 /**
  * Embedding generation using Transformers.js in Web Worker
  * Web Worker runs in pure browser environment, avoiding worker_threads issues
  */
-export class Embedder {
+export class Embedder extends WithLogging {
+  protected readonly componentName = 'Embedder';
   private worker: TransformersWorker;
 
   constructor(
     private modelId: string,
-    private logger: Logger,
+    protected configManager: ConfigManager,
     private device: 'webgpu' | 'wasm' = 'wasm',
     private dtype: 'q8' | 'q4' | 'fp32' = 'q8'
   ) {
+    super();
     // Check WebGPU availability
     const hasWebGPU = navigator.gpu !== undefined;
     if (this.device === 'webgpu' && !hasWebGPU) {
-      this.logger.log('WebGPU not available, falling back to WASM');
+      this.warn('WebGPU not available, falling back to WASM');
       this.device = 'wasm';
     }
 
-    this.worker = new TransformersWorker(logger);
-    this.logger.log(
-      `Embedder initialized: ${this.modelId} (${this.device}, ${this.dtype})`
+    this.worker = new TransformersWorker(configManager.getLogger());
+    this.log(
+      `Initialized with ${this.modelId} (${this.device}, ${this.dtype})`
     );
   }
 
@@ -41,8 +44,8 @@ export class Embedder {
       });
     }
 
-    this.logger.log(
-      `Embedder: Generating embedding vector for ${texts.length} texts (in batches of ${MAX_BATCH_SIZE})`
+    this.log(
+      `Generating embeddings for ${texts.length} texts (batches of ${MAX_BATCH_SIZE})...`
     );
     const results: number[][] = [];
     for (let i = 0; i < texts.length; i += MAX_BATCH_SIZE) {

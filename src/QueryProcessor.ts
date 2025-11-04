@@ -191,7 +191,7 @@ ${input}`;
     const extractionQuery = await ollamaClient.generate(prompt);
     return extractionQuery.trim();
   } catch (err) {
-    logger.error(`LLM extraction generation failed: ${err}`);
+    logger.warn(`LLM extraction generation failed: ${err}`);
     return input;
   }
 }

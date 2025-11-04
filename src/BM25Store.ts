@@ -1,9 +1,10 @@
-import type { Logger } from './Logger';
+import type { ConfigManager } from './ConfigManager';
 import type { Tokenizer } from './Tokenizer';
 import {
   STORE_BM25_INVERTED_INDEX,
   STORE_BM25_DOC_TOKENS,
 } from './MetadataStore';
+import { WithLogging } from './WithLogging';
 
 /**
  * Posting list entry for inverted index
@@ -45,21 +46,24 @@ interface IndexMetadata {
 const K1 = 1.2;
 const B = 0.75;
 
-export class BM25Store {
+export class BM25Store extends WithLogging {
+  protected readonly componentName = 'BM25Store';
   private metadataCache: IndexMetadata | null = null;
 
   private constructor(
     private db: IDBDatabase,
-    private logger: Logger,
+    protected configManager: ConfigManager,
     private tokenizer: Tokenizer
-  ) {}
+  ) {
+    super();
+  }
 
   static async initialize(
     db: IDBDatabase,
-    logger: Logger,
+    configManager: ConfigManager,
     tokenizer: Tokenizer
   ): Promise<BM25Store> {
-    const store = new BM25Store(db, logger, tokenizer);
+    const store = new BM25Store(db, configManager, tokenizer);
     await store.refreshMetaDataCache(); // Build initial in-memory index metadata
     return store;
   }
@@ -85,9 +89,7 @@ export class BM25Store {
       docLengths,
     };
 
-    this.logger.log(
-      `BM25Store: Index metadata refreshed (${allDocs.length} documents)`
-    );
+    this.log(`Index metadata refreshed (${allDocs.length} documents)`);
   }
 
   /**
@@ -116,7 +118,7 @@ export class BM25Store {
   ): Promise<void> {
     if (documents.length === 0) return;
 
-    this.logger.log(`BM25Store: Batch indexing ${documents.length} documents`);
+    this.log(`Indexing ${documents.length} documents...`);
 
     // Phase 1: Tokenize all documents
     const docsTokenInfo: DocumentTokenInfo[] = [];
@@ -218,7 +220,7 @@ export class BM25Store {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
         this.clearMetaDataCache();
-        this.logger.log(`BM25Store: Batch indexing complete`);
+        this.log(`Indexed ${documents.length} documents`);
         resolve();
       };
       transaction.onerror = () => reject(transaction.error);
@@ -234,7 +236,7 @@ export class BM25Store {
       return;
     }
 
-    this.logger.log(`BM25Store: Deleting ${docIds.length} documents`);
+    this.log(`Deleting ${docIds.length} documents...`);
 
     // Phase 1: Read all data we need
     const docsToRemove = await Promise.all(
@@ -245,11 +247,11 @@ export class BM25Store {
     );
 
     if (validDocs.length === 0) {
-      this.logger.log('BM25Store: No documents found to remove');
+      this.warn('No documents found to remove');
       return;
     }
 
-    this.logger.log(`BM25Store: Found ${validDocs.length} documents to remove`);
+    this.log(`Found ${validDocs.length} documents to remove`);
 
     // Collect all tokens from documents to remove
     const allTokens = new Set<string>();
@@ -292,9 +294,7 @@ export class BM25Store {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
         this.clearMetaDataCache();
-        this.logger.log(
-          `BM25Store: Deletion complete. Removed ${validDocs.length} documents`
-        );
+        this.log(`Deleted ${validDocs.length} documents`);
         resolve();
       };
       transaction.onerror = () => reject(transaction.error);
@@ -465,7 +465,7 @@ export class BM25Store {
   }
 
   async clearAll(): Promise<void> {
-    this.logger.log('BM25Store: Clearing all data...');
+    this.log('Clearing all data...');
 
     const transaction = this.db.transaction(
       [STORE_BM25_INVERTED_INDEX, STORE_BM25_DOC_TOKENS],
@@ -478,13 +478,11 @@ export class BM25Store {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
         this.clearMetaDataCache();
-        this.logger.log('BM25Store: All data cleared');
+        this.log('All data cleared');
         resolve();
       };
       transaction.onerror = () => {
-        this.logger.error(
-          `BM25Store: Failed to clear data: ${transaction.error}`
-        );
+        this.error(`Failed to clear data: ${transaction.error}`);
         reject(transaction.error);
       };
     });
