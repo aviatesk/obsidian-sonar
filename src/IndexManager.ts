@@ -430,7 +430,7 @@ export class IndexManager {
       });
 
       try {
-        await this.processOperationCore(operation, true);
+        await this.processOperationCore(operation);
         this.logger.log(
           `IndexManager: ${this.getOperationAction(operation.type)} ${filePath}`
         );
@@ -447,45 +447,24 @@ export class IndexManager {
 
   /**
    * Core operation processing logic
-   * Used after bulk deletion has been performed
+   * Assumes bulk deletion has already been performed
    */
-  private async processOperationCore(
-    operation: FileOperation,
-    alreadyDeleted: boolean
-  ): Promise<void> {
+  private async processOperationCore(operation: FileOperation): Promise<void> {
     switch (operation.type) {
       case 'create':
       case 'modify':
         if (operation.file) {
-          if (alreadyDeleted) {
-            // Deletion already done in batch, just re-index
-            await this.indexFileInternalCore(operation.file);
-          } else {
-            // Delete from all stores, then re-index
-            await this.deleteDocumentsFromStores(operation.file.path, true);
-            await this.indexFileInternalCore(operation.file);
-          }
+          await this.indexFileInternalCore(operation.file);
         }
         break;
 
       case 'delete':
-        if (operation.oldPath && !alreadyDeleted) {
-          // Delete from all stores (only if not already deleted in batch)
-          await this.deleteDocumentsFromStores(operation.oldPath, true);
-        }
-        // If alreadyDeleted, nothing to do
+        // Nothing to do, already deleted in batch
         break;
 
       case 'rename':
-        if (operation.oldPath && operation.file) {
-          if (alreadyDeleted) {
-            // Deletion already done in batch, just index new path
-            await this.indexFileInternalCore(operation.file);
-          } else {
-            // Delete old path from all stores, then index new path
-            await this.deleteDocumentsFromStores(operation.oldPath, true);
-            await this.indexFileInternalCore(operation.file);
-          }
+        if (operation.file) {
+          await this.indexFileInternalCore(operation.file);
         }
         break;
     }
