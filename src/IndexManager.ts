@@ -347,7 +347,7 @@ export class IndexManager {
   }
 
   /**
-   * Process a batch of file operations with optimized bulk BM25 deletion
+   * Process a batch of file operations with optimized bulk deletion
    * Common routine used by both sync and event-driven processing
    */
   private async processBatchOperations(
@@ -362,29 +362,29 @@ export class IndexManager {
       return 0;
     }
 
-    // Batch delete all affected files from BM25 index first
-    const bm25FilesToDelete: string[] = [];
+    // Batch delete all affected files from all stores first
+    const filesToDelete: string[] = [];
     for (const operation of operations) {
       if (operation.type === 'delete' && operation.oldPath) {
-        bm25FilesToDelete.push(operation.oldPath);
+        filesToDelete.push(operation.oldPath);
       } else if (operation.type === 'rename' && operation.oldPath) {
-        bm25FilesToDelete.push(operation.oldPath);
+        filesToDelete.push(operation.oldPath);
       } else if (
         (operation.type === 'create' || operation.type === 'modify') &&
         operation.file
       ) {
-        bm25FilesToDelete.push(operation.file.path);
+        filesToDelete.push(operation.file.path);
       }
     }
 
-    if (bm25FilesToDelete.length > 0) {
+    if (filesToDelete.length > 0) {
       this.logger.log(
-        `IndexManager: Batch deletion starting for ${bm25FilesToDelete.length} files`
+        `IndexManager: Batch deletion starting for ${filesToDelete.length} files`
       );
 
       // Get all document IDs from MetadataStore for these files (parallel)
       const docArrays = await Promise.all(
-        bm25FilesToDelete.map(filePath =>
+        filesToDelete.map(filePath =>
           this.metadataStore.getDocumentsByFile(filePath)
         )
       );
@@ -394,13 +394,20 @@ export class IndexManager {
       }
 
       this.logger.log(
-        `IndexManager: Deleting ${allDocIds.length} documents from BM25`
+        `IndexManager: Deleting ${allDocIds.length} documents from all stores`
       );
-      await this.bm25Store.deleteDocuments(allDocIds);
-      this.logger.log('IndexManager: BM25 batch deletion complete');
+
+      // Delete from all stores in parallel
+      await Promise.all([
+        this.metadataStore.deleteDocuments(allDocIds),
+        this.embeddingStore.deleteEmbeddings(allDocIds),
+        this.bm25Store.deleteDocuments(allDocIds),
+      ]);
+
+      this.logger.log('IndexManager: Batch deletion complete');
     }
 
-    // Process each operation
+    // Process each operation (only re-indexing for create/modify/rename)
     let errorCount = 0;
     for (let i = 0; i < operations.length; i++) {
       const operation = operations[i];
@@ -423,7 +430,7 @@ export class IndexManager {
       });
 
       try {
-        await this.processOperationCore(operation, false);
+        await this.processOperationCore(operation, true);
         this.logger.log(
           `IndexManager: ${this.getOperationAction(operation.type)} ${filePath}`
         );
@@ -440,43 +447,45 @@ export class IndexManager {
 
   /**
    * Core operation processing logic
-   * Used after bulk BM25 deletion has been performed
+   * Used after bulk deletion has been performed
    */
   private async processOperationCore(
     operation: FileOperation,
-    skipBM25Deletion: boolean
+    alreadyDeleted: boolean
   ): Promise<void> {
     switch (operation.type) {
       case 'create':
       case 'modify':
         if (operation.file) {
-          // Delete from MetadataStore and EmbeddingStore, then re-index
-          await this.deleteDocumentsFromStores(
-            operation.file.path,
-            skipBM25Deletion
-          );
-          await this.indexFileInternalCore(operation.file);
+          if (alreadyDeleted) {
+            // Deletion already done in batch, just re-index
+            await this.indexFileInternalCore(operation.file);
+          } else {
+            // Delete from all stores, then re-index
+            await this.deleteDocumentsFromStores(operation.file.path, true);
+            await this.indexFileInternalCore(operation.file);
+          }
         }
         break;
 
       case 'delete':
-        if (operation.oldPath) {
-          // Delete from MetadataStore and EmbeddingStore
-          await this.deleteDocumentsFromStores(
-            operation.oldPath,
-            skipBM25Deletion
-          );
+        if (operation.oldPath && !alreadyDeleted) {
+          // Delete from all stores (only if not already deleted in batch)
+          await this.deleteDocumentsFromStores(operation.oldPath, true);
         }
+        // If alreadyDeleted, nothing to do
         break;
 
       case 'rename':
         if (operation.oldPath && operation.file) {
-          // Delete old path, then index new path
-          await this.deleteDocumentsFromStores(
-            operation.oldPath,
-            skipBM25Deletion
-          );
-          await this.indexFileInternalCore(operation.file);
+          if (alreadyDeleted) {
+            // Deletion already done in batch, just index new path
+            await this.indexFileInternalCore(operation.file);
+          } else {
+            // Delete old path from all stores, then index new path
+            await this.deleteDocumentsFromStores(operation.oldPath, true);
+            await this.indexFileInternalCore(operation.file);
+          }
         }
         break;
     }
@@ -519,7 +528,7 @@ export class IndexManager {
   }
 
   /**
-   * Index file without deleting from BM25 (used during sync after batch deletion)
+   * Index file core logic (assumes deletion already performed if needed)
    */
   private async indexFileInternalCore(file: TFile): Promise<void> {
     const content = await this.vault.cachedRead(file);
