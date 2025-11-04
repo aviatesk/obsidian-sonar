@@ -6,7 +6,7 @@
   "topK": 10,
   "scoreDecay": 0.1,
   "indexPath": "",
-  "debugMode": "log",
+  "debugMode": "warn",
   "excludedPaths": [
     ".git",
     "node_modules"
