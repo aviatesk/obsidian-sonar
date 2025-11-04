@@ -1,4 +1,4 @@
-import { Tokenizer } from './Tokenizer';
+import type { Embedder } from './Embedder';
 import { OllamaClient } from './OllamaClient';
 import type { Logger } from './Logger';
 
@@ -8,16 +8,14 @@ export interface QueryOptions {
   lineEnd: number;
   hasSelection: boolean;
   maxTokens: number;
-  tokenizer: Tokenizer;
+  embedder: Embedder;
 }
 
 export async function processQuery(
   content: string,
   options: QueryOptions
 ): Promise<string> {
-  const fileNameTokens = await options.tokenizer.estimateTokens(
-    options.fileName
-  );
+  const fileNameTokens = await options.embedder.countTokens(options.fileName);
   const remainingTokens = Math.max(10, options.maxTokens - fileNameTokens);
 
   const extractedContent = options.hasSelection
@@ -26,13 +24,13 @@ export async function processQuery(
         options.lineStart,
         options.lineEnd,
         remainingTokens,
-        options.tokenizer
+        options.embedder
       )
     : await extractAroundCenter(
         content,
         options.lineStart,
         remainingTokens,
-        options.tokenizer
+        options.embedder
       );
 
   return `${options.fileName}\n\n${extractedContent}`;
@@ -43,7 +41,7 @@ async function extractTokenBasedContent(
   lineStart: number,
   lineEnd: number,
   remainingTokens: number,
-  tokenizer: Tokenizer
+  embedder: Embedder
 ): Promise<string> {
   const lines = content.split('\n');
   let result: string[] = [];
@@ -53,7 +51,7 @@ async function extractTokenBasedContent(
   const endIdx = Math.min(lines.length - 1, lineEnd);
 
   for (let i = startIdx; i <= endIdx; i++) {
-    const lineTokens = await tokenizer.estimateTokens(lines[i]);
+    const lineTokens = await embedder.countTokens(lines[i]);
     if (currentTokens + lineTokens <= remainingTokens) {
       result.push(lines[i]);
       currentTokens += lineTokens;
@@ -63,7 +61,7 @@ async function extractTokenBasedContent(
         const partialLine = await truncateToTokens(
           lines[i],
           remainingSpace,
-          tokenizer
+          embedder
         );
         result.push(partialLine);
       }
@@ -72,7 +70,7 @@ async function extractTokenBasedContent(
   }
 
   if (result.length === 0 && startIdx <= endIdx) {
-    return await truncateToTokens(lines[startIdx], remainingTokens, tokenizer);
+    return await truncateToTokens(lines[startIdx], remainingTokens, embedder);
   }
 
   return result.join('\n');
@@ -82,7 +80,7 @@ async function extractAroundCenter(
   content: string,
   centerLine: number,
   remainingTokens: number,
-  tokenizer: Tokenizer
+  embedder: Embedder
 ): Promise<string> {
   const lines = content.split('\n');
   let result: string[] = [];
@@ -92,16 +90,12 @@ async function extractAroundCenter(
     centerLine = lines.length - 1;
   }
 
-  const centerLineTokens = await tokenizer.estimateTokens(lines[centerLine]);
+  const centerLineTokens = await embedder.countTokens(lines[centerLine]);
   if (centerLineTokens <= remainingTokens) {
     result.push(lines[centerLine]);
     currentTokens += centerLineTokens;
   } else {
-    return await truncateToTokens(
-      lines[centerLine],
-      remainingTokens,
-      tokenizer
-    );
+    return await truncateToTokens(lines[centerLine], remainingTokens, embedder);
   }
 
   let above = centerLine - 1;
@@ -112,7 +106,7 @@ async function extractAroundCenter(
     (above >= 0 || below < lines.length)
   ) {
     if (above >= 0) {
-      const lineTokens = await tokenizer.estimateTokens(lines[above]);
+      const lineTokens = await embedder.countTokens(lines[above]);
       if (currentTokens + lineTokens <= remainingTokens) {
         result.unshift(lines[above]);
         currentTokens += lineTokens;
@@ -123,7 +117,7 @@ async function extractAroundCenter(
     }
 
     if (below < lines.length && currentTokens < remainingTokens) {
-      const lineTokens = await tokenizer.estimateTokens(lines[below]);
+      const lineTokens = await embedder.countTokens(lines[below]);
       if (currentTokens + lineTokens <= remainingTokens) {
         result.push(lines[below]);
         currentTokens += lineTokens;
@@ -140,14 +134,14 @@ async function extractAroundCenter(
 async function truncateToTokens(
   text: string,
   maxTokens: number,
-  tokenizer: Tokenizer
+  embedder: Embedder
 ): Promise<string> {
   const words = text.split(/\s+/);
   let result: string[] = [];
   let currentTokens = 0;
 
   for (const word of words) {
-    const wordTokens = await tokenizer.estimateTokens(word);
+    const wordTokens = await embedder.countTokens(word);
     if (currentTokens + wordTokens <= maxTokens) {
       result.push(word);
       currentTokens += wordTokens;

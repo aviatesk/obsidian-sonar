@@ -1,5 +1,5 @@
 import type { ConfigManager } from './ConfigManager';
-import type { Tokenizer } from './Tokenizer';
+import type { Embedder } from './Embedder';
 import {
   STORE_BM25_INVERTED_INDEX,
   STORE_BM25_DOC_TOKENS,
@@ -53,7 +53,7 @@ export class BM25Store extends WithLogging {
   private constructor(
     private db: IDBDatabase,
     protected configManager: ConfigManager,
-    private tokenizer: Tokenizer
+    private embedder: Embedder
   ) {
     super();
   }
@@ -61,9 +61,9 @@ export class BM25Store extends WithLogging {
   static async initialize(
     db: IDBDatabase,
     configManager: ConfigManager,
-    tokenizer: Tokenizer
+    embedder: Embedder
   ): Promise<BM25Store> {
-    const store = new BM25Store(db, configManager, tokenizer);
+    const store = new BM25Store(db, configManager, embedder);
     await store.refreshMetaDataCache(); // Build initial in-memory index metadata
     return store;
   }
@@ -509,8 +509,8 @@ export class BM25Store extends WithLogging {
     const allTokens: string[] = [];
 
     for (const line of lines) {
-      // Get token IDs using Tokenizer API (special tokens already filtered)
-      const tokenIds = await this.tokenizer.getTokenIds(line);
+      // Get token IDs using Embedder API (special tokens already filtered)
+      const tokenIds = await this.embedder.getTokenIds(line);
 
       // Convert to strings for BM25 matching
       for (const tokenId of tokenIds) {

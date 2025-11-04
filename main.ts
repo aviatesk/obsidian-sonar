@@ -10,7 +10,6 @@ import {
   RELATED_NOTES_VIEW_TYPE,
 } from './src/ui/RelatedNotesView';
 import { SemanticNoteFinder } from './src/ui/SemanticNoteFinder';
-import { Tokenizer } from './src/Tokenizer';
 import { IndexManager } from './src/IndexManager';
 import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
@@ -24,7 +23,6 @@ export default class SonarPlugin extends Plugin {
   searchManager: SearchManager | null = null;
   indexManager: IndexManager | null = null;
   metadataStore: MetadataStore | null = null;
-  tokenizer: Tokenizer | null = null;
   embedder: Embedder | null = null;
 
   private log(msg: string): void {
@@ -92,18 +90,6 @@ export default class SonarPlugin extends Plugin {
       `Transformers.js embedding extractor initialized: ${embeddingModel} (${this.embedder.getDevice()})`
     );
 
-    // Initialize tokenizer using the embedder
-    try {
-      this.tokenizer = await Tokenizer.initialize(
-        this.embedder,
-        this.configManager
-      );
-    } catch (error) {
-      this.error(`Failed to initialize tokenizer: ${error}`);
-      new Notice('Failed to initialize tokenizer - check console for details');
-      return;
-    }
-
     try {
       this.metadataStore = await MetadataStore.initialize();
     } catch (error) {
@@ -123,7 +109,7 @@ export default class SonarPlugin extends Plugin {
       bm25Store = await BM25Store.initialize(
         db,
         this.configManager,
-        this.tokenizer
+        this.embedder
       );
     } catch (error) {
       this.error(`Failed to initialize BM25 store: ${error}`);
@@ -158,11 +144,10 @@ export default class SonarPlugin extends Plugin {
       this.app.vault,
       this.app.workspace,
       this.configManager,
-      () => this.tokenizer!,
       this.statusBarItem
     );
 
-    this.registerViews(this.searchManager);
+    this.registerViews(this.searchManager, this.embedder);
 
     if (this.configManager.get('autoOpenRelatedNotes')) {
       this.activateRelatedNotesView();
@@ -181,13 +166,16 @@ export default class SonarPlugin extends Plugin {
     return this.indexManager !== null;
   }
 
-  private registerViews(searchManager: SearchManager): void {
+  private registerViews(
+    searchManager: SearchManager,
+    embedder: Embedder
+  ): void {
     this.registerView(RELATED_NOTES_VIEW_TYPE, leaf => {
       return new RelatedNotesView(
         leaf,
         searchManager,
         this.configManager,
-        () => this.tokenizer!,
+        embedder,
         ext => this.registerEditorExtension(ext),
         processor => this.registerMarkdownPostProcessor(processor)
       );

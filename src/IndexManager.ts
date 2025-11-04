@@ -17,7 +17,6 @@ import { type DocumentMetadata, MetadataStore } from './MetadataStore';
 import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
 import { Embedder } from './Embedder';
-import { Tokenizer } from './Tokenizer';
 import { Logger } from './Logger';
 import { BM25Store } from './BM25Store';
 import { formatDuration } from './ObsidianUtils';
@@ -52,7 +51,6 @@ export class IndexManager {
     private vault: Vault,
     private workspace: Workspace,
     private configManager: ConfigManager,
-    private getTokenizer: () => Tokenizer,
     private statusBarItem: HTMLElement
   ) {
     this.logger = configManager.getLogger();
@@ -507,7 +505,7 @@ export class IndexManager {
       content,
       this.configManager.get('maxChunkSize'),
       this.configManager.get('chunkOverlap'),
-      this.getTokenizer()
+      this.embedder
     );
 
     const indexedAt = Date.now();
@@ -751,7 +749,7 @@ export class IndexManager {
       const content = await this.vault.cachedRead(file);
       const lines = content.split('\n');
       for (const line of lines) {
-        const lineTokens = await this.getTokenizer().estimateTokens(line);
+        const lineTokens = await this.embedder.countTokens(line);
         totalTokens += lineTokens;
       }
       totalCharacters += content.length;

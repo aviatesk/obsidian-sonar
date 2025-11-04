@@ -1,4 +1,4 @@
-import { Tokenizer } from './Tokenizer';
+import type { Embedder } from './Embedder';
 
 export interface Chunk {
   content: string;
@@ -9,7 +9,7 @@ export async function createChunks(
   content: string,
   maxChunkSize: number,
   chunkOverlap: number,
-  tokenizer: Tokenizer
+  embedder: Embedder
 ): Promise<Chunk[]> {
   let text = content.trim();
 
@@ -22,7 +22,7 @@ export async function createChunks(
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const lineTokens = await tokenizer.estimateTokens(line);
+    const lineTokens = await embedder.countTokens(line);
 
     // Update headings if this is a heading line
     if (line.startsWith('#')) {
@@ -51,9 +51,7 @@ export async function createChunks(
         j >= 0 && overlapTokens < chunkOverlap;
         j--
       ) {
-        const lineOverlapTokens = await tokenizer.estimateTokens(
-          currentChunk[j]
-        );
+        const lineOverlapTokens = await embedder.countTokens(currentChunk[j]);
         if (overlapTokens + lineOverlapTokens <= chunkOverlap) {
           overlapLines.unshift(currentChunk[j]);
           overlapTokens += lineOverlapTokens;

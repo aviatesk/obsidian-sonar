@@ -82,4 +82,14 @@ export class Embedder extends WithLogging {
   cleanup(): void {
     this.worker.cleanup();
   }
+
+  static formatTokenCountShort(count: number): string {
+    if (count < 1000) {
+      return `${count} tokens`;
+    } else if (count < 10000) {
+      return `${(count / 1000).toFixed(1)}k tokens`;
+    } else {
+      return `${(count / 1000).toFixed(0)}k tokens`;
+    }
+  }
 }

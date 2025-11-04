@@ -17,7 +17,7 @@ import { writable, get } from 'svelte/store';
 import { SearchManager, type SearchResult } from '../SearchManager';
 import { processQuery, type QueryOptions } from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';
-import { Tokenizer } from '../Tokenizer';
+import type { Embedder } from '../Embedder';
 import { getCurrentContext } from '../ObsidianUtils';
 import RelatedNotesContent from './RelatedNotesContent.svelte';
 
@@ -35,7 +35,7 @@ interface RelatedNotesState {
 export class RelatedNotesView extends ItemView {
   private searchManager: SearchManager;
   private configManager: ConfigManager;
-  private getTokenizer: () => Tokenizer;
+  private embedder: Embedder;
   private lastActiveFile: TFile | null = null;
   private lastQuery: string = '';
   private debouncedRefresh: () => void;
@@ -58,14 +58,14 @@ export class RelatedNotesView extends ItemView {
     leaf: WorkspaceLeaf,
     searchManager: SearchManager,
     configManager: ConfigManager,
-    getTokenizer: () => Tokenizer,
+    embedder: Embedder,
     registerEditorExt: (ext: Extension) => void,
     registerMdPostProcessor: (processor: MarkdownPostProcessor) => void
   ) {
     super(leaf);
     this.searchManager = searchManager;
     this.configManager = configManager;
-    this.getTokenizer = getTokenizer;
+    this.embedder = embedder;
     this.registerEditorExt = registerEditorExt;
     this.registerMdPostProcessor = registerMdPostProcessor;
 
@@ -297,7 +297,7 @@ export class RelatedNotesView extends ItemView {
       lineEnd: context.lineEnd,
       hasSelection: context.hasSelection,
       maxTokens: this.configManager.get('maxQueryTokens'),
-      tokenizer: this.getTokenizer(),
+      embedder: this.embedder,
     };
 
     try {
@@ -317,7 +317,7 @@ export class RelatedNotesView extends ItemView {
       this.lastQuery = query;
 
       if (query) {
-        const tokenCount = await this.getTokenizer().estimateTokens(query);
+        const tokenCount = await this.embedder.countTokens(query);
         const searchResults = await this.searchManager.search(
           query,
           this.configManager.get('topK'),
