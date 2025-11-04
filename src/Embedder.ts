@@ -61,6 +61,24 @@ export class Embedder extends WithLogging {
     return results;
   }
 
+  /**
+   * Counts the number of tokens in the given text.
+   *
+   * WARNING: For large texts (e.g., entire file contents), this method may hang
+   * or perform poorly. When processing large documents, split the text by lines
+   * and call this method for each line separately to avoid performance issues.
+   *
+   * @example
+   * // Good: Process line by line for large texts
+   * const lines = content.split('\n');
+   * let totalTokens = 0;
+   * for (const line of lines) {
+   *   totalTokens += await embedder.countTokens(line);
+   * }
+   *
+   * // Avoid: Processing entire large file at once
+   * const tokens = await embedder.countTokens(largeFileContent); // May hang!
+   */
   async countTokens(text: string): Promise<number> {
     return this.worker.call('countTokens', {
       text,
@@ -68,6 +86,13 @@ export class Embedder extends WithLogging {
     });
   }
 
+  /**
+   * Returns token IDs for the given text, excluding special tokens.
+   *
+   * WARNING: For large texts, this method may hang. Process line by line instead.
+   *
+   * @returns Array of token IDs (as numbers)
+   */
   async getTokenIds(text: string): Promise<number[]> {
     return this.worker.call('getTokenIds', {
       text,
