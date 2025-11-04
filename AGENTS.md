@@ -56,7 +56,7 @@ that the code works by following these steps:
 - Keep the plugin small. Avoid large dependencies. Prefer browser-compatible
   packages.
 - Avoid Node/Electron APIs where possible.
-    
+
 ### Coding style
 
 **[!IMPORTANT]: ALWAYS REMEMBER WITH HIGH PRIORITY**
@@ -114,7 +114,7 @@ that the code works by following these steps:
     logger.error(`Failed: ${error}`);
   }
   ```
-  
+
 - Generally, **efforts to maintain backward compatibility are not necessary
   unless explicitly requested by users**. For example, when renaming field names
   in data structures, you can simply perform the rename.

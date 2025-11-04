@@ -16,7 +16,7 @@ import {
 import { type DocumentMetadata, MetadataStore } from './MetadataStore';
 import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
-import { Embedder } from './Embedder';
+import type { Embedder } from './Embedder';
 import { Logger } from './Logger';
 import { BM25Store } from './BM25Store';
 import { formatDuration } from './ObsidianUtils';

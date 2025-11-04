@@ -16,7 +16,9 @@ import { SettingTab } from './src/ui/SettingTab';
 import { MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
 import { formatDuration } from './src/ObsidianUtils';
-import { Embedder } from './src/Embedder';
+import type { Embedder } from './src/Embedder';
+import { TransformersEmbedder } from './src/TransformersEmbedder';
+import { OllamaEmbedder } from './src/OllamaEmbedder';
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
@@ -75,23 +77,42 @@ export default class SonarPlugin extends Plugin {
       this.warn(`WebGL not detected - ${result.webgl.reason}`);
     }
 
+    const embedderType = this.configManager.get('embedderType');
     const embeddingModel = this.configManager.get('embeddingModel');
 
-    // Initialize Transformers.js embedding model
-    // Uses Blob URL Worker with inlined code for maximum compatibility
-    // Try WebGPU first (with worker_threads polyfill)
-    this.embedder = new Embedder(
-      embeddingModel,
-      this.configManager,
-      'webgpu', // device: WebGPU backend
-      'q8' // dtype: quantization level (webgpu will use fp16)
-    );
-    this.log(
-      `Transformers.js embedding extractor initialized: ${embeddingModel} (${this.embedder.getDevice()})`
-    );
+    // Initialize embedder based on type
+    if (embedderType === 'ollama') {
+      // Create worker for tokenization (shared with Ollama embedder)
+      const { TransformersWorker } = await import('./src/TransformersWorker');
+      const worker = new TransformersWorker(this.configManager.getLogger());
+      // Use bge-m3 tokenizer for tokenization
+      const tokenizerModel = 'Xenova/bge-m3';
+      this.embedder = new OllamaEmbedder(
+        embeddingModel,
+        this.configManager,
+        worker,
+        tokenizerModel
+      );
+      this.log(
+        `Ollama embedder initialized: ${embeddingModel} (tokenizer: ${tokenizerModel})`
+      );
+    } else {
+      // Transformers.js embedding model
+      // Uses Blob URL Worker with inlined code for maximum compatibility
+      // Try WebGPU first (with worker_threads polyfill)
+      this.embedder = new TransformersEmbedder(
+        embeddingModel,
+        this.configManager,
+        'webgpu', // device: WebGPU backend
+        'q8' // dtype: quantization level (webgpu will use fp16)
+      );
+      this.log(
+        `Transformers.js embedder initialized: ${embeddingModel} (${this.embedder.getDevice()})`
+      );
+    }
 
     try {
-      this.metadataStore = await MetadataStore.initialize();
+      this.metadataStore = await MetadataStore.initialize(embedderType);
     } catch (error) {
       this.error(`Failed to initialize metadata store: ${error}`);
       new Notice('Failed to initialize metadata store - check console');

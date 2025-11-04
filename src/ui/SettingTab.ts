@@ -139,12 +139,10 @@ export class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedding model')
-      .setDesc(
-        'Ollama model to use for embeddings (e.g., nomic-embed-text, mxbai-embed-large)'
-      )
+      .setDesc('HuggingFace model ID for embeddings (e.g., `Xenova/bge-m3`)')
       .addText(text =>
         text
-          .setPlaceholder('nomic-embed-text')
+          .setPlaceholder('Xenova/bge-m3')
           .setValue(this.configManager.get('embeddingModel'))
           .onChange(async value => {
             await this.configManager.set('embeddingModel', value);
