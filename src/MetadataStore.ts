@@ -14,9 +14,8 @@ export interface DocumentMetadata {
 
 import type { EmbedderType } from './config';
 
-// Database configuration
 export function getDBName(embedderType: EmbedderType): string {
-  return embedderType === 'transformers' ? 'sonar-db-bakup' : 'sonar-db';
+  return embedderType === 'transformers' ? 'sonar-db' : 'sonar-db-bakup';
 }
 export const DB_VERSION = 1;
 
