@@ -52,18 +52,11 @@ that the code works by following these steps:
     validation. This runs format check, ESLint (0 warnings) and strict
     TypeScript type checking (no `skipLibCheck`)
   - To fix issues: Use `npm run fix` to auto-format and fix linting in one
-    command (or use `npm run fix:format` and `npm run fix:lint` separately)
-- After writing or modifying code, run `npm run fix` to ensure consistent
-  formatting
-  - TypeScript files: maximum line length 80 characters
-  - Markdown files: maximum line length 80 characters
-- Commit messages: Do not include the "Generated with
-  [Claude Code](https://claude.com/claude-code)" footer in commit messages for
-  this project. Keep commit messages focused and concise.
+    command
 - Keep the plugin small. Avoid large dependencies. Prefer browser-compatible
   packages.
 - Avoid Node/Electron APIs where possible.
-
+    
 ### Coding style
 
 **[!IMPORTANT]: ALWAYS REMEMBER WITH HIGH PRIORITY**
@@ -82,6 +75,16 @@ that the code works by following these steps:
 - **Use backticks for code references**: When writing comments, commit messages,
   or documentation, wrap code-related terms in backticks (e.g., `functionName`,
   `variableName`, `file.ts`) to distinguish them from regular text.
+- **Commit messages**:
+  - Do not include the "Generated with
+    [Claude Code](https://claude.com/claude-code)" footer in commit messages for
+    this project. Keep commit messages focused and concise.
+  - When writing commit messages, follow the format `component: Brief summary`
+    for the title. In the body of the commit message, provide a brief prose
+    summary of the purpose of the changes made. Also, ensure that the maximum
+    line length never exceeds 72 characters. When referencing external GitHub
+    PRs or issues, use proper GitHub interlinking format (e.g., `owner/repo#123`
+    for PRs/issues).
 - Keep `main.ts` minimal: Focus only on plugin lifecycle (onload, onunload,
   addCommand calls). Delegate all feature logic to separate modules.
 - Split large files: If any file exceeds ~200-300 lines, consider breaking it
@@ -111,7 +114,7 @@ that the code works by following these steps:
     logger.error(`Failed: ${error}`);
   }
   ```
-
+  
 - Generally, **efforts to maintain backward compatibility are not necessary
   unless explicitly requested by users**. For example, when renaming field names
   in data structures, you can simply perform the rename.
