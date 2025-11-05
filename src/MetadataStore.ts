@@ -12,8 +12,12 @@ export interface DocumentMetadata {
   indexedAt: number;
 }
 
+import type { EmbedderType } from './config';
+
 // Database configuration
-export const DB_NAME = 'sonar-db';
+export function getDBName(embedderType: EmbedderType): string {
+  return embedderType === 'transformers' ? 'sonar-db-bakup' : 'sonar-db';
+}
 export const DB_VERSION = 1;
 
 // Store names
@@ -30,9 +34,10 @@ export class MetadataStore {
 
   private constructor(private db: IDBDatabase) {}
 
-  static async initialize(): Promise<MetadataStore> {
+  static async initialize(embedderType: EmbedderType): Promise<MetadataStore> {
+    const dbName = getDBName(embedderType);
     return new Promise((resolve, reject) => {
-      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+      const request = window.indexedDB.open(dbName, DB_VERSION);
 
       request.onerror = () => {
         reject(new Error('Failed to open IndexedDB'));

@@ -1,6 +1,6 @@
 import { EmbeddingStore } from './EmbeddingStore';
 import { MetadataStore, type DocumentMetadata } from './MetadataStore';
-import { Embedder } from './Embedder';
+import type { Embedder } from './Embedder';
 import { ConfigManager } from './ConfigManager';
 import type { SearchResult, SearchOptions } from './SearchManager';
 

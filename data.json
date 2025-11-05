@@ -1,4 +1,5 @@
 {
+  "embedderType": "transformers",
   "embeddingModel": "Xenova/bge-m3",
   "maxChunkSize": 512,
   "chunkOverlap": 64,

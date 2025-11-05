@@ -1,8 +1,10 @@
 export type LogLevel = 'error' | 'warn' | 'log';
+export type EmbedderType = 'transformers' | 'ollama';
 
 export interface ObsidianSettings {
-  // Transformers.js
-  embeddingModel: string; // HuggingFace model ID (e.g., 'Xenova/bge-m3')
+  // Embedder configuration
+  embedderType: EmbedderType; // 'transformers' or 'ollama'
+  embeddingModel: string; // HuggingFace model ID (e.g., 'Xenova/bge-m3') or Ollama model name
 
   // Search parameters
   maxChunkSize: number;
@@ -25,6 +27,7 @@ export interface ObsidianSettings {
 }
 
 export const DEFAULT_SETTINGS: ObsidianSettings = {
+  embedderType: 'transformers',
   embeddingModel: 'Xenova/bge-m3', // Transformers.js compatible model
   maxChunkSize: 512, // tokens
   chunkOverlap: 64, // tokens (roughly 10% of chunk size)
