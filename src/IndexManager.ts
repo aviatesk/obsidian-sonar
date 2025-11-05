@@ -67,12 +67,11 @@ export class IndexManager extends WithLogging {
    * Initialize after layout is ready to avoid startup event spam
    */
   async onLayoutReady(): Promise<void> {
-    // Sync to detect changes made while Obsidian was closed
-    await this.syncIndex(true);
-
     this.isInitialized = true;
 
     if (this.configManager.get('autoIndex')) {
+      // Sync to detect changes made while Obsidian was closed
+      await this.syncIndex(true);
       this.registerEventHandlers();
       this.log('Auto-indexing enabled');
     } else {
