@@ -24,8 +24,20 @@ import type {
   ReadyMessage,
 } from './transformers-worker-types';
 
+// Logging helpers (follows same format as main.ts)
+const COMPONENT_NAME = 'TransformersWorker';
+
+function log(msg: string): void {
+  console.log(`[Sonar.${COMPONENT_NAME}] ${msg}`);
+}
+
+function error(msg: string): void {
+  console.error(`[Sonar.${COMPONENT_NAME}] ${msg}`);
+}
+
 // Signal startup immediately for debugging
 postMessage({ __kind: 'ready', ts: Date.now() } satisfies ReadyMessage);
+log('Initializing...');
 
 // Configure environment for browser/Worker context
 env.allowLocalModels = false; // Browser environment doesn't support local file access
@@ -100,7 +112,7 @@ self.addEventListener('message', async (e: MessageEvent) => {
     const response: RPCResponse = { id, result };
     self.postMessage(response);
   } catch (err: any) {
-    console.error(`[Worker] Error in ${method}:`, err);
+    error(`Failed to ${method}: ${err?.message || err}`);
     const errorResponse: RPCResponse = {
       id,
       error: String(err?.message || err),

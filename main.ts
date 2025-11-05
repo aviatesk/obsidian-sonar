@@ -84,7 +84,7 @@ export default class SonarPlugin extends Plugin {
     if (embedderType === 'ollama') {
       // Create worker for tokenization (shared with Ollama embedder)
       const { TransformersWorker } = await import('./src/TransformersWorker');
-      const worker = new TransformersWorker(this.configManager.getLogger());
+      const worker = new TransformersWorker(this.configManager);
       // Use bge-m3 tokenizer for tokenization
       const tokenizerModel = 'Xenova/bge-m3';
       this.embedder = new OllamaEmbedder(
@@ -112,18 +112,19 @@ export default class SonarPlugin extends Plugin {
     }
 
     try {
-      this.metadataStore = await MetadataStore.initialize(embedderType);
+      this.metadataStore = await MetadataStore.initialize(
+        embedderType,
+        this.configManager
+      );
     } catch (error) {
       this.error(`Failed to initialize metadata store: ${error}`);
       new Notice('Failed to initialize metadata store - check console');
       return;
     }
-    this.log('MetadataStore initialized');
 
     const db = this.metadataStore.getDB();
 
     const embeddingStore = new EmbeddingStore(db, this.configManager);
-    this.log('EmbeddingStore initialized');
 
     let bm25Store: BM25Store;
     try {
@@ -137,10 +138,12 @@ export default class SonarPlugin extends Plugin {
       new Notice('Failed to initialize BM25 store - check console');
       return;
     }
-    this.log('BM25Store initialized');
 
-    const bm25Search = new BM25Search(bm25Store, this.metadataStore);
-    this.log('BM25Search initialized');
+    const bm25Search = new BM25Search(
+      bm25Store,
+      this.metadataStore,
+      this.configManager
+    );
 
     const embeddingSearch = new EmbeddingSearch(
       this.metadataStore,
@@ -148,14 +151,13 @@ export default class SonarPlugin extends Plugin {
       this.embedder,
       this.configManager
     );
-    this.log('EmbeddingSearch initialized');
 
     this.searchManager = new SearchManager(
       embeddingSearch,
       bm25Search,
-      this.metadataStore
+      this.metadataStore,
+      this.configManager
     );
-    this.log('SearchManager initialized');
 
     this.indexManager = new IndexManager(
       this.metadataStore,

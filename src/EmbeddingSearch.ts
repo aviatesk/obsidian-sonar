@@ -3,6 +3,7 @@ import { MetadataStore, type DocumentMetadata } from './MetadataStore';
 import type { Embedder } from './Embedder';
 import { ConfigManager } from './ConfigManager';
 import type { SearchResult, SearchOptions } from './SearchManager';
+import { WithLogging } from './WithLogging';
 
 interface CombinedDocument {
   id: string;
@@ -41,13 +42,18 @@ function cosineSimilarity(vec1: number[], vec2: number[]): number {
  * Returns results in the same format as BM25Search for easy integration
  * Supports separate title and content search
  */
-export class EmbeddingSearch {
+export class EmbeddingSearch extends WithLogging {
+  protected readonly componentName = 'EmbeddingSearch';
+
   constructor(
     private metadataStore: MetadataStore,
     private embeddingStore: EmbeddingStore,
     private embedder: Embedder,
-    private configManager: ConfigManager
-  ) {}
+    protected configManager: ConfigManager
+  ) {
+    super();
+    this.log('Initialized');
+  }
 
   /**
    * Combines metadata and embeddings into a unified view for search

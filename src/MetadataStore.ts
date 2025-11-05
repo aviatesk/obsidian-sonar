@@ -13,6 +13,8 @@ export interface DocumentMetadata {
 }
 
 import type { EmbedderType } from './config';
+import type { ConfigManager } from './ConfigManager';
+import { WithLogging } from './WithLogging';
 
 export function getDBName(embedderType: EmbedderType): string {
   return embedderType === 'transformers' ? 'sonar-db' : 'sonar-db-bakup';
@@ -28,12 +30,21 @@ export const STORE_BM25_DOC_TOKENS = 'bm25-doc-tokens';
 // Index names
 export const INDEX_FILE_PATH = 'file-path';
 
-export class MetadataStore {
+export class MetadataStore extends WithLogging {
+  protected readonly componentName = 'MetadataStore';
   private metadataCache: Map<string, DocumentMetadata> | null = null;
 
-  private constructor(private db: IDBDatabase) {}
+  private constructor(
+    private db: IDBDatabase,
+    protected configManager: ConfigManager
+  ) {
+    super();
+  }
 
-  static async initialize(embedderType: EmbedderType): Promise<MetadataStore> {
+  static async initialize(
+    embedderType: EmbedderType,
+    configManager: ConfigManager
+  ): Promise<MetadataStore> {
     const dbName = getDBName(embedderType);
     return new Promise((resolve, reject) => {
       const request = window.indexedDB.open(dbName, DB_VERSION);
@@ -43,7 +54,9 @@ export class MetadataStore {
       };
 
       request.onsuccess = () => {
-        resolve(new MetadataStore(request.result));
+        const store = new MetadataStore(request.result, configManager);
+        store.log(`Initialized with database ${dbName}`);
+        resolve(store);
       };
 
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {

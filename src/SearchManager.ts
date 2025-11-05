@@ -1,6 +1,8 @@
 import { EmbeddingSearch } from './EmbeddingSearch';
 import { BM25Search } from './BM25Search';
 import type { MetadataStore, DocumentMetadata } from './MetadataStore';
+import type { ConfigManager } from './ConfigManager';
+import { WithLogging } from './WithLogging';
 
 export interface ChunkSearchResult {
   content: string;
@@ -34,12 +36,18 @@ const RRF_K = 60;
  * High-level search manager that orchestrates hybrid search
  * combining embedding-based and BM25 full-text search
  */
-export class SearchManager {
+export class SearchManager extends WithLogging {
+  protected readonly componentName = 'SearchManager';
+
   constructor(
     private embeddingSearch: EmbeddingSearch,
     private bm25Search: BM25Search,
-    private metadataStore: MetadataStore
-  ) {}
+    private metadataStore: MetadataStore,
+    protected configManager: ConfigManager
+  ) {
+    super();
+    this.log('Initialized');
+  }
 
   /**
    * Main search entry point

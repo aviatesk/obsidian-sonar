@@ -19,6 +19,7 @@ export class EmbeddingStore extends WithLogging {
     protected configManager: ConfigManager
   ) {
     super();
+    this.log('Initialized');
   }
 
   async addEmbedding(id: string, embedding: number[]): Promise<void> {

@@ -17,9 +17,9 @@ import { type DocumentMetadata, MetadataStore } from './MetadataStore';
 import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
 import type { Embedder } from './Embedder';
-import { Logger } from './Logger';
 import { BM25Store } from './BM25Store';
 import { formatDuration } from './ObsidianUtils';
+import { WithLogging } from './WithLogging';
 
 /**
  * Debounce delay for batching file operations
@@ -33,8 +33,8 @@ interface FileOperation {
   oldPath?: string;
 }
 
-export class IndexManager {
-  private logger: Logger;
+export class IndexManager extends WithLogging {
+  protected readonly componentName = 'IndexManager';
   private pendingOperations: Map<string, FileOperation> = new Map();
   private eventRefs: EventRef[] = [];
   private isProcessing: boolean = false;
@@ -50,10 +50,10 @@ export class IndexManager {
     private embedder: Embedder,
     private vault: Vault,
     private workspace: Workspace,
-    private configManager: ConfigManager,
+    protected configManager: ConfigManager,
     private statusBarItem: HTMLElement
   ) {
-    this.logger = configManager.getLogger();
+    super();
     this.debouncedProcess = debounce(
       () => this.processPendingOperations(),
       AUTO_INDEX_DEBOUNCE_MS,
@@ -74,9 +74,9 @@ export class IndexManager {
 
     if (this.configManager.get('autoIndex')) {
       this.registerEventHandlers();
-      this.logger.log('IndexManager: Auto-indexing enabled');
+      this.log('Auto-indexing enabled');
     } else {
-      this.logger.log('IndexManager: Auto-indexing disabled');
+      this.log('Auto-indexing disabled');
     }
   }
 
@@ -84,11 +84,9 @@ export class IndexManager {
     const debouncedConfigSync = debounce(
       () => {
         if (!this.isInitialized) return;
-        this.logger.log('IndexManager: Config changed, syncing index...');
+        this.log('Config changed, syncing index...');
         this.syncIndex().catch(error =>
-          this.logger.error(
-            `IndexManager: Failed to sync after config change: ${error}`
-          )
+          this.error(`Failed to sync after config change: ${error}`)
         );
       },
       5000,
@@ -100,10 +98,10 @@ export class IndexManager {
         if (this.isInitialized) {
           if (value) {
             this.registerEventHandlers();
-            this.logger.log('IndexManager: Auto-indexing enabled');
+            this.log('Auto-indexing enabled');
           } else {
             this.unregisterEventHandlers();
-            this.logger.log('IndexManager: Auto-indexing disabled');
+            this.log('Auto-indexing disabled');
           }
         }
       })
@@ -112,9 +110,7 @@ export class IndexManager {
     this.configSubscribers.push(
       this.configManager.subscribe('excludedPaths', () => {
         if (!this.isInitialized) return;
-        this.logger.log(
-          'IndexManager: Excluded paths updated, scheduling sync...'
-        );
+        this.log('Excluded paths updated, scheduling sync...');
         debouncedConfigSync();
       })
     );
@@ -122,7 +118,7 @@ export class IndexManager {
     this.configSubscribers.push(
       this.configManager.subscribe('indexPath', () => {
         if (!this.isInitialized) return;
-        this.logger.log('IndexManager: Index path updated, scheduling sync...');
+        this.log('Index path updated, scheduling sync...');
         debouncedConfigSync();
       })
     );
@@ -188,8 +184,8 @@ export class IndexManager {
     const modifiedCount = operations.filter(op => op.type === 'modify').length;
     const deletedCount = operations.filter(op => op.type === 'delete').length;
 
-    this.logger.log(
-      `IndexManager: Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
+    this.log(
+      `Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
     );
 
     const errorCount = await this.processBatchOperations(
@@ -319,9 +315,7 @@ export class IndexManager {
     this.pendingOperations.clear();
 
     if (operations.length > 0) {
-      this.logger.log(
-        `IndexManager: Processing ${operations.length} file operation(s)`
-      );
+      this.log(`Processing ${operations.length} file operation(s)`);
     }
 
     const errorCount = await this.processBatchOperations(operations);
@@ -368,9 +362,7 @@ export class IndexManager {
     }
 
     if (filesToDelete.length > 0) {
-      this.logger.log(
-        `IndexManager: Batch deletion starting for ${filesToDelete.length} files`
-      );
+      this.log(`Deleting ${filesToDelete.length} files...`);
 
       // Get all document IDs from MetadataStore for these files (parallel)
       const docArrays = await Promise.all(
@@ -383,10 +375,6 @@ export class IndexManager {
         allDocIds.push(...docs.map(d => d.id));
       }
 
-      this.logger.log(
-        `IndexManager: Deleting ${allDocIds.length} documents from all stores`
-      );
-
       // Delete from all stores in parallel
       await Promise.all([
         this.metadataStore.deleteDocuments(allDocIds),
@@ -394,7 +382,7 @@ export class IndexManager {
         this.bm25Store.deleteDocuments(allDocIds),
       ]);
 
-      this.logger.log('IndexManager: Batch deletion complete');
+      this.log(`Deleted ${allDocIds.length} documents`);
     }
 
     // Process each operation (only re-indexing for create/modify/rename)
@@ -421,13 +409,9 @@ export class IndexManager {
 
       try {
         await this.processOperationCore(operation);
-        this.logger.log(
-          `IndexManager: ${this.getOperationAction(operation.type)} ${filePath}`
-        );
+        this.log(`${this.getOperationAction(operation.type)} ${filePath}`);
       } catch (error) {
-        this.logger.warn(
-          `IndexManager: Failed to ${operation.type} ${filePath}: ${error}`
-        );
+        this.warn(`Failed to ${operation.type} ${filePath}: ${error}`);
         errorCount++;
       }
     }
@@ -463,13 +447,13 @@ export class IndexManager {
   private getOperationAction(type: FileOperation['type']): string {
     switch (type) {
       case 'create':
-        return 'Indexing';
+        return 'Indexed';
       case 'modify':
-        return 'Reindexing';
+        return 'Reindexed';
       case 'delete':
-        return 'Deleting';
+        return 'Deleted';
       case 'rename':
-        return 'Renaming';
+        return 'Renamed';
     }
   }
 
@@ -613,25 +597,27 @@ export class IndexManager {
       filePath: string
     ) => void | Promise<void>
   ): Promise<void> {
-    this.logger.log('IndexManager: Starting full index rebuild...');
+    this.log('Rebuilding index...');
     const startTime = Date.now();
     await this.clearIndex();
     const stats = await this.performSync(progressCallback);
     const duration = formatDuration(Date.now() - startTime);
     const message = `Rebuild complete: ${stats.newCount} files indexed in ${duration}${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
     new Notice(message, 0);
-    this.logger.log('IndexManager: Rebuild completed');
+    this.log(`Rebuilt index (${stats.newCount} files)`);
     await this.updateStatusBarWithFileCount();
   }
 
   async syncIndex(onload: boolean = false): Promise<void> {
-    this.logger.log('IndexManager: Starting sync...');
+    this.log('Syncing index...');
     const startTime = Date.now();
     const stats = await this.performSync();
     const duration = formatDuration(Date.now() - startTime);
     const message = `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted in ${duration}${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
     new Notice(message, onload ? 10000 : 0);
-    this.logger.log('IndexManager: Sync completed');
+    this.log(
+      `Synced index (${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted)`
+    );
     await this.updateStatusBarWithFileCount();
   }
 
@@ -685,7 +671,7 @@ export class IndexManager {
     try {
       stats = await this.getStats();
     } catch (error) {
-      this.logger.error(`IndexManager: Failed to get stats: ${error}`);
+      this.error(`Failed to get stats: ${error}`);
       return;
     }
     this.updateStatusBar(`Indexed ${stats.totalFiles}/${indexableCount} files`);

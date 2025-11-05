@@ -1,4 +1,5 @@
-import type { Logger } from './Logger';
+import type { ConfigManager } from './ConfigManager';
+import { WithLogging } from './WithLogging';
 import { WORKER_MJS_TEXT } from './generated/transformers-worker-inline';
 import type {
   RPCRequest,
@@ -27,7 +28,8 @@ import type {
  * - Worker uses environment spoofing to prevent Transformers.js from loading onnxruntime-node
  * - Supports both WebGPU and WASM backends
  */
-export class TransformersWorker {
+export class TransformersWorker extends WithLogging {
+  protected readonly componentName = 'TransformersWorker';
   private worker: Worker | null = null;
   private messageId = 0;
   private pendingRequests = new Map<
@@ -36,12 +38,13 @@ export class TransformersWorker {
   >();
   private initPromise: Promise<void>;
 
-  constructor(private logger: Logger) {
+  constructor(protected configManager: ConfigManager) {
+    super();
     this.initPromise = this.initialize();
   }
 
   private async initialize(): Promise<void> {
-    this.logger.log('Initializing Transformers.js Worker');
+    this.log('Initializing...');
 
     try {
       // Create Blob URL from inlined Worker code
@@ -56,19 +59,17 @@ export class TransformersWorker {
 
       // Set up error listener BEFORE message listener
       worker.addEventListener('error', (event: ErrorEvent) => {
-        this.logger.error(`Worker error details:`);
-        this.logger.error(`  message: ${event.message}`);
-        this.logger.error(`  filename: ${event.filename}`);
-        this.logger.error(`  lineno: ${event.lineno}`);
-        this.logger.error(`  colno: ${event.colno}`);
-        this.logger.error(`  error object: ${JSON.stringify(event.error)}`);
-        this.logger.error(`  event type: ${event.type}`);
+        this.error(`Worker error details:`);
+        this.error(`  message: ${event.message}`);
+        this.error(`  filename: ${event.filename}`);
+        this.error(`  lineno: ${event.lineno}`);
+        this.error(`  colno: ${event.colno}`);
+        this.error(`  error object: ${JSON.stringify(event.error)}`);
+        this.error(`  event type: ${event.type}`);
       });
 
       worker.addEventListener('messageerror', (event: MessageEvent) => {
-        this.logger.error(
-          `Worker message error: ${JSON.stringify(event.data)}`
-        );
+        this.error(`Worker message error: ${JSON.stringify(event.data)}`);
       });
 
       // Set up message listener
@@ -78,9 +79,9 @@ export class TransformersWorker {
 
       // Wait for ready signal from Worker
       await this.waitForReady();
-      this.logger.log('Transformers.js Worker ready');
+      this.log('Initialized');
     } catch (error) {
-      this.logger.error(`Failed to initialize Worker: ${error}`);
+      this.error(`Failed to initialize: ${error}`);
       throw error;
     }
   }
@@ -151,7 +152,7 @@ export class TransformersWorker {
       setTimeout(() => {
         if (this.pendingRequests.has(id)) {
           this.pendingRequests.delete(id);
-          this.logger.error(`Worker request timeout: ${method}`);
+          this.error(`Worker request timeout: ${method}`);
           reject(new Error(`Request timeout: ${method}`));
         }
       }, timeout);

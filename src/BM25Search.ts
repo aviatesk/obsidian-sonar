@@ -1,17 +1,25 @@
 import { BM25Store } from './BM25Store';
 import { MetadataStore } from './MetadataStore';
 import type { SearchResult } from './SearchManager';
+import type { ConfigManager } from './ConfigManager';
+import { WithLogging } from './WithLogging';
 
 /**
  * BM25 full-text search interface
  * Returns results in the same format as EmbeddingSearch for easy integration
  * Supports separate title and content search
  */
-export class BM25Search {
+export class BM25Search extends WithLogging {
+  protected readonly componentName = 'BM25Search';
+
   constructor(
     private bm25Store: BM25Store,
-    private metadataStore: MetadataStore
-  ) {}
+    private metadataStore: MetadataStore,
+    protected configManager: ConfigManager
+  ) {
+    super();
+    this.log('Initialized');
+  }
 
   /**
    * Search title only

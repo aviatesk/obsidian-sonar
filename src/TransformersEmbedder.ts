@@ -25,7 +25,7 @@ export class TransformersEmbedder extends WithLogging implements Embedder {
       this.device = 'wasm';
     }
 
-    this.worker = new TransformersWorker(configManager.getLogger());
+    this.worker = new TransformersWorker(configManager);
     this.log(
       `Initialized with ${this.modelId} (${this.device}, ${this.dtype})`
     );
