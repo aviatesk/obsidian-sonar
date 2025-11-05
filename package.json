@@ -18,14 +18,14 @@
     "sonar:stats": "npx tsx scripts/sonar.ts stats",
     "sonar:config": "npx tsx scripts/sonar.ts config",
     "parse-line-chat": "npx tsx scripts/parse-line-chat.ts",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "lint": "eslint . --fix",
-    "lint:check": "eslint . --max-warnings 0",
-    "fix": "npm run format && npm run lint",
-    "check": "npm run format:check && npm run lint:check && npm run svelte-check && npx tsc --noEmit",
-    "svelte-check": "svelte-check --tsconfig tsconfig.json",
-    "prepare": "husky"
+    "fix:format": "prettier --write .",
+    "fix:lint": "eslint . --fix",
+    "fix": "npm run fix:format && npm run fix:lint",
+    "check:format": "prettier --check .",
+    "check:lint": "eslint . --max-warnings 0",
+    "check:svelte": "svelte-check --tsconfig tsconfig.json",
+    "check:tsc": "npx tsc --noEmit",
+    "check": "npm run check:format && npm run check:lint && npm run check:svelte && npm run check:tsc"
   },
   "keywords": [
     "obsidian",

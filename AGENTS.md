@@ -14,40 +14,33 @@ instructions.
 npm run build         # Quick build with type checking (`skipLibCheck` enabled)
 ```
 
-### Local deployment
-
-```bash
-npm run deploy
-```
-
-Deploys built plugin to configured vaults (see `deploy.sh` for vault paths).
-
 ## Code quality checks
 
 ```bash
 npm run check         # Comprehensive check: format + lint + strict type checking
-npm run format:check  # Check formatting -- included in `npm run check`
-npm run lint:check    # Check for ESLint errors -- included in `npm run check`
-npx tsc --noEmit      # Strict type checking (no `skipLibCheck`) -- included in `npm run check`
+npm run check:format  # Check formatting -- included in `npm run check`
+npm run check:lint    # Check for ESLint errors -- included in `npm run check`
+npm run check:svelte  # Svelte check -- included in `npm run check`
+npm run check:tsc     # Strict type checking (no `skipLibCheck`) -- included in `npm run check`
 ```
 
 ## Code quality fixes
 
 ```bash
 npm run fix           # Auto-format + auto-fix linting (combined)
-npm run format        # Auto-format code with Prettier -- included in `npm run fix`
-npm run lint          # Auto-fix ESLint errors -- included in `npm run fix`
+npm run fix:format    # Auto-format code with Prettier -- included in `npm run fix`
+npm run fix:lint      # Auto-fix ESLint errors -- included in `npm run fix`
 ```
 
 ## Testing
 
 Currently, there are no agent-executable tests available, as testing typically
-requires manual intervention. If instructed to create testable scripts, use them
-for testing purposes.
+requires manual intervention. Instead, it is recommended to statically ensure
+that the code works by following these steps:
 
-1. Build the plugin: `npm run build`
-2. Use `npm run deploy` to copy to test vaults
-3. Test directly within Obsidian
+1. Run `npm run build` to verify that the build completes without issues
+2. Run `npm run check` to verify that there are no errors in the code
+3. Run `npm run fix` to adjust code style
 
 ## Development
 
@@ -59,7 +52,7 @@ for testing purposes.
     validation. This runs format check, ESLint (0 warnings) and strict
     TypeScript type checking (no `skipLibCheck`)
   - To fix issues: Use `npm run fix` to auto-format and fix linting in one
-    command (or use `npm run format` and `npm run lint` separately)
+    command (or use `npm run fix:format` and `npm run fix:lint` separately)
 - After writing or modifying code, run `npm run fix` to ensure consistent
   formatting
   - TypeScript files: maximum line length 80 characters
