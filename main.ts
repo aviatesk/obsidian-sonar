@@ -19,6 +19,7 @@ import { formatDuration } from './src/ObsidianUtils';
 import type { Embedder } from './src/Embedder';
 import { TransformersEmbedder } from './src/TransformersEmbedder';
 import { OllamaEmbedder } from './src/OllamaEmbedder';
+import { BenchmarkRunner } from './src/BenchmarkRunner';
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
@@ -113,7 +114,9 @@ export default class SonarPlugin extends Plugin {
 
     try {
       this.metadataStore = await MetadataStore.initialize(
+        this.app.vault.getName(),
         embedderType,
+        embeddingModel,
         this.configManager
       );
     } catch (error) {
@@ -333,6 +336,30 @@ export default class SonarPlugin extends Plugin {
         } catch (error) {
           this.error(`Failed to calculate statistics: ${error}`);
           new Notice('Failed to calculate statistics - check console');
+        }
+      },
+    });
+
+    this.addCommand({
+      id: 'run-benchmark',
+      name: 'Run benchmark (BM25, Vector, Hybrid)',
+      callback: async () => {
+        if (!this.isInitialized()) {
+          new Notice('Sonar is still initializing. Please wait...');
+          return;
+        }
+
+        const benchmarkRunner = new BenchmarkRunner(
+          this.app,
+          this.configManager,
+          this.searchManager!,
+          this.indexManager!
+        );
+
+        try {
+          await benchmarkRunner.runBenchmark();
+        } catch (error) {
+          this.error(`Benchmark failed: ${error}`);
         }
       },
     });

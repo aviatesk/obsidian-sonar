@@ -66,11 +66,48 @@ uv run scripts/download_datasets.py --datasets scidocs
 
 Output: `datasets/raw/scidocs_*.{jsonl,tsv}`
 
-### Step 3: Generate benchmark subset
+### Step 3 & 4: Generate benchmark data
 
-#### MIRACL subset
+#### Quick start: automated generation
 
-Generate a mixed Japanese/English subset with 200 queries:
+Generate both subsets (Step 3) and embeddings (Step 4) with a single script:
+
+```bash
+./generate.sh
+```
+
+This will generate:
+- MIRACL subset (200 queries, 1:1 ja:en)
+- SCIDOCS subset (100 queries)
+- Embeddings for both datasets using `multilingual-e5-base`
+
+Options:
+
+```bash
+# Generate only MIRACL data
+./generate.sh --datasets miracl
+
+# Generate only embeddings (skip subset generation)
+./generate.sh --skip-subset
+
+# Use a different model
+./generate.sh --model intfloat/multilingual-e5-small --model-name multilingual-e5-small
+
+# Custom query counts
+./generate.sh --miracl-queries 100 --scidocs-queries 50
+```
+
+Use `./generate.sh --help` for full options.
+
+#### Manual steps
+
+If you prefer to run each step manually:
+
+##### Step 3: Generate benchmark subset
+
+###### MIRACL subset
+
+Generate a mixed Japanese/English subset with 200 queries (100 ja + 100 en):
 
 ```bash
 uv run scripts/generate_subset.py \
@@ -78,6 +115,19 @@ uv run scripts/generate_subset.py \
   --queries datasets/raw/miracl_ja_queries_dev.jsonl,datasets/raw/miracl_en_queries_dev.jsonl \
   --qrels datasets/raw/miracl_ja_qrels_dev.tsv,datasets/raw/miracl_en_qrels_dev.tsv \
   --n-queries 200
+```
+
+For multiple datasets, queries are sampled with equal distribution (1:1) by
+default. To customize the ratio, use `--query-ratio`:
+
+```bash
+# Example: 2x more Japanese queries than English (133 ja + 67 en)
+uv run scripts/generate_subset.py \
+  --corpus datasets/raw/miracl_ja_corpus_dev.jsonl,datasets/raw/miracl_en_corpus_dev.jsonl \
+  --queries datasets/raw/miracl_ja_queries_dev.jsonl,datasets/raw/miracl_en_queries_dev.jsonl \
+  --qrels datasets/raw/miracl_ja_qrels_dev.tsv,datasets/raw/miracl_en_qrels_dev.tsv \
+  --n-queries 200 \
+  --query-ratio 2:1
 ```
 
 This creates:
@@ -88,8 +138,6 @@ This creates:
   queries (200 queries)
 - `datasets/processed/miracl_ja_dev_miracl_en_dev_subset/qrels.tsv` - Relevance
   judgments
-- `datasets/processed/miracl_ja_dev_miracl_en_dev_subset/vault/` - Obsidian
-  vault format
 
 #### SCIDOCS subset
 
@@ -100,7 +148,7 @@ uv run scripts/generate_subset.py \
   --corpus datasets/raw/scidocs_corpus.jsonl \
   --queries datasets/raw/scidocs_queries.jsonl \
   --qrels datasets/raw/scidocs_qrels.tsv \
-  --n-queries 200
+  --n-queries 100
 ```
 
 This creates:
@@ -110,20 +158,19 @@ This creates:
 - `datasets/processed/scidocs_subset/queries.jsonl` - Research queries (100
   queries)
 - `datasets/processed/scidocs_subset/qrels.tsv` - Relevance judgments
-- `datasets/processed/scidocs_subset/vault/` - Obsidian vault format
 
-### Step 4: Generate embeddings (for vector/hybrid search)
+##### Step 4: Generate embeddings (for vector/hybrid search)
 
 Skip this step if you only want to run BM25 benchmarks.
 
-#### MIRACL embeddings
+###### MIRACL embeddings
 
 Generate corpus embeddings:
 
 ```bash
 uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/miracl_ja_dev_miracl_en_dev_subset/corpus.jsonl \
-  --output datasets/processed/miracl_ja_dev_miracl_en_dev_subset/corpus_embeddings.jsonl \
+  --output embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/corpus_embeddings.jsonl \
   --model intfloat/multilingual-e5-base \
   --batch-size 128
 ```
@@ -133,19 +180,19 @@ Generate query embeddings:
 ```bash
 uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
-  --output datasets/processed/miracl_ja_dev_miracl_en_dev_subset/query_embeddings.jsonl \
+  --output embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl \
   --model intfloat/multilingual-e5-base \
   --batch-size 128
 ```
 
-#### SCIDOCS embeddings
+###### SCIDOCS embeddings
 
 Generate corpus embeddings:
 
 ```bash
 uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/scidocs_subset/corpus.jsonl \
-  --output datasets/processed/scidocs_subset/corpus_embeddings.jsonl \
+  --output embeddings/scidocs_subset/multilingual-e5-base/corpus_embeddings.jsonl \
   --model intfloat/multilingual-e5-base \
   --batch-size 128
 ```
@@ -155,12 +202,12 @@ Generate query embeddings:
 ```bash
 uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/scidocs_subset/queries.jsonl \
-  --output datasets/processed/scidocs_subset/query_embeddings.jsonl \
+  --output embeddings/scidocs_subset/multilingual-e5-base/query_embeddings.jsonl \
   --model intfloat/multilingual-e5-base \
   --batch-size 128
 ```
 
-#### Device selection
+###### Device selection
 
 - The script automatically detects and uses GPU (CUDA/MPS) if available
 - Force CPU usage: add `--device cpu`
@@ -184,15 +231,89 @@ Examples:
 - `intfloat/multilingual-e5-small` (384 dims, ~470MB, faster)
 - `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 dims)
 
+### Step 4.5: Generate Obsidian vault (Sonar only)
+
+If you plan to benchmark Sonar (Obsidian plugin), generate vault format from the
+corpus:
+
+#### MIRACL vault
+
+```bash
+uv run scripts/generate_vault.py \
+  --corpus datasets/processed/miracl_ja_dev_miracl_en_dev_subset/corpus.jsonl \
+  --output vaults/miracl_ja_dev_miracl_en_dev_subset
+```
+
+#### SCIDOCS vault
+
+```bash
+uv run scripts/generate_vault.py \
+  --corpus datasets/processed/scidocs_subset/corpus.jsonl \
+  --output vaults/scidocs_subset
+```
+
+Skip this step if you only want to benchmark Elasticsearch and Weaviate.
+
 ### Step 5: Run benchmarks
 
-#### Quick start: automated benchmark
+#### Sonar (Obsidian plugin)
+
+Setup benchmark configuration and run all search methods:
+
+```bash
+VAULT = /path/to/the/vault
+
+# Edit data.json to set benchmark paths (use vault-relative or absolute paths)
+# Set the following fields:
+#   "benchmarkQueriesPath": "queries.jsonl"
+#   "benchmarkQrelsPath": "qrels.tsv"
+#   "benchmarkOutputDir": "/path/to/your/vault/runs"
+#   "benchmarkChunkTopK": 100
+
+mkdir -p $VAULT/.obsidian/plugins/sonar/
+cp ../main.js ../manifest.json ../styles.css data.json $VAULT/.obsidian/plugins/sonar/
+
+# Copy queries and qrels to vault root
+cp datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl $VAULT
+cp datasets/processed/miracl_ja_dev_miracl_en_dev_subset/qrels.tsv $VAULT
+
+# Copy benchmark configuration
+cp data.json $VAULT/.obsidian/plugins/sonar/data.json
+
+# 5. Open vault in Obsidian
+# 6. Wait for Sonar indexing to complete (check status bar)
+# 7. Run benchmark command:
+#    - Open Command Palette (Cmd+P / Ctrl+P)
+#    - Run "Sonar: Run benchmark (BM25, Vector, Hybrid)"
+# 8. Results will be written to:
+#    - /path/to/your/vault/runs/sonar.bm25.trec
+#    - /path/to/your/vault/runs/sonar.vector.trec
+#    - /path/to/your/vault/runs/sonar.hybrid.trec
+```
+
+Configuration tips:
+
+- Use `intfloat/multilingual-e5-base` model (Transformers.js compatible)
+- Set `maxChunkSize: 512` and `chunkOverlap: 128` to match other backends
+- Adjust `chunkTopKMultiplier` to control chunk retrieval (1 = topK chunks, 4 =
+  topK\*4 chunks)
+- Use `bm25AggMethod` and `vectorAggMethod` to test different aggregation
+  strategies:
+  - `max_p`: Maximum chunk score
+  - `top_m_sum`: Sum of top M chunks (default: M=3)
+  - `top_m_avg`: Average of top M chunks
+  - `rrf_per_doc`: RRF-based aggregation
+  - `weighted_top_l_sum`: Weighted decay (Sonar's original method)
+
+#### Elasticsearch & Weaviate
+
+##### Quick start: automated benchmark
 
 Run the entire benchmark pipeline (Docker startup, indexing, search, evaluation)
 with a single script:
 
 ```bash
-./run_benchmark.sh
+./runbechmark.sh
 ```
 
 This will run all backends (Elasticsearch and Weaviate) with all methods (BM25,
@@ -202,18 +323,21 @@ Options:
 
 ```bash
 # Run only Elasticsearch with BM25
-./run_benchmark.sh --backends elasticsearch --methods bm25
+./runbechmark.sh --backends elasticsearch --methods bm25
 
 # Run only vector search on both backends
-./run_benchmark.sh --methods vector
+./runbechmark.sh --methods vector
 
 # Use a different dataset
-./run_benchmark.sh --dataset datasets/processed/scidocs_subset
+./runbechmark.sh --dataset datasets/processed/scidocs_subset
+
+# Use a different model for embeddings
+./runbechmark.sh --model multilingual-e5-small --dataset datasets/processed/scidocs_subset
 ```
 
-Use `./run_benchmark.sh --help` for full options.
+Use `./runbechmark.sh --help` for full options.
 
-#### Manual benchmark steps
+##### Manual benchmark steps
 
 If you prefer to run each step manually:
 
@@ -233,19 +357,9 @@ curl http://localhost:9200
 curl http://localhost:8080/v1/.well-known/ready
 ```
 
-#### Sonar (Obsidian plugin)
+###### Elasticsearch
 
-**Not yet implemented.** Planned workflow:
-
-1. Open `bench/datasets/processed/miracl_ja_dev_miracl_en_dev_subset/vault/` in
-   Obsidian
-2. Wait for Sonar indexing to complete
-3. Run evaluation script to generate
-   `bench/runs/sonar.{bm25,vector,hybrid}.trec`
-
-#### Elasticsearch
-
-##### BM25 search (keyword-only):
+BM25 search (keyword-only):
 
 ```bash
 # Index corpus for BM25
@@ -261,13 +375,13 @@ uv run scripts/search.py \
   --method bm25
 ```
 
-##### Vector/hybrid search (requires embeddings from Step 4):
+Vector/hybrid search (requires embeddings from Step 4):
 
 ```bash
 # Index chunks with embeddings
 uv run scripts/index.py \
   --backend elasticsearch \
-  --embeddings datasets/processed/miracl_ja_dev_miracl_en_dev_subset/corpus_embeddings.jsonl \
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/corpus_embeddings.jsonl \
   --vector-dims 768
 
 # Vector search
@@ -276,7 +390,7 @@ uv run scripts/search.py \
   --queries datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
   --output runs/es.vector.trec \
   --method vector \
-  --embeddings datasets/processed/miracl_ja_dev_miracl_en_dev_subset/query_embeddings.jsonl
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl
 
 # Hybrid search (BM25 + Vector with RRF fusion)
 uv run scripts/search.py \
@@ -284,12 +398,12 @@ uv run scripts/search.py \
   --queries datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
   --output runs/es.hybrid.trec \
   --method hybrid \
-  --embeddings datasets/processed/miracl_ja_dev_miracl_en_dev_subset/query_embeddings.jsonl
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl
 ```
 
-#### Weaviate
+###### Weaviate
 
-##### BM25 search (keyword-only):
+BM25 search (keyword-only):
 
 ```bash
 # Index corpus for BM25
@@ -305,13 +419,13 @@ uv run scripts/search.py \
   --method bm25
 ```
 
-##### Vector/hybrid search (requires embeddings from Step 4):
+Vector/hybrid search (requires embeddings from Step 4):
 
 ```bash
 # Index chunks with embeddings
 uv run scripts/index.py \
   --backend weaviate \
-  --embeddings datasets/processed/miracl_ja_dev_miracl_en_dev_subset/corpus_embeddings.jsonl
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/corpus_embeddings.jsonl
 
 # Vector search
 uv run scripts/search.py \
@@ -319,7 +433,7 @@ uv run scripts/search.py \
   --queries datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
   --output runs/weaviate.vector.trec \
   --method vector \
-  --embeddings datasets/processed/miracl_ja_dev_miracl_en_dev_subset/query_embeddings.jsonl
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl
 
 # Hybrid search (BM25 + Vector with RRF fusion)
 uv run scripts/search.py \
@@ -327,10 +441,10 @@ uv run scripts/search.py \
   --queries datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
   --output runs/weaviate.hybrid.trec \
   --method hybrid \
-  --embeddings datasets/processed/miracl_ja_dev_miracl_en_dev_subset/query_embeddings.jsonl
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl
 ```
 
-#### Advanced: Chunk aggregation parameters
+##### Advanced: Chunk aggregation parameters
 
 All search methods support chunk-level retrieval with document-level
 aggregation:
@@ -358,7 +472,7 @@ uv run scripts/search.py \
 
 ### Step 6: Evaluate results
 
-If you used `./run_benchmark.sh`, evaluation is already complete. Otherwise,
+If you used `./runbechmark.sh`, evaluation is already complete. Otherwise,
 run:
 
 ```bash
@@ -413,7 +527,7 @@ uv run scripts/generate_subset.py \
   --queries datasets/raw/miracl_ja_queries_dev.jsonl,datasets/raw/miracl_en_queries_dev.jsonl \
   --qrels datasets/raw/miracl_ja_qrels_dev.tsv,datasets/raw/miracl_en_qrels_dev.tsv \
   --n-queries 200 \
-  --max-corpus-docs 1000000  # Limit to 1M docs per dataset
+  --max-docs-per-dataset 1000000  # Limit to 1M docs per dataset
 ```
 
 ## Experimental Results
@@ -439,17 +553,19 @@ methods.
 
 ### Results: SCIDOCS
 
-| Backend       | Method | nDCG@10 | Recall@10 | Recall@100 | MRR@10 | MAP |
-| ------------- | ------ | ------- | --------- | ---------- | ------ | --- |
-| Sonar         | Vector | -       | -         | -          | -      | -   |
-| Sonar         | BM25   | -       | -         | -          | -      | -   |
-| Sonar         | Hybrid | -       | -         | -          | -      | -   |
-| Elasticsearch | Vector | -       | -         | -          | -      | -   |
-| Elasticsearch | BM25   | -       | -         | -          | -      | -   |
-| Elasticsearch | Hybrid | -       | -         | -          | -      | -   |
-| Weaviate      | Vector | -       | -         | -          | -      | -   |
-| Weaviate      | BM25   | -       | -         | -          | -      | -   |
-| Weaviate      | Hybrid | -       | -         | -          | -      | -   |
+> [`intfloat/multilingual-e5-base`](https://huggingface.co/intfloat/multilingual-e5-base)
+
+| Backend       | Method | nDCG@10 | Recall@10 | Recall@100 | MRR@10 | MAP    |
+| ------------- | ------ | ------- | --------- | ---------- | ------ | ------ |
+| Sonar         | BM25   | -       | -         | -          | -      | -      |
+| Sonar         | Vector | -       | -         | -          | -      | -      |
+| Sonar         | Hybrid | -       | -         | -          | -      | -      |
+| Elasticsearch | BM25   | 0.1303  | 0.1542    | 0.3305     | 0.2120 | 0.0835 |
+| Elasticsearch | Vector | 0.1477  | 0.1750    | 0.4010     | 0.2394 | 0.0975 |
+| Elasticsearch | Hybrid | 0.1650  | 0.1742    | 0.4060     | 0.2945 | 0.1133 |
+| Weaviate      | BM25   | 0.1258  | 0.1487    | 0.3305     | 0.2010 | 0.0826 |
+| Weaviate      | Vector | 0.1509  | 0.1812    | 0.4033     | 0.2430 | 0.0973 |
+| Weaviate      | Hybrid | 0.1662  | 0.1782    | 0.4093     | 0.2923 | 0.1125 |
 
 ### Notes
 

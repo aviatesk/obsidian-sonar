@@ -2,9 +2,8 @@
 set -e
 
 # Default configuration
-DATASET="datasets/processed/miracl_ja_miracl_en_subset"
-EMBEDDINGS="${DATASET}/corpus_embeddings.jsonl"
-QUERY_EMBEDDINGS="${DATASET}/query_embeddings.jsonl"
+DATASET="datasets/processed/miracl_ja_dev_miracl_en_dev_subset"
+MODEL="multilingual-e5-base"
 OUTPUT_DIR="runs"
 BACKENDS="elasticsearch,weaviate"
 METHODS="bm25,vector,hybrid"
@@ -14,6 +13,10 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --dataset)
             DATASET="$2"
+            shift 2
+            ;;
+        --model)
+            MODEL="$2"
             shift 2
             ;;
         --backends)
@@ -32,7 +35,8 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"
-            echo "  --dataset PATH        Dataset directory (default: datasets/processed/miracl_ja_miracl_en_subset)"
+            echo "  --dataset PATH        Dataset directory (default: datasets/processed/miracl_ja_dev_miracl_en_dev_subset)"
+            echo "  --model NAME          Model name for embeddings path (default: multilingual-e5-base)"
             echo "  --backends LIST       Comma-separated list: elasticsearch,weaviate (default: both)"
             echo "  --methods LIST        Comma-separated list: bm25,vector,hybrid (default: all)"
             echo "  --output-dir PATH     Output directory for results (default: runs)"
@@ -41,6 +45,7 @@ while [[ $# -gt 0 ]]; do
             echo "Example:"
             echo "  $0 --backends elasticsearch --methods bm25,vector"
             echo "  $0 --output-dir runs/experiment1 --methods hybrid"
+            echo "  $0 --model multilingual-e5-small --dataset datasets/processed/scidocs_subset"
             exit 0
             ;;
         *)
@@ -55,8 +60,11 @@ done
 CORPUS="${DATASET}/corpus.jsonl"
 QUERIES="${DATASET}/queries.jsonl"
 QRELS="${DATASET}/qrels.tsv"
-EMBEDDINGS="${DATASET}/corpus_embeddings.jsonl"
-QUERY_EMBEDDINGS="${DATASET}/query_embeddings.jsonl"
+
+# Extract dataset name from full path for embeddings directory
+DATASET_NAME=$(basename "$DATASET")
+EMBEDDINGS="embeddings/${DATASET_NAME}/${MODEL}/corpus_embeddings.jsonl"
+QUERY_EMBEDDINGS="embeddings/${DATASET_NAME}/${MODEL}/query_embeddings.jsonl"
 
 # Check if required files exist
 if [ ! -f "$CORPUS" ]; then
@@ -81,9 +89,11 @@ echo "=========================================="
 echo "Benchmark Configuration"
 echo "=========================================="
 echo "Dataset:     $DATASET"
+echo "Model:       $MODEL"
 echo "Backends:    $BACKENDS"
 echo "Methods:     $METHODS"
 echo "Output:      $OUTPUT_DIR"
+echo "Embeddings:  $EMBEDDINGS"
 echo ""
 
 # Start Docker services

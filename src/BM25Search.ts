@@ -1,8 +1,9 @@
 import { BM25Store } from './BM25Store';
 import { MetadataStore } from './MetadataStore';
-import type { SearchResult } from './SearchManager';
+import type { SearchResult, SearchOptions } from './SearchManager';
 import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
+import { aggregateChunkScores } from './ChunkAggregation';
 
 /**
  * BM25 full-text search interface
@@ -25,8 +26,14 @@ export class BM25Search extends WithLogging {
    * Search title only
    * ChunkId format: "filePath#title"
    */
-  async searchTitle(query: string, topK: number): Promise<SearchResult[]> {
-    const bm25Results = await this.bm25Store.search(query, topK * 4);
+  async searchTitle(
+    query: string,
+    topK: number,
+    options?: SearchOptions
+  ): Promise<SearchResult[]> {
+    const chunkTopKMultiplier = this.configManager.get('chunkTopKMultiplier');
+    const chunkCount = options?.chunkTopK ?? topK * chunkTopKMultiplier;
+    const bm25Results = await this.bm25Store.search(query, chunkCount);
 
     if (bm25Results.length === 0) {
       return [];
@@ -49,8 +56,14 @@ export class BM25Search extends WithLogging {
    * Search content only
    * ChunkId format: "filePath#0", "filePath#1", ...
    */
-  async searchContent(query: string, topK: number): Promise<SearchResult[]> {
-    const bm25Results = await this.bm25Store.search(query, topK * 4);
+  async searchContent(
+    query: string,
+    topK: number,
+    options?: SearchOptions
+  ): Promise<SearchResult[]> {
+    const chunkTopKMultiplier = this.configManager.get('chunkTopKMultiplier');
+    const chunkCount = options?.chunkTopK ?? topK * chunkTopKMultiplier;
+    const bm25Results = await this.bm25Store.search(query, chunkCount);
 
     if (bm25Results.length === 0) {
       return [];
@@ -70,13 +83,22 @@ export class BM25Search extends WithLogging {
       }
     }
 
-    // Use max score for each file
-    const maxScores = new Map<string, number>();
-    for (const [filePath, scores] of fileScores.entries()) {
-      maxScores.set(filePath, Math.max(...scores));
-    }
+    // Aggregate chunk scores using configured method
+    const bm25AggMethod = this.configManager.get('bm25AggMethod');
+    const aggM = this.configManager.get('aggM');
+    const aggL = this.configManager.get('aggL');
+    const aggDecay = this.configManager.get('aggDecay');
+    const aggRrfK = this.configManager.get('aggRrfK');
 
-    return this.createSearchResults(maxScores, topK);
+    const aggregatedScores = aggregateChunkScores(fileScores, {
+      method: bm25AggMethod,
+      m: aggM,
+      l: aggL,
+      decay: aggDecay,
+      rrfK: aggRrfK,
+    });
+
+    return this.createSearchResults(aggregatedScores, topK);
   }
 
   /**

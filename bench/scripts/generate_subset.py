@@ -9,9 +9,11 @@ Strategy:
    - BM25 Top M candidates
    - All relevant docs from qrels
 4. Create subset corpus from union of all candidates
-5. Output in BEIR format + Obsidian vault format
+5. Output in BEIR format (corpus.jsonl, queries.jsonl, qrels.tsv)
 
 Supports mixed-language evaluation (e.g., Japanese + English corpus).
+
+Note: To generate Obsidian vault from corpus.jsonl, use generate_vault.py separately.
 """
 
 import argparse
@@ -125,16 +127,26 @@ def load_qrels(qrels_file: Path) -> Dict[str, Set[str]]:
 
 
 def sample_queries(
-    queries: Dict[str, str], qrels: Dict[str, Set[str]], n: int, seed: int = 42
+    queries: Dict[str, str],
+    qrels: Dict[str, Set[str]],
+    n: int,
+    seed: int = 42,
+    dataset_prefixes: List[str] = None,
+    query_ratio: List[int] = None,
 ) -> List[str]:
     """
     Sample queries with at least one relevant document.
 
+    For multiple datasets (with prefixes), performs stratified sampling
+    according to the specified ratio. Default is equal distribution (1:1:...).
+
     Args:
         queries: Query dict
         qrels: Qrels dict
-        n: Number of queries to sample
+        n: Total number of queries to sample
         seed: Random seed
+        dataset_prefixes: List of dataset prefixes (e.g., ["miracl_ja_dev#", "miracl_en_dev#"])
+        query_ratio: List of integers specifying sampling ratio per dataset (e.g., [1, 1] for 1:1)
 
     Returns:
         List of sampled query IDs
@@ -144,15 +156,85 @@ def sample_queries(
     # Filter queries with at least one relevant doc
     valid_queries = [qid for qid in queries.keys() if qid in qrels and qrels[qid]]
 
-    if len(valid_queries) <= n:
-        return valid_queries
+    # Single dataset or no prefixes: simple random sampling
+    if not dataset_prefixes or len(dataset_prefixes) <= 1:
+        if len(valid_queries) <= n:
+            return valid_queries
+        return random.sample(valid_queries, n)
 
-    return random.sample(valid_queries, n)
+    # Multiple datasets: stratified sampling by prefix
+    # Group queries by prefix
+    grouped_queries = {prefix: [] for prefix in dataset_prefixes}
+    for qid in valid_queries:
+        for prefix in dataset_prefixes:
+            if qid.startswith(prefix):
+                grouped_queries[prefix].append(qid)
+                break
+
+    # Default ratio: equal distribution
+    if not query_ratio:
+        query_ratio = [1] * len(dataset_prefixes)
+
+    if len(query_ratio) != len(dataset_prefixes):
+        raise ValueError("query_ratio must have same length as dataset_prefixes")
+
+    # Calculate samples per dataset based on ratio
+    total_ratio = sum(query_ratio)
+    samples_per_dataset = []
+    allocated_total = 0
+
+    for i, ratio in enumerate(query_ratio):
+        if i == len(query_ratio) - 1:
+            # Last dataset gets remaining samples to ensure total = n
+            samples = n - allocated_total
+        else:
+            samples = int(n * ratio / total_ratio)
+            allocated_total += samples
+        samples_per_dataset.append(samples)
+
+    # Sample from each dataset
+    sampled_queries = []
+    for prefix, target_samples in zip(dataset_prefixes, samples_per_dataset):
+        dataset_queries = grouped_queries[prefix]
+        if len(dataset_queries) <= target_samples:
+            sampled_queries.extend(dataset_queries)
+        else:
+            sampled_queries.extend(random.sample(dataset_queries, target_samples))
+
+    return sampled_queries
 
 
 def tokenize_simple(text: str) -> List[str]:
-    """Simple whitespace tokenization."""
-    return text.lower().split()
+    """
+    Hybrid tokenization: TinySegmenter for Japanese, whitespace for English.
+
+    Uses TinySegmenter (pure Python, lightweight) for Japanese tokenization.
+    For English and mixed text, also includes whitespace-based tokens.
+    """
+    # Lowercase
+    text = text.lower()
+
+    # Word-level tokens (for English and space-separated text)
+    word_tokens = text.split()
+
+    try:
+        # Use TinySegmenter for Japanese tokenization
+        import tinysegmenter
+
+        segmenter = tinysegmenter.TinySegmenter()
+        tiny_tokens = segmenter.tokenize(text)
+        # Filter out whitespace-only tokens
+        tiny_tokens = [t for t in tiny_tokens if t.strip()]
+
+        # Combine word-level and TinySegmenter tokens (deduplicate)
+        return list(set(word_tokens + tiny_tokens))
+    except ImportError:
+        # Fallback to character bigrams if TinySegmenter unavailable
+        text_no_spaces = text.replace(" ", "")
+        char_bigrams = [
+            text_no_spaces[i : i + 2] for i in range(len(text_no_spaces) - 1)
+        ]
+        return word_tokens + char_bigrams
 
 
 def build_bm25_index(corpus: Dict[str, Dict[str, str]]) -> Tuple[BM25Okapi, List[str]]:
@@ -204,7 +286,7 @@ def bm25_retrieve(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate query-driven candidate pool subset"
+        description="Generate query-driven candidate pool subset for efficient benchmarking"
     )
     parser.add_argument(
         "--corpus",
@@ -242,13 +324,18 @@ def main():
         help="Number of BM25 candidates per query (default: 200)",
     )
     parser.add_argument(
-        "--max-corpus-docs",
+        "--max-docs-per-dataset",
         type=int,
-        default=700000,
-        help="Maximum number of corpus documents to load per dataset (default: 700000)",
+        default=100000,
+        help="Maximum number of documents to load per dataset (default: 100000)",
     )
     parser.add_argument(
         "--seed", type=int, default=42, help="Random seed (default: 42)"
+    )
+    parser.add_argument(
+        "--query-ratio",
+        type=str,
+        help="Query sampling ratio for multiple datasets (e.g., '1:1' for equal distribution, '2:1' for 2x first dataset). Default: equal distribution",
     )
 
     args = parser.parse_args()
@@ -272,8 +359,8 @@ def main():
     else:
         # Auto-generate from file names
         if len(corpus_files) == 1:
-            # Single dataset: use corpus file stem
-            base_name = corpus_files[0].stem.replace("_corpus", "").replace("_dev", "").replace("_test", "").replace("_train", "")
+            # Single dataset: use corpus file stem (remove _corpus only)
+            base_name = corpus_files[0].stem.replace("_corpus", "")
             output_dir = (
                 Path(__file__).parent.parent
                 / "datasets"
@@ -284,7 +371,7 @@ def main():
             # Multiple datasets: combine base names
             base_names = []
             for f in corpus_files:
-                base = f.stem.replace("_corpus", "").replace("_dev", "").replace("_test", "").replace("_train", "")
+                base = f.stem.replace("_corpus", "")
                 base_names.append(base)
             merged_name = "_".join(base_names)
             output_dir = (
@@ -313,14 +400,31 @@ def main():
             print(f"Error: Qrels file not found: {qrels_file}")
             return
 
-    # Step 4: Load data
-    print("\nLoading data...")
-    if args.max_corpus_docs:
-        print(f"  Max corpus docs per dataset: {args.max_corpus_docs}")
+    # Step 4: Parse query ratio
+    query_ratio = None
+    if args.query_ratio:
+        try:
+            query_ratio = [int(x.strip()) for x in args.query_ratio.split(":")]
+        except ValueError:
+            print(f"Error: Invalid query ratio format: {args.query_ratio}")
+            print("  Expected format: '1:1' or '2:1' (colon-separated integers)")
+            return
+
+    # Step 5: Process each dataset independently, then merge
+    print("\nProcessing datasets...")
+    if args.max_docs_per_dataset:
+        print(f"  Max docs per dataset: {args.max_docs_per_dataset}")
+
+    # Store per-dataset subsets
+    all_corpus = {}
+    all_queries = {}
+    all_qrels = {}
+    all_candidate_pool: Set[str] = set()
+    dataset_prefixes = []
 
     if len(corpus_files) == 1:
-        # Single dataset
-        print(f"  Dataset: {corpus_files[0].stem}")
+        # Single dataset: process directly
+        print(f"\nDataset: {corpus_files[0].stem}")
 
         qrels = load_qrels(qrels_files[0])
         required_doc_ids = set()
@@ -331,7 +435,7 @@ def main():
 
         corpus = load_corpus(
             corpus_files[0],
-            max_docs=args.max_corpus_docs,
+            max_docs=args.max_docs_per_dataset,
             required_doc_ids=required_doc_ids,
         )
         queries = load_queries(queries_files[0])
@@ -340,83 +444,150 @@ def main():
         tqdm.write(f"  Queries: {len(queries)} queries")
         tqdm.write(f"  Qrels: {len(qrels)} queries with relevance judgments")
 
+        # Sample queries
+        print(f"\nSampling {args.n_queries} queries...")
+        sampled_query_ids = sample_queries(queries, qrels, args.n_queries, args.seed)
+        print(f"  Sampled: {len(sampled_query_ids)} queries")
+
+        # Build BM25 index
+        print("\nBuilding BM25 index...")
+        bm25, doc_ids = build_bm25_index(corpus)
+
+        # Build candidate pool
+        print("\nBuilding candidate pool...")
+        candidate_pool: Set[str] = set()
+
+        for query_id in tqdm(sampled_query_ids, desc="Processing queries", leave=False):
+            query_text = queries[query_id]
+
+            # Add relevant docs from qrels
+            relevant_docs = qrels[query_id]
+            candidate_pool.update(relevant_docs)
+
+            # Add BM25 top M
+            bm25_results = bm25_retrieve(query_text, bm25, doc_ids, args.bm25_top_m)
+            bm25_doc_ids = [doc_id for doc_id, _ in bm25_results]
+            candidate_pool.update(bm25_doc_ids)
+
+        print(f"  Candidate pool size: {len(candidate_pool)} docs")
+
+        # Store results
+        all_corpus = corpus
+        all_queries = {qid: queries[qid] for qid in sampled_query_ids}
+        all_qrels = {qid: qrels[qid] for qid in sampled_query_ids}
+        all_candidate_pool = candidate_pool
+
     else:
-        # Multiple datasets: load and merge with prefixing
-        print(f"  Datasets: {len(corpus_files)}")
+        # Multiple datasets: process each independently, then merge
+        print(f"\nProcessing {len(corpus_files)} datasets independently...")
 
-        corpus = {}
-        queries = {}
-        qrels = {}
+        # Calculate queries per dataset based on ratio
+        if query_ratio:
+            if len(query_ratio) != len(corpus_files):
+                print(f"Error: query_ratio has {len(query_ratio)} values but {len(corpus_files)} datasets")
+                return
+            print(f"  Using ratio: {':'.join(map(str, query_ratio))}")
+        else:
+            query_ratio = [1] * len(corpus_files)
+            print(f"  Using equal distribution (1:1:...)")
 
+        total_ratio = sum(query_ratio)
+        queries_per_dataset = []
+        allocated_total = 0
+        for i, ratio in enumerate(query_ratio):
+            if i == len(query_ratio) - 1:
+                # Last dataset gets remaining queries
+                queries_count = args.n_queries - allocated_total
+            else:
+                queries_count = int(args.n_queries * ratio / total_ratio)
+                allocated_total += queries_count
+            queries_per_dataset.append(queries_count)
+
+        # Process each dataset
         for i, (corpus_file, queries_file, qrels_file) in enumerate(
             zip(corpus_files, queries_files, qrels_files)
         ):
-            dataset_name = corpus_file.stem.replace("_corpus", "").replace("_dev", "").replace("_test", "").replace("_train", "")
-            print(f"  Loading dataset {i + 1}/{len(corpus_files)}: {dataset_name}")
+            dataset_name = corpus_file.stem.replace("_corpus", "")
+            dataset_queries = queries_per_dataset[i]
+            prefix = f"{dataset_name}#"
+            dataset_prefixes.append(prefix)
 
-            # Load qrels first
+            print(f"\n[{i + 1}/{len(corpus_files)}] Processing {dataset_name} (target: {dataset_queries} queries)...")
+
+            # Load data
             dataset_qrels = load_qrels(qrels_file)
             required_doc_ids = set()
             for doc_ids in dataset_qrels.values():
                 required_doc_ids.update(doc_ids)
 
-            tqdm.write(f"    Required docs from qrels: {len(required_doc_ids)}")
+            tqdm.write(f"  Required docs from qrels: {len(required_doc_ids)}")
 
-            # Load corpus and queries
             dataset_corpus = load_corpus(
                 corpus_file,
-                max_docs=args.max_corpus_docs,
+                max_docs=args.max_docs_per_dataset,
                 required_doc_ids=required_doc_ids,
             )
-            dataset_queries = load_queries(queries_file)
+            dataset_queries_all = load_queries(queries_file)
 
-            tqdm.write(f"    Corpus: {len(dataset_corpus)} docs")
-            tqdm.write(f"    Queries: {len(dataset_queries)} queries")
-            tqdm.write(
-                f"    Qrels: {len(dataset_qrels)} queries with relevance judgments"
+            tqdm.write(f"  Corpus: {len(dataset_corpus)} docs")
+            tqdm.write(f"  Queries: {len(dataset_queries_all)} queries")
+            tqdm.write(f"  Qrels: {len(dataset_qrels)} queries with relevance judgments")
+
+            # Sample queries for this dataset
+            sampled_query_ids = sample_queries(
+                dataset_queries_all, dataset_qrels, dataset_queries, args.seed + i
             )
+            tqdm.write(f"  Sampled: {len(sampled_query_ids)} queries")
 
-            # Merge with prefix
-            prefix = f"{dataset_name}#"
-            for doc_id, doc in dataset_corpus.items():
-                corpus[prefix + doc_id] = doc
-            for query_id, query_text in dataset_queries.items():
-                queries[prefix + query_id] = query_text
-            for query_id, relevant_docs in dataset_qrels.items():
-                qrels[prefix + query_id] = {prefix + doc_id for doc_id in relevant_docs}
+            # Build BM25 index for this dataset
+            tqdm.write(f"  Building BM25 index...")
+            bm25, doc_ids = build_bm25_index(dataset_corpus)
 
-        print(f"\nMerged datasets:")
-        tqdm.write(f"  Total corpus: {len(corpus)} docs")
-        tqdm.write(f"  Total queries: {len(queries)} queries")
-        tqdm.write(f"  Total qrels: {len(qrels)} queries with relevance judgments")
+            # Build candidate pool for this dataset
+            tqdm.write(f"  Building candidate pool...")
+            candidate_pool: Set[str] = set()
 
-    # Generate subset using loaded data
-    # Sample queries
-    print(f"\nSampling {args.n_queries} queries...")
-    sampled_query_ids = sample_queries(queries, qrels, args.n_queries, args.seed)
-    print(f"  Sampled: {len(sampled_query_ids)} queries")
+            for query_id in tqdm(sampled_query_ids, desc="Processing queries", leave=False):
+                query_text = dataset_queries_all[query_id]
 
-    # Build BM25 index once
-    print("\nBuilding BM25 index...")
-    bm25, doc_ids = build_bm25_index(corpus)
+                # Add relevant docs from qrels
+                relevant_docs = dataset_qrels[query_id]
+                candidate_pool.update(relevant_docs)
 
-    # Build candidate pool
-    print("\nBuilding candidate pool...")
-    candidate_pool: Set[str] = set()
+                # Add BM25 top M
+                bm25_results = bm25_retrieve(query_text, bm25, doc_ids, args.bm25_top_m)
+                bm25_doc_ids = [doc_id for doc_id, _ in bm25_results]
+                candidate_pool.update(bm25_doc_ids)
 
-    for query_id in tqdm(sampled_query_ids, desc="Processing queries", leave=False):
-        query_text = queries[query_id]
+            tqdm.write(f"  Candidate pool: {len(candidate_pool)} docs")
 
-        # Add relevant docs from qrels
-        relevant_docs = qrels[query_id]
-        candidate_pool.update(relevant_docs)
+            # Merge into global collections with prefix
+            for doc_id in candidate_pool:
+                prefixed_doc_id = prefix + doc_id
+                all_corpus[prefixed_doc_id] = dataset_corpus[doc_id]
+                all_candidate_pool.add(prefixed_doc_id)
 
-        # Add BM25 top M
-        bm25_results = bm25_retrieve(query_text, bm25, doc_ids, args.bm25_top_m)
-        bm25_doc_ids = [doc_id for doc_id, _ in bm25_results]
-        candidate_pool.update(bm25_doc_ids)
+            for query_id in sampled_query_ids:
+                prefixed_query_id = prefix + query_id
+                all_queries[prefixed_query_id] = dataset_queries_all[query_id]
+                all_qrels[prefixed_query_id] = {prefix + doc_id for doc_id in dataset_qrels[query_id]}
 
-    print(f"  Candidate pool size: {len(candidate_pool)} docs")
+        # Print merged statistics
+        print(f"\nMerged results:")
+        print(f"  Total corpus: {len(all_corpus)} docs")
+        print(f"  Total queries: {len(all_queries)} queries")
+        print(f"  Total qrels: {len(all_qrels)} queries")
+        for prefix in dataset_prefixes:
+            doc_count = sum(1 for doc_id in all_candidate_pool if doc_id.startswith(prefix))
+            query_count = sum(1 for qid in all_queries.keys() if qid.startswith(prefix))
+            dataset_name = prefix.rstrip("#")
+            print(f"    {dataset_name}: {doc_count} docs, {query_count} queries")
+
+    # Use merged collections
+    corpus = all_corpus
+    queries = all_queries
+    qrels = all_qrels
+    candidate_pool = all_candidate_pool
 
     # Create output directory
     print(f"\nWriting results to: {output_dir}")
@@ -439,7 +610,7 @@ def main():
     # Write subset queries
     subset_queries_file = output_dir / "queries.jsonl"
     with open(subset_queries_file, "w", encoding="utf-8") as f:
-        for query_id in sorted(sampled_query_ids):
+        for query_id in sorted(queries.keys()):
             query_entry = {"_id": query_id, "text": queries[query_id]}
             f.write(json.dumps(query_entry, ensure_ascii=False) + "\n")
     print(f"  Subset queries saved: {subset_queries_file}")
@@ -448,39 +619,19 @@ def main():
     subset_qrels_file = output_dir / "qrels.tsv"
     with open(subset_qrels_file, "w", encoding="utf-8") as f:
         f.write("query-id\tcorpus-id\tscore\n")
-        for query_id in sorted(sampled_query_ids):
+        for query_id in sorted(qrels.keys()):
             for doc_id in sorted(qrels[query_id]):
                 # Only include docs in candidate pool
                 if doc_id in candidate_pool:
                     f.write(f"{query_id}\t{doc_id}\t1\n")
     print(f"  Subset qrels saved: {subset_qrels_file}")
 
-    # Generate Obsidian vault format
-    print("\nGenerating Obsidian vault format...")
-    vault_dir = output_dir / "vault"
-    vault_dir.mkdir(exist_ok=True)
-
-    for doc_id in tqdm(sorted(candidate_pool), desc="Writing vault files", leave=False):
-        if doc_id not in corpus:
-            continue
-
-        doc = corpus[doc_id]
-        # Use doc_id as filename (sanitize for filesystem)
-        safe_filename = doc_id.replace("/", "_").replace("\\", "_") + ".md"
-        doc_file = vault_dir / safe_filename
-
-        # Write markdown
-        with open(doc_file, "w", encoding="utf-8") as f:
-            f.write("---\n")
-            f.write(f"doc_id: {doc_id}\n")
-            f.write(f"title: {doc['title']}\n")
-            f.write("---\n\n")
-            f.write(f"# {doc['title']}\n\n")
-            f.write(doc["text"])
-
-    print(f"  Vault format saved: {vault_dir} ({len(candidate_pool)} files)")
-
     print("\nSubset generation complete!")
+    print(f"  Output: {output_dir}")
+    print(f"  Corpus: {len(candidate_pool)} docs")
+    print(f"  Queries: {len(sampled_query_ids)} queries")
+    print("\nTo generate Obsidian vault, run:")
+    print(f"  uv run scripts/generate_vault.py --corpus {subset_corpus_file} --output path/to/vault")
 
 
 if __name__ == "__main__":

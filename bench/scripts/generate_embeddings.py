@@ -24,7 +24,6 @@ import json
 from pathlib import Path
 from typing import List
 
-import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm

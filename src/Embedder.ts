@@ -3,7 +3,10 @@
  * Supports both Transformers.js and Ollama backends
  */
 export interface Embedder {
-  getEmbeddings(texts: string[]): Promise<number[][]>;
+  getEmbeddings(
+    texts: string[],
+    type?: 'query' | 'passage'
+  ): Promise<number[][]>;
 
   /**
    * Counts the number of tokens in the given text.

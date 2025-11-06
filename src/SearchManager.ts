@@ -25,6 +25,7 @@ export interface SearchOptions {
   contentWeight?: number;
   embeddingWeight?: number;
   bm25Weight?: number;
+  chunkTopK?: number; // For benchmarks: directly specify chunk count instead of topK * multiplier
 }
 
 /**
@@ -143,8 +144,8 @@ export class SearchManager extends WithLogging {
         : Promise.resolve([]),
       bm25Weight > 0
         ? type === 'title'
-          ? this.bm25Search.searchTitle(query, topK * 2)
-          : this.bm25Search.searchContent(query, topK * 2)
+          ? this.bm25Search.searchTitle(query, topK * 2, options)
+          : this.bm25Search.searchContent(query, topK * 2, options)
         : Promise.resolve([]),
     ]);
 

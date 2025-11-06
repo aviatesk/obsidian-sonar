@@ -4,25 +4,13 @@ import type { Embedder } from './Embedder';
 import { ConfigManager } from './ConfigManager';
 import type { SearchResult, SearchOptions } from './SearchManager';
 import { WithLogging } from './WithLogging';
+import { aggregateChunkScores } from './ChunkAggregation';
 
 interface CombinedDocument {
   id: string;
   content: string;
   embedding: number[];
   metadata: DocumentMetadata;
-}
-
-const L = 3;
-const MULTIPLIER = 4;
-
-function aggregateWeightedDecay(scoresDesc: number[], decay: number): number {
-  let w = 1,
-    acc = 0;
-  for (let i = 0; i < Math.min(L, scoresDesc.length); i++) {
-    acc += w * scoresDesc[i];
-    w *= decay;
-  }
-  return acc;
 }
 
 function cosineSimilarity(vec1: number[], vec2: number[]): number {
@@ -132,7 +120,7 @@ export class EmbeddingSearch extends WithLogging {
     type: 'title' | 'content',
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    const queryEmbeddings = await this.embedder.getEmbeddings([query]);
+    const queryEmbeddings = await this.embedder.getEmbeddings([query], 'query');
     const queryEmbedding = queryEmbeddings[0];
 
     const documents = await this.getCombinedDocuments(type);
@@ -143,8 +131,6 @@ export class EmbeddingSearch extends WithLogging {
         doc => doc.metadata.filePath !== options.excludeFilePath
       );
     }
-
-    const scoreDecay = this.configManager.get('scoreDecay');
 
     const results = filteredDocuments.map(doc => {
       const similarity = cosineSimilarity(queryEmbedding, doc.embedding);
@@ -174,7 +160,9 @@ export class EmbeddingSearch extends WithLogging {
       }));
     } else {
       // For content search, aggregate chunks by file
-      const topResults = results.slice(0, topK * MULTIPLIER);
+      const chunkTopKMultiplier = this.configManager.get('chunkTopKMultiplier');
+      const chunkCount = options?.chunkTopK ?? topK * chunkTopKMultiplier;
+      const topResults = results.slice(0, chunkCount);
 
       const groupedByFile = new Map<string, typeof results>();
       for (const result of topResults) {
@@ -185,11 +173,34 @@ export class EmbeddingSearch extends WithLogging {
         groupedByFile.get(filePath)!.push(result);
       }
 
-      const aggregated: SearchResult[] = [];
+      // Prepare file scores for aggregation
+      const fileScores = new Map<string, number[]>();
       for (const [filePath, chunks] of groupedByFile.entries()) {
         chunks.sort((a, b) => b.score - a.score);
-        const scores = chunks.map(c => c.score);
-        const aggregatedScore = aggregateWeightedDecay(scores, scoreDecay);
+        fileScores.set(
+          filePath,
+          chunks.map(c => c.score)
+        );
+      }
+
+      // Aggregate chunk scores using configured method
+      const vectorAggMethod = this.configManager.get('vectorAggMethod');
+      const aggM = this.configManager.get('aggM');
+      const aggL = this.configManager.get('aggL');
+      const aggDecay = this.configManager.get('aggDecay');
+      const aggRrfK = this.configManager.get('aggRrfK');
+
+      const aggregatedScores = aggregateChunkScores(fileScores, {
+        method: vectorAggMethod,
+        m: aggM,
+        l: aggL,
+        decay: aggDecay,
+        rrfK: aggRrfK,
+      });
+
+      const aggregated: SearchResult[] = [];
+      for (const [filePath, aggregatedScore] of aggregatedScores.entries()) {
+        const chunks = groupedByFile.get(filePath)!;
         const topChunk = chunks[0];
 
         aggregated.push({

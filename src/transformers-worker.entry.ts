@@ -25,7 +25,7 @@ import type {
 } from './transformers-worker-types';
 
 // Logging helpers (follows same format as main.ts)
-const COMPONENT_NAME = 'TransformersWorker';
+const COMPONENT_NAME = 'transformers-worker';
 
 function log(msg: string): void {
   console.log(`[Sonar.${COMPONENT_NAME}] ${msg}`);
@@ -35,43 +35,45 @@ function error(msg: string): void {
   console.error(`[Sonar.${COMPONENT_NAME}] ${msg}`);
 }
 
-// Signal startup immediately for debugging
-postMessage({ __kind: 'ready', ts: Date.now() } satisfies ReadyMessage);
-log('Initializing...');
-
 // Configure environment for browser/Worker context
 env.allowLocalModels = false; // Browser environment doesn't support local file access
 env.useBrowserCache = true; // Cache models for offline use
 
-const MODEL_ID = 'Xenova/bge-m3';
-
 // Lazy initialization (avoid top-level await to reduce crash points)
 // Note: Using Promise<any> because pipeline() with conditional dtype parameter
 // produces a union type too complex for TypeScript to represent
-let featureExtractorPromise: Promise<any> | null = null;
-let tokenizerPromise: Promise<PreTrainedTokenizer> | null = null;
+// Cache by modelId to support model switching
+const featureExtractorCache = new Map<string, Promise<any>>();
+const tokenizerCache = new Map<string, Promise<PreTrainedTokenizer>>();
 
 async function getFeatureExtractor(
+  modelId: string,
   device: 'webgpu' | 'wasm',
   dtype: 'q8' | 'q4' | 'fp32'
 ): Promise<FeatureExtractionPipeline> {
-  if (!featureExtractorPromise) {
+  const cacheKey = `${modelId}-${device}-${dtype}`;
+  if (!featureExtractorCache.has(cacheKey)) {
     // Embedding extractor (HuggingFace calls this 'feature-extraction')
-    featureExtractorPromise = pipeline('feature-extraction', MODEL_ID, {
+    const promise = pipeline('feature-extraction', modelId, {
       device,
       // WebGPU requires fp16 for optimal performance (hardware accelerated)
       // WASM uses quantized models (q8/q4) or fp32 for CPU efficiency
       dtype: device === 'webgpu' ? 'fp16' : dtype,
     });
+    featureExtractorCache.set(cacheKey, promise);
+    log(
+      `Created feature extractor cache for ${modelId} with device=${device}, dtype=${dtype}`
+    );
   }
-  return featureExtractorPromise;
+  return featureExtractorCache.get(cacheKey)!;
 }
 
-async function getTokenizer() {
-  if (!tokenizerPromise) {
-    tokenizerPromise = AutoTokenizer.from_pretrained(MODEL_ID);
+async function getTokenizer(modelId: string) {
+  if (!tokenizerCache.has(modelId)) {
+    tokenizerCache.set(modelId, AutoTokenizer.from_pretrained(modelId));
+    log(`Created tokenizer cache for ${modelId}`);
   }
-  return tokenizerPromise;
+  return tokenizerCache.get(modelId)!;
 }
 
 // Message handler
@@ -87,20 +89,24 @@ self.addEventListener('message', async (e: MessageEvent) => {
     let result: unknown;
 
     if (method === 'embeddings') {
-      const extractor = await getFeatureExtractor(params.device, params.dtype);
+      const extractor = await getFeatureExtractor(
+        params.modelId,
+        params.device,
+        params.dtype
+      );
       const out = await extractor(params.texts, {
         pooling: 'cls',
         normalize: true,
       });
       result = out.tolist();
     } else if (method === 'countTokens') {
-      const tok = await getTokenizer();
+      const tok = await getTokenizer(params.modelId);
       const { input_ids } = await tok(params.text, {
         add_special_tokens: true,
       });
       result = Number(input_ids.size);
     } else if (method === 'getTokenIds') {
-      const tok = await getTokenizer();
+      const tok = await getTokenizer(params.modelId);
       const ids = tok.encode(params.text, {
         add_special_tokens: true,
       });
@@ -120,3 +126,7 @@ self.addEventListener('message', async (e: MessageEvent) => {
     self.postMessage(errorResponse);
   }
 });
+
+postMessage({ __kind: 'ready', ts: Date.now() } satisfies ReadyMessage);
+
+log('Ready');

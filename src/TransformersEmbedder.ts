@@ -31,35 +31,34 @@ export class TransformersEmbedder extends WithLogging implements Embedder {
     );
   }
 
-  async getEmbeddings(texts: string[]): Promise<number[][]> {
-    // WebGPU has memory limitations for large batches
-    // Process in smaller batches to avoid buffer allocation errors
-    const MAX_BATCH_SIZE = this.device === 'webgpu' ? 1 : 32;
+  async getEmbeddings(
+    texts: string[],
+    type?: 'query' | 'passage'
+  ): Promise<number[][]> {
+    // Add model-specific prefixes for better retrieval performance
+    const prefixedTexts = this.addModelPrefixes(texts, type);
 
-    if (texts.length <= MAX_BATCH_SIZE) {
-      return this.worker.call('embeddings', {
-        texts,
-        modelId: this.modelId,
-        device: this.device,
-        dtype: this.dtype,
-      });
+    return this.worker.call('embeddings', {
+      texts: prefixedTexts,
+      modelId: this.modelId,
+      device: this.device,
+      dtype: this.dtype,
+    });
+  }
+
+  private addModelPrefixes(
+    texts: string[],
+    type?: 'query' | 'passage'
+  ): string[] {
+    // E5 models require task-specific prefixes for optimal performance
+    // https://huggingface.co/intfloat/multilingual-e5-base#usage
+    if (this.modelId.includes('e5')) {
+      const prefix = type === 'query' ? 'query: ' : 'passage: ';
+      return texts.map(text => prefix + text);
     }
 
-    this.log(
-      `Generating embeddings for ${texts.length} texts (batches of ${MAX_BATCH_SIZE})...`
-    );
-    const results: number[][] = [];
-    for (let i = 0; i < texts.length; i += MAX_BATCH_SIZE) {
-      const batch = texts.slice(i, i + MAX_BATCH_SIZE);
-      const batchResults = await this.worker.call('embeddings', {
-        texts: batch,
-        modelId: this.modelId,
-        device: this.device,
-        dtype: this.dtype,
-      });
-      results.push(...batchResults);
-    }
-    return results;
+    // Other models: no prefix needed
+    return texts;
   }
 
   async countTokens(text: string): Promise<number> {

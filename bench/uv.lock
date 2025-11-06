@@ -1735,6 +1735,7 @@ dependencies = [
     { name = "ir-measures" },
     { name = "rank-bm25" },
     { name = "sentence-transformers" },
+    { name = "tinysegmenter" },
     { name = "tqdm" },
     { name = "weaviate-client" },
 ]
@@ -1752,6 +1753,7 @@ requires-dist = [
     { name = "rank-bm25", specifier = ">=0.2.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "sentence-transformers", specifier = ">=2.2.0" },
+    { name = "tinysegmenter", specifier = ">=0.3" },
     { name = "tqdm", specifier = ">=4.65.0" },
     { name = "weaviate-client", specifier = ">=3.25.0" },
 ]
@@ -1795,6 +1797,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/b7/4d/08c89e34946fce2ae
 wheels = [
     { url = "https://files.pythonhosted.org/packages/32/d5/f9a850d79b0851d1d4ef6456097579a9005b31fea68726a4ae5f2d82ddd9/threadpoolctl-3.6.0-py3-none-any.whl", hash = "sha256:43a0b8fd5a2928500110039e43a5eed8480b918967083ea48dc3ab9f13c4a7fb", size = 18638, upload-time = "2025-03-13T13:49:21.846Z" },
 ]
+
+[[package]]
+name = "tinysegmenter"
+version = "0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9c/70/488895cb11e160b548c9ba5847c171b65b86a8ca1e54d206d55b2976bf7b/tinysegmenter-0.4.tar.gz", hash = "sha256:64458bdba54ba7482c02c785f960cf3d6cf61594a4dab3d64c325439094fc1b7", size = 16898, upload-time = "2018-09-16T09:30:29.009Z" }
 
 [[package]]
 name = "tokenizers"

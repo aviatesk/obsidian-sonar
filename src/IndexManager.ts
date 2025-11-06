@@ -384,63 +384,321 @@ export class IndexManager extends WithLogging {
       this.log(`Deleted ${allDocIds.length} documents`);
     }
 
-    // Process each operation (only re-indexing for create/modify/rename)
+    // Filter operations that need indexing
+    const indexOperations = operations.filter(
+      op =>
+        (op.type === 'create' ||
+          op.type === 'modify' ||
+          op.type === 'rename') &&
+        op.file
+    );
+
+    if (indexOperations.length === 0) {
+      return 0;
+    }
+
+    // Step 1: Prepare all chunks for all files
+    this.log(`Preparing ${indexOperations.length} files for indexing...`);
+    interface FileChunkData {
+      operation: FileOperation;
+      file: TFile;
+      chunks: Array<{ content: string; headings: string[] }>;
+      indexedAt: number;
+    }
+
+    const fileChunkDataList: FileChunkData[] = [];
     let errorCount = 0;
-    for (let i = 0; i < operations.length; i++) {
-      const operation = operations[i];
-      const filePath = operation.file?.path || operation.oldPath || 'unknown';
 
-      if (progressCallback) {
-        await progressCallback(i + 1, operations.length, filePath);
-      }
-
-      const fileName =
-        operation.file?.basename ||
-        operation.oldPath?.split('/').pop() ||
-        'unknown';
-      this.updateStatus({
-        action: this.getOperationAction(operation.type),
-        file: fileName,
-        filePath,
-        current: i + 1,
-        total: operations.length,
-      });
-
+    for (const operation of indexOperations) {
+      const file = operation.file!;
       try {
-        await this.processOperationCore(operation);
-        this.log(`${this.getOperationAction(operation.type)} ${filePath}`);
+        const content = await this.vault.cachedRead(file);
+        const chunks = await createChunks(
+          content,
+          this.configManager.get('maxChunkSize'),
+          this.configManager.get('chunkOverlap'),
+          this.embedder
+        );
+        fileChunkDataList.push({
+          operation,
+          file,
+          chunks,
+          indexedAt: Date.now(),
+        });
       } catch (error) {
-        this.warn(`Failed to ${operation.type} ${filePath}: ${error}`);
+        this.warn(`Failed to prepare ${operation.file?.path}: ${error}`);
         errorCount++;
       }
     }
 
+    // Step 2: Collect all texts (titles + chunks) with metadata
+    interface TextItem {
+      text: string;
+      fileIndex: number;
+      type: 'title' | 'chunk';
+      chunkIndex?: number;
+    }
+
+    const allTextItems: TextItem[] = [];
+    for (let fileIndex = 0; fileIndex < fileChunkDataList.length; fileIndex++) {
+      const { file, chunks } = fileChunkDataList[fileIndex];
+
+      allTextItems.push({
+        text: file.basename,
+        fileIndex,
+        type: 'title',
+      });
+
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        allTextItems.push({
+          text: chunks[chunkIndex].content,
+          fileIndex,
+          type: 'chunk',
+          chunkIndex,
+        });
+      }
+    }
+
+    // Step 3: Process in batches (batch size: 32)
+    // Generate embeddings for batch -> immediately index -> repeat
+    const BATCH_SIZE = 32;
+    this.log(
+      `Processing ${allTextItems.length} texts in batches of ${BATCH_SIZE}...`
+    );
+    const fileEmbeddingsMap = new Map<
+      number,
+      Array<{
+        type: 'title' | 'chunk';
+        chunkIndex?: number;
+        embedding: number[];
+      }>
+    >();
+
+    for (let i = 0; i < allTextItems.length; i += BATCH_SIZE) {
+      const batchItems = allTextItems.slice(
+        i,
+        Math.min(i + BATCH_SIZE, allTextItems.length)
+      );
+      const batchTexts = batchItems.map(item => item.text);
+
+      // Generate embeddings for this batch
+      const batchEmbeddings = await this.embedder.getEmbeddings(batchTexts);
+
+      // Associate embeddings with files
+      for (let j = 0; j < batchItems.length; j++) {
+        const item = batchItems[j];
+        const embedding = batchEmbeddings[j];
+
+        if (!fileEmbeddingsMap.has(item.fileIndex)) {
+          fileEmbeddingsMap.set(item.fileIndex, []);
+        }
+        fileEmbeddingsMap.get(item.fileIndex)!.push({
+          type: item.type,
+          chunkIndex: item.chunkIndex,
+          embedding,
+        });
+      }
+
+      // Check if we can index any complete files
+      const completedFileIndices: number[] = [];
+      for (const [fileIndex, embeddings] of fileEmbeddingsMap.entries()) {
+        const { chunks } = fileChunkDataList[fileIndex];
+        const expectedCount = 1 + chunks.length; // title + chunks
+        if (embeddings.length === expectedCount) {
+          completedFileIndices.push(fileIndex);
+        }
+      }
+
+      // Index completed files and remove from map
+      if (completedFileIndices.length > 0) {
+        const batchMetadata: DocumentMetadata[] = [];
+        const batchEmbeddingData: Array<{ id: string; embedding: number[] }> =
+          [];
+        const batchBM25Documents: Array<{ docId: string; content: string }> =
+          [];
+
+        for (const fileIndex of completedFileIndices) {
+          const { operation, file, chunks, indexedAt } =
+            fileChunkDataList[fileIndex];
+          const fileEmbeddings = fileEmbeddingsMap.get(fileIndex)!;
+
+          try {
+            const { metadata, embeddingData, bm25Documents } =
+              this.prepareFileIndexData(
+                file,
+                chunks,
+                fileEmbeddings,
+                indexedAt
+              );
+
+            batchMetadata.push(...metadata);
+            batchEmbeddingData.push(...embeddingData);
+            batchBM25Documents.push(...bm25Documents);
+
+            if (progressCallback) {
+              await progressCallback(
+                fileIndex + 1,
+                fileChunkDataList.length,
+                file.path
+              );
+            }
+
+            this.updateStatus({
+              action: this.getOperationAction(operation.type),
+              file: file.basename,
+              filePath: file.path,
+              current: fileIndex + 1,
+              total: fileChunkDataList.length,
+            });
+
+            this.log(`${this.getOperationAction(operation.type)} ${file.path}`);
+          } catch (error) {
+            this.warn(`Failed to prepare ${file.path}: ${error}`);
+            errorCount++;
+          }
+
+          fileEmbeddingsMap.delete(fileIndex);
+        }
+
+        // Write this batch to stores
+        if (batchMetadata.length > 0) {
+          await Promise.all([
+            this.metadataStore.addDocuments(batchMetadata),
+            this.embeddingStore.addEmbeddings(batchEmbeddingData),
+            this.bm25Store.indexDocumentBatch(batchBM25Documents),
+          ]);
+        }
+      }
+
+      // Update progress
+      const progress = Math.min(i + BATCH_SIZE, allTextItems.length);
+      this.log(`Processed: ${progress}/${allTextItems.length} texts`);
+    }
+
+    // Index any remaining files (shouldn't happen, but just in case)
+    if (fileEmbeddingsMap.size > 0) {
+      const batchMetadata: DocumentMetadata[] = [];
+      const batchEmbeddingData: Array<{ id: string; embedding: number[] }> = [];
+      const batchBM25Documents: Array<{ docId: string; content: string }> = [];
+
+      for (const [fileIndex, fileEmbeddings] of fileEmbeddingsMap.entries()) {
+        const { operation, file, chunks, indexedAt } =
+          fileChunkDataList[fileIndex];
+
+        try {
+          const { metadata, embeddingData, bm25Documents } =
+            this.prepareFileIndexData(file, chunks, fileEmbeddings, indexedAt);
+
+          batchMetadata.push(...metadata);
+          batchEmbeddingData.push(...embeddingData);
+          batchBM25Documents.push(...bm25Documents);
+
+          this.log(`${this.getOperationAction(operation.type)} ${file.path}`);
+        } catch (error) {
+          this.warn(`Failed to prepare ${file.path}: ${error}`);
+          errorCount++;
+        }
+      }
+
+      if (batchMetadata.length > 0) {
+        await Promise.all([
+          this.metadataStore.addDocuments(batchMetadata),
+          this.embeddingStore.addEmbeddings(batchEmbeddingData),
+          this.bm25Store.indexDocumentBatch(batchBM25Documents),
+        ]);
+      }
+    }
+
+    this.log('Batch indexing complete');
     return errorCount;
   }
 
-  /**
-   * Core operation processing logic
-   * Assumes bulk deletion has already been performed
-   */
-  private async processOperationCore(operation: FileOperation): Promise<void> {
-    switch (operation.type) {
-      case 'create':
-      case 'modify':
-        if (operation.file) {
-          await this.indexFileInternalCore(operation.file);
-        }
-        break;
-
-      case 'delete':
-        // Nothing to do, already deleted in batch
-        break;
-
-      case 'rename':
-        if (operation.file) {
-          await this.indexFileInternalCore(operation.file);
-        }
-        break;
+  private prepareFileIndexData(
+    file: TFile,
+    chunks: Array<{ content: string; headings: string[] }>,
+    embeddings: Array<{
+      type: 'title' | 'chunk';
+      chunkIndex?: number;
+      embedding: number[];
+    }>,
+    indexedAt: number
+  ): {
+    metadata: DocumentMetadata[];
+    embeddingData: Array<{ id: string; embedding: number[] }>;
+    bm25Documents: Array<{ docId: string; content: string }>;
+  } {
+    const titleEmbedding = embeddings.find(e => e.type === 'title')?.embedding;
+    if (!titleEmbedding) {
+      throw new Error(`Title embedding not found for ${file.path}`);
     }
+
+    if (chunks.length === 0) {
+      // Empty file: index only title
+      const docId = `${file.path}#0`;
+      return {
+        metadata: [
+          {
+            id: docId,
+            filePath: file.path,
+            title: file.basename,
+            content: '',
+            headings: [],
+            mtime: file.stat.mtime,
+            size: file.stat.size,
+            indexedAt,
+          },
+        ],
+        embeddingData: [
+          { id: `${file.path}#title`, embedding: titleEmbedding },
+        ],
+        bm25Documents: [
+          { docId: `${file.path}#title`, content: file.basename },
+        ],
+      };
+    }
+
+    // Non-empty file: process chunks
+    const chunkContents = chunks.map(c => c.content);
+    const metadata: DocumentMetadata[] = [];
+    const embeddingData: Array<{ id: string; embedding: number[] }> = [];
+    const bm25Documents: Array<{ docId: string; content: string }> = [];
+
+    // Add metadata for each chunk
+    for (let i = 0; i < chunks.length; i++) {
+      metadata.push({
+        id: `${file.path}#${i}`,
+        filePath: file.path,
+        title: file.basename,
+        content: chunkContents[i],
+        headings: chunks[i].headings,
+        mtime: file.stat.mtime,
+        size: file.stat.size,
+        indexedAt,
+      });
+    }
+
+    // Add title to BM25 and embeddings
+    bm25Documents.push({ docId: `${file.path}#title`, content: file.basename });
+    embeddingData.push({ id: `${file.path}#title`, embedding: titleEmbedding });
+
+    // Add chunks to BM25 and embeddings
+    for (let i = 0; i < chunks.length; i++) {
+      bm25Documents.push({
+        docId: `${file.path}#${i}`,
+        content: chunkContents[i],
+      });
+    }
+
+    for (const emb of embeddings) {
+      if (emb.type === 'chunk' && emb.chunkIndex !== undefined) {
+        embeddingData.push({
+          id: `${file.path}#${emb.chunkIndex}`,
+          embedding: emb.embedding,
+        });
+      }
+    }
+
+    return { metadata, embeddingData, bm25Documents };
   }
 
   private getOperationAction(type: FileOperation['type']): string {

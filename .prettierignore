@@ -6,6 +6,5 @@ src/generated/**/*
 data.json
 data.*.json
 
-bench/.venv
-bench/datasets
-bench/qrels
+bench/
+!bench/README.md

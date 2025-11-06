@@ -17,7 +17,7 @@ import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
 
 export function getDBName(embedderType: EmbedderType): string {
-  return embedderType === 'transformers' ? 'sonar-db' : 'sonar-db-bakup';
+  return embedderType === 'transformers' ? 'sonar-db-bench' : 'sonar-db-bakup';
 }
 export const DB_VERSION = 1;
 

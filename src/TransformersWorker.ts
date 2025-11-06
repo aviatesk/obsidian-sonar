@@ -47,11 +47,9 @@ export class TransformersWorker extends WithLogging {
     this.log('Initializing...');
 
     try {
-      // Create Blob URL from inlined Worker code
       const blob = new Blob([WORKER_MJS_TEXT], { type: 'text/javascript' });
       const workerUrl = URL.createObjectURL(blob);
 
-      // Create Module Worker from Blob URL
       const worker = new Worker(workerUrl, {
         type: 'module',
         name: 'transformers-embed-worker',
@@ -72,12 +70,10 @@ export class TransformersWorker extends WithLogging {
         this.error(`Worker message error: ${JSON.stringify(event.data)}`);
       });
 
-      // Set up message listener
       worker.addEventListener('message', this.handleMessage.bind(this));
 
       this.worker = worker;
 
-      // Wait for ready signal from Worker
       await this.waitForReady();
       this.log('Initialized');
     } catch (error) {
