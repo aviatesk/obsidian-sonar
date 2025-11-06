@@ -1,0 +1,9 @@
+# Datasets
+datasets/
+
+# Python
+.venv/
+*.egg-info/
+
+# Benchmark outputs
+runs/

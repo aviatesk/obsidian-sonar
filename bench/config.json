@@ -1,0 +1,64 @@
+{
+  "datasets": {
+    "miracl_ja": {
+      "name": "MIRACL Japanese",
+      "source": "https://huggingface.co/datasets/miracl/miracl",
+      "language": "ja",
+      "task": "short",
+      "subset": {
+        "n_queries": 200,
+        "bm25_top_m": 200,
+        "vector_top_k": 200
+      }
+    },
+    "miracl_en": {
+      "name": "MIRACL English",
+      "source": "https://huggingface.co/datasets/miracl/miracl",
+      "language": "en",
+      "task": "short",
+      "subset": {
+        "n_queries": 200,
+        "bm25_top_m": 200,
+        "vector_top_k": 200
+      }
+    },
+    "scidocs": {
+      "name": "SCIDOCS",
+      "source": "https://huggingface.co/datasets/BeIR/scidocs",
+      "language": "en",
+      "task": "long",
+      "subset": {
+        "n_queries": 300,
+        "bm25_top_m": 200,
+        "vector_top_k": 200
+      }
+    }
+  },
+  "models": {
+    "e5_small": {
+      "name": "intfloat/multilingual-e5-small",
+      "dims": 384,
+      "use_for_subset": true
+    },
+    "e5_base": {
+      "name": "intfloat/multilingual-e5-base",
+      "dims": 768
+    },
+    "e5_large": {
+      "name": "intfloat/multilingual-e5-large",
+      "dims": 1024
+    },
+    "bge_m3": {
+      "name": "BAAI/bge-m3",
+      "dims": 1024
+    }
+  },
+  "search": {
+    "topk": 100,
+    "rrf_k": 60,
+    "chunk_size": 512
+  },
+  "evaluation": {
+    "metrics": ["ndcg@10", "recall@10", "recall@100", "mrr@10", "map"]
+  }
+}
