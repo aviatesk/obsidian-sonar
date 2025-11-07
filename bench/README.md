@@ -172,7 +172,6 @@ uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/miracl_ja_dev_miracl_en_dev_subset/corpus.jsonl \
   --output embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/corpus_embeddings.jsonl \
   --model intfloat/multilingual-e5-base \
-  --batch-size 128
 ```
 
 Generate query embeddings:
@@ -182,7 +181,6 @@ uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
   --output embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl \
   --model intfloat/multilingual-e5-base \
-  --batch-size 128
 ```
 
 ###### SCIDOCS embeddings
@@ -194,7 +192,6 @@ uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/scidocs_subset/corpus.jsonl \
   --output embeddings/scidocs_subset/multilingual-e5-base/corpus_embeddings.jsonl \
   --model intfloat/multilingual-e5-base \
-  --batch-size 128
 ```
 
 Generate query embeddings:
@@ -204,7 +201,6 @@ uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/scidocs_subset/queries.jsonl \
   --output embeddings/scidocs_subset/multilingual-e5-base/query_embeddings.jsonl \
   --model intfloat/multilingual-e5-base \
-  --batch-size 128
 ```
 
 ###### Device selection
@@ -261,7 +257,8 @@ Skip this step if you only want to benchmark Elasticsearch and Weaviate.
 Setup benchmark configuration and run all search methods:
 
 ```bash
-VAULT = /path/to/the/vault
+VAULT=/path/to/the/vault
+DATASET=datasets/processed/miracl_ja_dev_miracl_en_dev_subset
 
 # Edit data.json to set benchmark paths (use vault-relative or absolute paths)
 # Set the following fields:
@@ -273,8 +270,8 @@ mkdir -p $VAULT/.obsidian/plugins/sonar/
 cp ../main.js ../manifest.json ../styles.css data.json $VAULT/.obsidian/plugins/sonar/
 
 # Copy queries and qrels to vault root
-cp datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl $VAULT
-cp datasets/processed/miracl_ja_dev_miracl_en_dev_subset/qrels.tsv $VAULT
+cp $DATASET/queries.jsonl $VAULT
+cp $DATASET/qrels.tsv $VAULT
 
 # Copy benchmark configuration
 cp data.json $VAULT/.obsidian/plugins/sonar/data.json
@@ -321,12 +318,6 @@ Vector, Hybrid) and output evaluation results.
 Options:
 
 ```bash
-# Run only Elasticsearch with BM25
-./runbechmark.sh --backends elasticsearch --methods bm25
-
-# Run only vector search on both backends
-./runbechmark.sh --methods vector
-
 # Use a different dataset
 ./runbechmark.sh --dataset datasets/processed/scidocs_subset
 

@@ -4,7 +4,7 @@ set -e
 # Default configuration
 DATASET="datasets/processed/miracl_ja_dev_miracl_en_dev_subset"
 MODEL="multilingual-e5-base"
-OUTPUT_DIR="runs"
+OUTPUT_DIR=""
 BACKENDS="elasticsearch,weaviate"
 METHODS="bm25,vector,hybrid"
 
@@ -39,7 +39,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --model NAME          Model name for embeddings path (default: multilingual-e5-base)"
             echo "  --backends LIST       Comma-separated list: elasticsearch,weaviate (default: both)"
             echo "  --methods LIST        Comma-separated list: bm25,vector,hybrid (default: all)"
-            echo "  --output-dir PATH     Output directory for results (default: runs)"
+            echo "  --output-dir PATH     Output directory for results (default: runs/<dataset-name>/<model-name>)"
             echo "  --help                Show this help message"
             echo ""
             echo "Example:"
@@ -65,6 +65,11 @@ QRELS="${DATASET}/qrels.tsv"
 DATASET_NAME=$(basename "$DATASET")
 EMBEDDINGS="embeddings/${DATASET_NAME}/${MODEL}/corpus_embeddings.jsonl"
 QUERY_EMBEDDINGS="embeddings/${DATASET_NAME}/${MODEL}/query_embeddings.jsonl"
+
+# Set default output directory if not specified
+if [ -z "$OUTPUT_DIR" ]; then
+    OUTPUT_DIR="runs/${DATASET_NAME}/${MODEL}"
+fi
 
 # Check if required files exist
 if [ ! -f "$CORPUS" ]; then

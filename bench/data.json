@@ -14,7 +14,7 @@
   "indexPath": "",
   "debugMode": "log",
   "excludedPaths": [],
-  "autoOpenRelatedNotes": true,
+  "autoOpenRelatedNotes": false,
   "autoIndex": false,
   "relatedNotesDebounceMs": 5000,
   "statusBarMaxLength": 40,

@@ -345,6 +345,18 @@ export class IndexManager extends WithLogging {
       return 0;
     }
 
+    // Performance timing
+    const timings = {
+      deletion: 0,
+      fileRead: 0,
+      chunking: 0,
+      embeddingGeneration: 0,
+      dbWrite: 0,
+      bm25Indexing: 0,
+      workerCalls: 0,
+    };
+    const startTotal = Date.now();
+
     // Batch delete all affected files from all stores first
     const filesToDelete: string[] = [];
     for (const operation of operations) {
@@ -361,6 +373,7 @@ export class IndexManager extends WithLogging {
     }
 
     if (filesToDelete.length > 0) {
+      const deletionStart = Date.now();
       this.log(`Deleting ${filesToDelete.length} files...`);
 
       // Get all document IDs from MetadataStore for these files (parallel)
@@ -381,6 +394,7 @@ export class IndexManager extends WithLogging {
         this.bm25Store.deleteDocuments(allDocIds),
       ]);
 
+      timings.deletion = Date.now() - deletionStart;
       this.log(`Deleted ${allDocIds.length} documents`);
     }
 
@@ -411,27 +425,61 @@ export class IndexManager extends WithLogging {
 
     for (const operation of indexOperations) {
       const file = operation.file!;
+
+      const readStart = Date.now();
+      let content;
       try {
-        const content = await this.vault.cachedRead(file);
-        const chunks = await createChunks(
-          content,
-          this.configManager.get('maxChunkSize'),
-          this.configManager.get('chunkOverlap'),
-          this.embedder
-        );
-        fileChunkDataList.push({
-          operation,
-          file,
-          chunks,
-          indexedAt: Date.now(),
-        });
+        content = await this.vault.cachedRead(file);
       } catch (error) {
-        this.warn(`Failed to prepare ${operation.file?.path}: ${error}`);
+        this.warn(`Failed to read ${file.path}: ${error}`);
         errorCount++;
+        continue;
+      }
+      timings.fileRead += Date.now() - readStart;
+
+      const chunkStart = Date.now();
+      const chunks = await createChunks(
+        content,
+        this.configManager.get('maxChunkSize'),
+        this.configManager.get('chunkOverlap'),
+        this.embedder
+      );
+      timings.chunking += Date.now() - chunkStart;
+
+      fileChunkDataList.push({
+        operation,
+        file,
+        chunks,
+        indexedAt: Date.now(),
+      });
+    }
+
+    // Step 2: Index all BM25 documents upfront (before embedding generation)
+    this.log('Preparing BM25 documents...');
+    const allBM25Documents: Array<{ docId: string; content: string }> = [];
+    for (const { file, chunks } of fileChunkDataList) {
+      allBM25Documents.push({
+        docId: `${file.path}#title`,
+        content: file.basename,
+      });
+      for (let i = 0; i < chunks.length; i++) {
+        allBM25Documents.push({
+          docId: `${file.path}#${i}`,
+          content: chunks[i].content,
+        });
       }
     }
 
-    // Step 2: Collect all texts (titles + chunks) with metadata
+    if (allBM25Documents.length > 0) {
+      this.log(`Indexing ${allBM25Documents.length} BM25 documents...`);
+      const bm25Start = Date.now();
+      await this.bm25Store.indexDocumentBatch(allBM25Documents);
+      timings.bm25Indexing = Date.now() - bm25Start;
+      this.log(`Indexed ${allBM25Documents.length} BM25 documents`);
+    }
+
+    // Step 3: Process embeddings in batches
+    // Prepare all texts (titles + chunks) with metadata
     interface TextItem {
       text: string;
       fileIndex: number;
@@ -459,8 +507,7 @@ export class IndexManager extends WithLogging {
       }
     }
 
-    // Step 3: Process in batches (batch size: 32)
-    // Generate embeddings for batch -> immediately index -> repeat
+    // Generate embeddings for batch -> index metadata/embeddings
     const BATCH_SIZE = 32;
     this.log(
       `Processing ${allTextItems.length} texts in batches of ${BATCH_SIZE}...`
@@ -473,7 +520,6 @@ export class IndexManager extends WithLogging {
         embedding: number[];
       }>
     >();
-
     for (let i = 0; i < allTextItems.length; i += BATCH_SIZE) {
       const batchItems = allTextItems.slice(
         i,
@@ -482,10 +528,13 @@ export class IndexManager extends WithLogging {
       const batchTexts = batchItems.map(item => item.text);
 
       // Generate embeddings for this batch
+      const embeddingStart = Date.now();
       const batchEmbeddings = await this.embedder.getEmbeddings(
         batchTexts,
         'passage'
       );
+      timings.embeddingGeneration += Date.now() - embeddingStart;
+      timings.workerCalls++;
 
       // Associate embeddings with files
       for (let j = 0; j < batchItems.length; j++) {
@@ -517,100 +566,93 @@ export class IndexManager extends WithLogging {
         const batchMetadata: DocumentMetadata[] = [];
         const batchEmbeddingData: Array<{ id: string; embedding: number[] }> =
           [];
-        const batchBM25Documents: Array<{ docId: string; content: string }> =
-          [];
 
         for (const fileIndex of completedFileIndices) {
           const { operation, file, chunks, indexedAt } =
             fileChunkDataList[fileIndex];
           const fileEmbeddings = fileEmbeddingsMap.get(fileIndex)!;
 
-          try {
-            const { metadata, embeddingData, bm25Documents } =
-              this.prepareFileIndexData(
-                file,
-                chunks,
-                fileEmbeddings,
-                indexedAt
-              );
+          // This should never throw - all embeddings are guaranteed to exist
+          const indexData = this.prepareFileIndexData(
+            file,
+            chunks,
+            fileEmbeddings,
+            indexedAt
+          );
 
-            batchMetadata.push(...metadata);
-            batchEmbeddingData.push(...embeddingData);
-            batchBM25Documents.push(...bm25Documents);
+          batchMetadata.push(...indexData.metadata);
+          batchEmbeddingData.push(...indexData.embeddingData);
 
-            if (progressCallback) {
+          if (progressCallback) {
+            try {
               await progressCallback(
                 fileIndex + 1,
                 fileChunkDataList.length,
                 file.path
               );
+            } catch (error) {
+              this.warn(`Progress callback failed for ${file.path}: ${error}`);
             }
-
-            this.updateStatus({
-              action: this.getOperationAction(operation.type),
-              file: file.basename,
-              filePath: file.path,
-              current: fileIndex + 1,
-              total: fileChunkDataList.length,
-            });
-
-            this.log(`${this.getOperationAction(operation.type)} ${file.path}`);
-          } catch (error) {
-            this.warn(`Failed to prepare ${file.path}: ${error}`);
-            errorCount++;
           }
+
+          this.updateStatus({
+            action: this.getOperationAction(operation.type),
+            file: file.basename,
+            filePath: file.path,
+            current: fileIndex + 1,
+            total: fileChunkDataList.length,
+          });
+
+          this.log(`${this.getOperationAction(operation.type)} ${file.path}`);
 
           fileEmbeddingsMap.delete(fileIndex);
         }
 
-        // Write this batch to stores
+        // Write this batch to stores (metadata + embeddings only)
         if (batchMetadata.length > 0) {
+          const writeStart = Date.now();
           await Promise.all([
             this.metadataStore.addDocuments(batchMetadata),
             this.embeddingStore.addEmbeddings(batchEmbeddingData),
-            this.bm25Store.indexDocumentBatch(batchBM25Documents),
           ]);
+          timings.dbWrite += Date.now() - writeStart;
         }
       }
 
-      // Update progress
       const progress = Math.min(i + BATCH_SIZE, allTextItems.length);
       this.log(`Processed: ${progress}/${allTextItems.length} texts`);
     }
 
-    // Index any remaining files (shouldn't happen, but just in case)
+    // Debug assertion: all files should have been indexed
     if (fileEmbeddingsMap.size > 0) {
-      const batchMetadata: DocumentMetadata[] = [];
-      const batchEmbeddingData: Array<{ id: string; embedding: number[] }> = [];
-      const batchBM25Documents: Array<{ docId: string; content: string }> = [];
-
-      for (const [fileIndex, fileEmbeddings] of fileEmbeddingsMap.entries()) {
-        const { operation, file, chunks, indexedAt } =
-          fileChunkDataList[fileIndex];
-
-        try {
-          const { metadata, embeddingData, bm25Documents } =
-            this.prepareFileIndexData(file, chunks, fileEmbeddings, indexedAt);
-
-          batchMetadata.push(...metadata);
-          batchEmbeddingData.push(...embeddingData);
-          batchBM25Documents.push(...bm25Documents);
-
-          this.log(`${this.getOperationAction(operation.type)} ${file.path}`);
-        } catch (error) {
-          this.warn(`Failed to prepare ${file.path}: ${error}`);
-          errorCount++;
-        }
-      }
-
-      if (batchMetadata.length > 0) {
-        await Promise.all([
-          this.metadataStore.addDocuments(batchMetadata),
-          this.embeddingStore.addEmbeddings(batchEmbeddingData),
-          this.bm25Store.indexDocumentBatch(batchBM25Documents),
-        ]);
-      }
+      const remainingFiles = Array.from(fileEmbeddingsMap.keys())
+        .map(idx => fileChunkDataList[idx].file.path)
+        .join(', ');
+      this.error(
+        `BUG: ${fileEmbeddingsMap.size} files remain in embeddings map after processing: ${remainingFiles}`
+      );
+      throw new Error(
+        `Incomplete file indexing detected: ${fileEmbeddingsMap.size} files not indexed`
+      );
     }
+
+    const totalTime = Date.now() - startTotal;
+
+    // Log detailed timing breakdown
+    this.log('=== Performance Timing Breakdown ===');
+    this.log(`Total time: ${totalTime}ms (${(totalTime / 1000).toFixed(2)}s)`);
+    this.log(`  Deletion: ${timings.deletion}ms`);
+    this.log(`  File read: ${timings.fileRead}ms`);
+    this.log(`  Chunking: ${timings.chunking}ms`);
+    this.log(
+      `  Embedding generation: ${timings.embeddingGeneration}ms (${timings.workerCalls} worker calls)`
+    );
+    this.log(`  DB write (metadata + embeddings): ${timings.dbWrite}ms`);
+    this.log(`  BM25 indexing: ${timings.bm25Indexing}ms`);
+    this.log(
+      `  Other/overhead: ${totalTime - (timings.deletion + timings.fileRead + timings.chunking + timings.embeddingGeneration + timings.dbWrite + timings.bm25Indexing)}ms`
+    );
+    this.log('====================================');
 
     this.log('Batch indexing complete');
     return errorCount;

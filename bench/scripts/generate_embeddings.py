@@ -98,6 +98,7 @@ def generate_embeddings(
     device: str = "auto",
     max_chunk_tokens: int = 512,
     chunk_overlap: int = 128,
+    limit: int = None,
 ) -> None:
     """
     Generate chunk-level embeddings for corpus documents.
@@ -114,6 +115,7 @@ def generate_embeddings(
         device: Device to use ('auto', 'cuda', 'mps', 'cpu')
         max_chunk_tokens: Max tokens per chunk (default: 512)
         chunk_overlap: Number of overlapping tokens between chunks (default: 128)
+        limit: Maximum number of documents to process (default: None = all)
     """
     device = detect_device(device)
     print(f"Using device: {device}")
@@ -131,30 +133,54 @@ def generate_embeddings(
     print(f"Counting documents in {corpus_file}...")
     with open(corpus_file, "r", encoding="utf-8") as f:
         total_docs = sum(1 for _ in f)
-    print(f"Total documents: {total_docs}")
+
+    if limit is not None and limit < total_docs:
+        total_docs = limit
+        print(f"Limited to: {total_docs} documents (--limit {limit})")
+    else:
+        print(f"Total documents: {total_docs}")
 
     # Process documents one by one (streaming)
     print(f"Generating embeddings...")
     doc_count = 0
     chunk_count = 0
 
+    # Performance timing
+    import time
+    timings = {
+        "text_prep": 0.0,
+        "chunking": 0.0,
+        "embedding": 0.0,
+        "write": 0.0,
+    }
+    start_total = time.time()
+
     with (
         open(corpus_file, "r", encoding="utf-8") as fin,
         open(output_file, "w", encoding="utf-8") as fout,
     ):
         for line in tqdm(fin, total=total_docs, desc="Processing"):
+            # Check limit
+            if limit is not None and doc_count >= limit:
+                break
+
             doc = json.loads(line)
             doc_id = doc["_id"]
 
             # Combine title and text for embedding
+            prep_start = time.time()
             text = doc.get("title", "") + " " + doc.get("text", "")
             if not text.strip():
                 text = doc.get("text", "")
+            timings["text_prep"] += time.time() - prep_start
 
             # Split into chunks if needed
+            chunk_start = time.time()
             chunks = chunk_text(text, max_chunk_tokens, tokenizer, chunk_overlap)
+            timings["chunking"] += time.time() - chunk_start
 
             # Generate embeddings for all chunks
+            embed_start = time.time()
             chunk_embeddings = model.encode(
                 chunks,
                 batch_size=batch_size,
@@ -162,8 +188,10 @@ def generate_embeddings(
                 convert_to_numpy=True,
                 normalize_embeddings=False,
             )
+            timings["embedding"] += time.time() - embed_start
 
             # Write each chunk as a separate entry
+            write_start = time.time()
             for i, chunk_embedding in enumerate(chunk_embeddings):
                 chunk_id = f"{doc_id}#chunk{i}"
                 entry = {
@@ -175,14 +203,28 @@ def generate_embeddings(
                 }
                 fout.write(json.dumps(entry, ensure_ascii=False) + "\n")
                 chunk_count += 1
+            timings["write"] += time.time() - write_start
 
             doc_count += 1
+
+    total_time = time.time() - start_total
 
     avg_chunks = chunk_count / doc_count if doc_count > 0 else 0
     print(f"Generated embeddings for {doc_count} documents")
     print(f"Total chunks: {chunk_count} (avg: {avg_chunks:.2f} chunks/doc)")
     print(f"Embedding dimensions: {model.get_sentence_embedding_dimension()}")
     print(f"Output written to: {output_file}")
+
+    # Print timing breakdown
+    print("\n=== Performance Timing Breakdown ===")
+    print(f"Total time: {total_time:.2f}s")
+    print(f"  Text prep: {timings['text_prep']:.2f}s ({timings['text_prep']/total_time*100:.1f}%)")
+    print(f"  Chunking: {timings['chunking']:.2f}s ({timings['chunking']/total_time*100:.1f}%)")
+    print(f"  Embedding: {timings['embedding']:.2f}s ({timings['embedding']/total_time*100:.1f}%)")
+    print(f"  Write: {timings['write']:.2f}s ({timings['write']/total_time*100:.1f}%)")
+    other = total_time - sum(timings.values())
+    print(f"  Other/overhead: {other:.2f}s ({other/total_time*100:.1f}%)")
+    print("====================================")
 
 
 def main():
@@ -250,6 +292,12 @@ Examples:
         default=128,
         help="Number of overlapping tokens between chunks (default: 128)",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum number of documents to process (default: None = all)",
+    )
 
     args = parser.parse_args()
 
@@ -271,6 +319,7 @@ Examples:
         device=args.device,
         max_chunk_tokens=args.max_chunk_tokens,
         chunk_overlap=args.chunk_overlap,
+        limit=args.limit,
     )
 
 
