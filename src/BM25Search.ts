@@ -25,15 +25,16 @@ export class BM25Search extends WithLogging {
   /**
    * Search title only
    * ChunkId format: "filePath#title"
+   * Computes BM25 for all titles, returns all results sorted by score
    */
   async searchTitle(
     query: string,
-    topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    const chunkTopKMultiplier = this.configManager.get('chunkTopKMultiplier');
-    const chunkCount = options?.chunkTopK ?? topK * chunkTopKMultiplier;
-    const bm25Results = await this.bm25Store.search(query, chunkCount);
+    const bm25Results = await this.bm25Store.search(
+      query,
+      Number.MAX_SAFE_INTEGER
+    );
 
     if (bm25Results.length === 0) {
       return [];
@@ -45,25 +46,29 @@ export class BM25Search extends WithLogging {
       const chunkId = result.docId;
       if (chunkId.endsWith('#title')) {
         const filePath = this.extractFilePathFromChunkId(chunkId);
+        if (options?.excludeFilePath && filePath === options.excludeFilePath) {
+          continue;
+        }
         titleScores.set(filePath, result.score);
       }
     }
 
-    return this.createSearchResults(titleScores, topK);
+    return this.createSearchResults(titleScores);
   }
 
   /**
    * Search content only
    * ChunkId format: "filePath#0", "filePath#1", ...
+   * Computes BM25 for all chunks, aggregates by file, returns all documents sorted by score
    */
   async searchContent(
     query: string,
-    topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    const chunkTopKMultiplier = this.configManager.get('chunkTopKMultiplier');
-    const chunkCount = options?.chunkTopK ?? topK * chunkTopKMultiplier;
-    const bm25Results = await this.bm25Store.search(query, chunkCount);
+    const bm25Results = await this.bm25Store.search(
+      query,
+      Number.MAX_SAFE_INTEGER
+    );
 
     if (bm25Results.length === 0) {
       return [];
@@ -75,7 +80,9 @@ export class BM25Search extends WithLogging {
       const chunkId = result.docId;
       if (!chunkId.endsWith('#title')) {
         const filePath = this.extractFilePathFromChunkId(chunkId);
-
+        if (options?.excludeFilePath && filePath === options.excludeFilePath) {
+          continue;
+        }
         if (!fileScores.has(filePath)) {
           fileScores.set(filePath, []);
         }
@@ -98,15 +105,15 @@ export class BM25Search extends WithLogging {
       rrfK: aggRrfK,
     });
 
-    return this.createSearchResults(aggregatedScores, topK);
+    return this.createSearchResults(aggregatedScores);
   }
 
   /**
    * Helper to create SearchResult array from score map
+   * Returns all results sorted by score (no limit)
    */
   private async createSearchResults(
-    scoreMap: Map<string, number>,
-    topK: number
+    scoreMap: Map<string, number>
   ): Promise<SearchResult[]> {
     if (scoreMap.size === 0) {
       return [];
@@ -146,10 +153,10 @@ export class BM25Search extends WithLogging {
       });
     }
 
-    // Sort by score and limit to topK
+    // Sort by score and return all results (no topK limit)
     searchResults.sort((a, b) => b.score - a.score);
 
-    return searchResults.slice(0, topK);
+    return searchResults;
   }
 
   /**

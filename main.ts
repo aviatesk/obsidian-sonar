@@ -1,4 +1,4 @@
-import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import { App, Modal, Notice, Plugin, WorkspaceLeaf } from 'obsidian';
 import { SearchManager } from './src/SearchManager';
 import { EmbeddingSearch } from './src/EmbeddingSearch';
 import { BM25Store } from './src/BM25Store';
@@ -192,6 +192,20 @@ export default class SonarPlugin extends Plugin {
     return this.indexManager !== null;
   }
 
+  private checkInitialized(): boolean {
+    if (!this.isInitialized()) {
+      new Notice('Sonar is still initializing. Please wait...');
+      return false;
+    }
+    return true;
+  }
+
+  private getCurrentConfigInfo(): string {
+    const embedderType = this.configManager.get('embedderType');
+    const embeddingModel = this.configManager.get('embeddingModel');
+    return `Embedder: ${embedderType}\nModel: ${embeddingModel}`;
+  }
+
   private registerViews(
     searchManager: SearchManager,
     embedder: Embedder
@@ -213,23 +227,40 @@ export default class SonarPlugin extends Plugin {
       id: 'sync-index',
       name: 'Sync search index with vault',
       callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
+        if (!this.checkInitialized()) return;
         await this.indexManager!.syncIndex();
       },
     });
 
-    // TODO Delete this command when releasing
+    this.addCommand({
+      id: 'clear-current-index',
+      name: 'Clear current search index',
+      callback: async () => {
+        if (!this.checkInitialized()) return;
+        const confirmMessage = `Clear current search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will remove all indexed data for the current configuration. This cannot be undone.`;
+        const confirmed = await this.confirmAction(confirmMessage);
+        if (!confirmed) return;
+        await this.indexManager!.clearCurrentIndex();
+        new Notice('Current index cleared');
+      },
+    });
+
+    this.addCommand({
+      id: 'clear-vault-indices',
+      name: 'Clear all search indices for this vault',
+      callback: async () => {
+        await this.clearAllVaultIndices();
+      },
+    });
+
     this.addCommand({
       id: 'rebuild-index',
       name: 'Rebuild entire search index',
       callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
+        if (!this.checkInitialized()) return;
+        const confirmMessage = `Rebuild entire search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear all indexed data and reindex all files. This cannot be undone.`;
+        const confirmed = await this.confirmAction(confirmMessage);
+        if (!confirmed) return;
         await this.indexManager!.rebuildIndex((current, total, filePath) => {
           this.log(`Rebuilding index: ${current}/${total} - ${filePath}`);
         });
@@ -240,10 +271,7 @@ export default class SonarPlugin extends Plugin {
       id: 'index-current-file',
       name: 'Index current file',
       callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
+        if (!this.checkInitialized()) return;
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
           new Notice('No active file');
@@ -304,10 +332,7 @@ export default class SonarPlugin extends Plugin {
       id: 'show-indexable-files-stats',
       name: 'Show indexable files statistics',
       callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
+        if (!this.checkInitialized()) return;
 
         const startTime = Date.now();
         try {
@@ -344,18 +369,13 @@ export default class SonarPlugin extends Plugin {
       id: 'run-benchmark',
       name: 'Run benchmark (BM25, Vector, Hybrid)',
       callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
-
+        if (!this.checkInitialized()) return;
         const benchmarkRunner = new BenchmarkRunner(
           this.app,
           this.configManager,
           this.searchManager!,
           this.indexManager!
         );
-
         try {
           await benchmarkRunner.runBenchmark();
         } catch (error) {
@@ -374,10 +394,7 @@ export default class SonarPlugin extends Plugin {
   }
 
   async activateRelatedNotesView() {
-    if (!this.isInitialized()) {
-      new Notice('Sonar is still initializing. Please wait...');
-      return;
-    }
+    if (!this.checkInitialized()) return;
 
     const { workspace } = this.app;
 
@@ -401,17 +418,101 @@ export default class SonarPlugin extends Plugin {
   }
 
   openSemanticNoteFinder(): void {
-    if (!this.isInitialized()) {
-      new Notice('Sonar is still initializing. Please wait...');
-      return;
-    }
-
+    if (!this.checkInitialized()) return;
     const modal = new SemanticNoteFinder(
       this.app,
       this.searchManager!,
       this.configManager
     );
     modal.open();
+  }
+
+  async clearAllVaultIndices(): Promise<void> {
+    const vaultName = this.app.vault.getName();
+    const databases = await MetadataStore.listDatabasesForVault(vaultName);
+
+    if (databases.length === 0) {
+      new Notice(`No indices found for vault: ${vaultName}`);
+      return;
+    }
+
+    this.log(
+      `Found ${databases.length} database(s) for vault ${vaultName}: ${databases.join(', ')}`
+    );
+
+    const confirmMessage = `Found ${databases.length} database(s) for vault "${vaultName}":\n\n${databases.map(db => `  - ${db}`).join('\n')}\n\nDelete all? This cannot be undone.`;
+
+    const confirmed = await this.confirmAction(confirmMessage);
+    if (!confirmed) {
+      return;
+    }
+
+    let deletedCount = 0;
+    for (const dbName of databases) {
+      try {
+        await MetadataStore.deleteDatabase(dbName);
+        deletedCount++;
+        this.log(`Deleted database: ${dbName}`);
+      } catch (error) {
+        this.error(`Failed to delete database ${dbName}: ${error}`);
+      }
+    }
+
+    if (deletedCount > 0) {
+      new Notice(
+        `Deleted ${deletedCount} database(s). Please reload Obsidian to reinitialize.`,
+        0
+      );
+      this.log(`Deleted ${deletedCount} database(s) for vault ${vaultName}`);
+    } else {
+      new Notice('Failed to delete any databases - check console');
+    }
+  }
+
+  private async confirmAction(message: string): Promise<boolean> {
+    return new Promise(resolve => {
+      const modal = new (class extends Modal {
+        constructor(
+          app: App,
+          private message: string,
+          private callback: (result: boolean) => void
+        ) {
+          super(app);
+        }
+
+        onOpen() {
+          const { contentEl, titleEl } = this;
+          titleEl.setText('Confirm Action');
+          contentEl.createEl('p', {
+            text: this.message,
+            attr: { style: 'white-space: pre-wrap;' },
+          });
+
+          const buttonContainer = contentEl.createDiv({
+            cls: 'modal-button-container',
+          });
+          buttonContainer
+            .createEl('button', { text: 'Cancel' })
+            .addEventListener('click', () => {
+              this.close();
+              this.callback(false);
+            });
+          buttonContainer
+            .createEl('button', { text: 'Delete All', cls: 'mod-warning' })
+            .addEventListener('click', () => {
+              this.close();
+              this.callback(true);
+            });
+        }
+
+        onClose() {
+          const { contentEl } = this;
+          contentEl.empty();
+        }
+      })(this.app, message, resolve);
+
+      modal.open();
+    });
   }
 
   async onunload() {

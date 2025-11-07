@@ -19,13 +19,20 @@ export interface SearchResult {
   fileSize: number;
 }
 
+/**
+ * Search options for both UI and benchmark searches
+ *
+ * Note: Sonar uses flat search (computes similarity for all chunks),
+ * unlike Elasticsearch/Weaviate which use ANN indexes (HNSW).
+ * This means Sonar doesn't need a chunkTopK parameter - all chunks
+ * are processed, aggregated to documents, and then sliced to topK.
+ */
 export interface SearchOptions {
   excludeFilePath?: string;
   titleWeight?: number;
   contentWeight?: number;
   embeddingWeight?: number;
   bm25Weight?: number;
-  chunkTopK?: number; // For benchmarks: directly specify chunk count instead of topK * multiplier
 }
 
 /**
@@ -51,12 +58,20 @@ export class SearchManager extends WithLogging {
   }
 
   /**
-   * Main search entry point
-   * Supports pure embedding search, pure BM25 search, or hybrid search
+   * Core search implementation (flat search - all chunks processed)
+   *
+   * Unlike Elasticsearch/Weaviate which use ANN indexes (HNSW) to efficiently
+   * retrieve top-k chunks, Sonar computes similarity for ALL chunks, then:
+   * 1. Aggregate all chunks to documents
+   * 2. Apply RRF fusion on all aggregated documents
+   * 3. Return all documents sorted by score (caller slices to desired count)
+   *
+   * @param query Search query text
+   * @param options Search weights and filters
+   * @returns All aggregated documents sorted by score (no limit)
    */
-  async search(
+  private async search(
     query: string,
-    topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
     const titleWeight = options?.titleWeight ?? 0.0;
@@ -76,12 +91,11 @@ export class SearchManager extends WithLogging {
       );
     }
 
-    // Hybrid search: combine embedding and BM25 with RRF
+    // Perform hybrid search for title and/or content
     const [titleHybrid, contentHybrid] = await Promise.all([
       titleWeight > 0
-        ? this.hybridSearchSingle(
+        ? this.hybridSearch(
             query,
-            topK,
             'title',
             embeddingWeight,
             bm25Weight,
@@ -89,9 +103,8 @@ export class SearchManager extends WithLogging {
           )
         : Promise.resolve(new Map<string, number>()),
       contentWeight > 0
-        ? this.hybridSearchSingle(
+        ? this.hybridSearch(
             query,
-            topK,
             'content',
             embeddingWeight,
             bm25Weight,
@@ -120,32 +133,58 @@ export class SearchManager extends WithLogging {
     }
 
     // Get documents and create SearchResults
-    return this.createSearchResults(finalScores, topK, options);
+    return this.createSearchResults(finalScores, options);
+  }
+
+  /**
+   * UI search entry point
+   * Uses searchResultsCount config to determine how many results to return
+   */
+  async searchUI(
+    query: string,
+    options?: SearchOptions
+  ): Promise<SearchResult[]> {
+    const searchResultsCount = this.configManager.get('searchResultsCount');
+    const results = await this.search(query, options);
+    return results.slice(0, searchResultsCount);
+  }
+
+  /**
+   * Benchmark search entry point
+   * Returns top-k documents for benchmark evaluation
+   */
+  async searchBenchmark(
+    query: string,
+    topK: number,
+    options?: SearchOptions
+  ): Promise<SearchResult[]> {
+    const results = await this.search(query, options);
+    return results.slice(0, topK);
   }
 
   /**
    * Hybrid search for either title or content
    * Returns Map<filePath, score> normalized to [0, 1] based on theoretical maximum
    */
-  private async hybridSearchSingle(
+  private async hybridSearch(
     query: string,
-    topK: number,
     type: 'title' | 'content',
     embeddingWeight: number,
     bm25Weight: number,
     options?: SearchOptions
   ): Promise<Map<string, number>> {
     // Run searches in parallel (skip if weight is 0)
+    // Both embeddingSearch and bm25Search now return ALL aggregated documents
     const [embeddingResults, bm25Results] = await Promise.all([
       embeddingWeight > 0
         ? type === 'title'
-          ? this.embeddingSearch.searchTitle(query, topK * 2, options)
-          : this.embeddingSearch.searchContent(query, topK * 2, options)
+          ? this.embeddingSearch.searchTitle(query, options)
+          : this.embeddingSearch.searchContent(query, options)
         : Promise.resolve([]),
       bm25Weight > 0
         ? type === 'title'
-          ? this.bm25Search.searchTitle(query, topK * 2, options)
-          : this.bm25Search.searchContent(query, topK * 2, options)
+          ? this.bm25Search.searchTitle(query, options)
+          : this.bm25Search.searchContent(query, options)
         : Promise.resolve([]),
     ]);
 
@@ -218,7 +257,6 @@ export class SearchManager extends WithLogging {
    */
   private async createSearchResults(
     scoreMap: Map<string, number>,
-    topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
     const documents = await this.metadataStore.getAllDocuments();
@@ -262,6 +300,6 @@ export class SearchManager extends WithLogging {
     // Sort by score (already normalized to [0, 1] based on theoretical maximum)
     results.sort((a, b) => b.score - a.score);
 
-    return results.slice(0, topK);
+    return results;
   }
 }

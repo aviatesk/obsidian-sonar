@@ -1,9 +1,9 @@
 import {
   App,
+  Modal,
   Notice,
   PluginSettingTab,
   Setting,
-  Modal,
   normalizePath,
 } from 'obsidian';
 import { ConfigManager } from '../ConfigManager';
@@ -33,8 +33,20 @@ export class SettingTab extends PluginSettingTab {
         `Rebuild index for all files in: ${this.configManager.get('indexPath')}`
       )
       .addButton(button =>
-        button.setButtonText('Rebuild').onClick(async () => {
-          if (this.plugin.indexManager) {
+        button
+          .setButtonText('Rebuild')
+          .setWarning()
+          .onClick(async () => {
+            if (!this.plugin.indexManager) {
+              new Notice('Index manager not initialized');
+              return;
+            }
+
+            const confirmed = await this.confirmRebuildIndex();
+            if (!confirmed) {
+              return;
+            }
+
             await this.plugin.indexManager.rebuildIndex(
               async (current, total, filePath) => {
                 this.configManager.logger.log(
@@ -46,10 +58,7 @@ export class SettingTab extends PluginSettingTab {
               }
             );
             await this.updateStats();
-          } else {
-            new Notice('Index manager not initialized');
-          }
-        })
+          })
       );
 
     new Setting(containerEl)
@@ -67,23 +76,43 @@ export class SettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Clear semantic search index')
-      .setDesc('Remove all indexed data')
+      .setName('Clear current search index')
+      .setDesc(
+        `Clear indexed data for current configuration (${this.configManager.get('embedderType')} / ${this.configManager.get('embeddingModel')})`
+      )
       .addButton(button =>
         button
           .setButtonText('Clear')
           .setWarning()
           .onClick(async () => {
-            const confirm = await this.confirmClearIndex();
-            if (confirm) {
-              if (this.plugin.indexManager) {
-                await this.plugin.indexManager.clearIndex();
-                new Notice('Index cleared');
-                await this.updateStats();
-              } else {
-                new Notice('Semantic search not initialized');
-              }
+            if (!this.plugin.indexManager) {
+              new Notice('Index manager not initialized');
+              return;
             }
+
+            const confirmed = await this.confirmClearCurrentIndex();
+            if (!confirmed) {
+              return;
+            }
+
+            await this.plugin.indexManager.clearCurrentIndex();
+            new Notice('Current index cleared');
+            await this.updateStats();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Clear all search indices for this vault')
+      .setDesc(
+        'Remove all indexed data for all embedders and models used in this vault'
+      )
+      .addButton(button =>
+        button
+          .setButtonText('Clear All')
+          .setWarning()
+          .onClick(async () => {
+            await this.plugin.clearAllVaultIndices();
+            await this.updateStats();
           })
       );
 
@@ -196,28 +225,10 @@ export class SettingTab extends PluginSettingTab {
       .addSlider(slider =>
         slider
           .setLimits(1, 20, 1)
-          .setValue(this.configManager.get('topK'))
+          .setValue(this.configManager.get('searchResultsCount'))
           .setDynamicTooltip()
           .onChange(async value => {
-            await this.configManager.set('topK', value);
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Multi-chunk score decay')
-      .setDesc(
-        'Controls scoring for files with multiple matching chunks. ' +
-          'Higher values (0.3-0.5) give more weight to additional chunks, favoring longer documents. ' +
-          'Lower values (0-0.2) prioritize the best match, treating all files more equally. ' +
-          'Use 0 to score by best chunk only.'
-      )
-      .addSlider(slider =>
-        slider
-          .setLimits(0, 0.5, 0.05)
-          .setValue(this.configManager.get('scoreDecay'))
-          .setDynamicTooltip()
-          .onChange(async value => {
-            await this.configManager.set('scoreDecay', value);
+            await this.configManager.set('searchResultsCount', value);
           })
       );
 
@@ -295,38 +306,56 @@ export class SettingTab extends PluginSettingTab {
       );
   }
 
-  async confirmClearIndex(): Promise<boolean> {
+  private getCurrentConfigInfo(): string {
+    const embedderType = this.configManager.get('embedderType');
+    const embeddingModel = this.configManager.get('embeddingModel');
+    return `Embedder: ${embedderType}\nModel: ${embeddingModel}`;
+  }
+
+  private async confirmAction(
+    title: string,
+    message: string,
+    actionButtonText: string
+  ): Promise<boolean> {
     return new Promise(resolve => {
       const modal = new Modal(this.app);
-      modal.titleEl.setText('Clear index');
-      modal.contentEl.setText(
-        'Are you sure you want to clear all indexed data? This action cannot be undone.'
-      );
+      modal.titleEl.setText(title);
+      modal.contentEl.setText(message);
 
-      modal.contentEl.createDiv(
-        { cls: 'modal-button-container' },
-        buttonContainer => {
-          buttonContainer
-            .createEl('button', { text: 'Cancel' })
-            .addEventListener('click', () => {
-              modal.close();
-              resolve(false);
-            });
-
-          buttonContainer
-            .createEl('button', {
-              text: 'Clear',
-              cls: 'mod-warning',
-            })
-            .addEventListener('click', () => {
-              modal.close();
-              resolve(true);
-            });
-        }
-      );
+      const buttonContainer = modal.contentEl.createDiv({
+        cls: 'modal-button-container',
+      });
+      buttonContainer
+        .createEl('button', { text: 'Cancel' })
+        .addEventListener('click', () => {
+          modal.close();
+          resolve(false);
+        });
+      buttonContainer
+        .createEl('button', { text: actionButtonText, cls: 'mod-warning' })
+        .addEventListener('click', () => {
+          modal.close();
+          resolve(true);
+        });
 
       modal.open();
     });
+  }
+
+  async confirmRebuildIndex(): Promise<boolean> {
+    return this.confirmAction(
+      'Rebuild index',
+      `Rebuild entire search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear all indexed data and reindex all files. This cannot be undone.`,
+      'Rebuild'
+    );
+  }
+
+  async confirmClearCurrentIndex(): Promise<boolean> {
+    return this.confirmAction(
+      'Clear current index',
+      `Clear current search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will remove all indexed data for the current configuration. This cannot be undone.`,
+      'Clear'
+    );
   }
 
   async updateStats() {

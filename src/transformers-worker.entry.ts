@@ -22,17 +22,35 @@ import type {
   RPCRequest,
   RPCResponse,
   ReadyMessage,
+  InitMessage,
+  UpdateLogLevelMessage,
 } from './transformers-worker-types';
 
 // Logging helpers (follows same format as main.ts)
 const COMPONENT_NAME = 'transformers-worker';
 
+// Log level state (default: 'error')
+let currentLogLevel: 'error' | 'warn' | 'log' = 'error';
+
+function shouldLog(level: 'error' | 'warn' | 'log'): boolean {
+  const levels: Record<'error' | 'warn' | 'log', number> = {
+    error: 0,
+    warn: 1,
+    log: 2,
+  };
+  return levels[level] <= levels[currentLogLevel];
+}
+
 function log(msg: string): void {
-  console.log(`[Sonar.${COMPONENT_NAME}] ${msg}`);
+  if (shouldLog('log')) {
+    console.log(`[Sonar.${COMPONENT_NAME}] ${msg}`);
+  }
 }
 
 function error(msg: string): void {
-  console.error(`[Sonar.${COMPONENT_NAME}] ${msg}`);
+  if (shouldLog('error')) {
+    console.error(`[Sonar.${COMPONENT_NAME}] ${msg}`);
+  }
 }
 
 // Configure environment for browser/Worker context
@@ -51,18 +69,19 @@ async function getFeatureExtractor(
   device: 'webgpu' | 'wasm',
   dtype: 'q8' | 'q4' | 'fp32'
 ): Promise<FeatureExtractionPipeline> {
-  const cacheKey = `${modelId}-${device}-${dtype}`;
+  const dtypeFixed = device === 'webgpu' ? 'fp16' : dtype;
+  const cacheKey = `${modelId}-${device}-${dtypeFixed}`;
   if (!featureExtractorCache.has(cacheKey)) {
     // Embedding extractor (HuggingFace calls this 'feature-extraction')
     const promise = pipeline('feature-extraction', modelId, {
       device,
       // WebGPU requires fp16 for optimal performance (hardware accelerated)
       // WASM uses quantized models (q8/q4) or fp32 for CPU efficiency
-      dtype: device === 'webgpu' ? 'fp16' : dtype,
+      dtype: dtypeFixed,
     });
     featureExtractorCache.set(cacheKey, promise);
     log(
-      `Created feature extractor cache for ${modelId} with device=${device}, dtype=${dtype}`
+      `Created feature extractor cache for ${modelId} with device=${device}, dtype=${dtypeFixed}`
     );
   }
   return featureExtractorCache.get(cacheKey)!;
@@ -78,12 +97,28 @@ async function getTokenizer(modelId: string) {
 
 // Message handler
 self.addEventListener('message', async (e: MessageEvent) => {
-  const data = e.data as Partial<RPCRequest>;
+  const data = e.data;
+
+  if (data?.__kind === 'init') {
+    const initMsg = data as InitMessage;
+    currentLogLevel = initMsg.logLevel;
+    log(`Ready (Log level set to ${currentLogLevel})`);
+    return;
+  }
+
+  if (data?.__kind === 'update-log-level') {
+    const updateMsg = data as UpdateLogLevelMessage;
+    currentLogLevel = updateMsg.logLevel;
+    log(`Log level updated to: ${currentLogLevel}`);
+    return;
+  }
+
+  const rpcData = data as Partial<RPCRequest>;
 
   // Ignore ready acknowledgment and invalid messages
-  if (!data.id || !data.method || !data.params) return;
+  if (!rpcData.id || !rpcData.method || !rpcData.params) return;
 
-  const { id, method, params } = data as RPCRequest;
+  const { id, method, params } = rpcData as RPCRequest;
 
   try {
     let result: unknown;
@@ -128,5 +163,3 @@ self.addEventListener('message', async (e: MessageEvent) => {
 });
 
 postMessage({ __kind: 'ready', ts: Date.now() } satisfies ReadyMessage);
-
-log('Ready');

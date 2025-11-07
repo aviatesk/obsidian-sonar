@@ -5,6 +5,8 @@ import type {
   RPCRequest,
   RPCResponse,
   ReadyMessage,
+  InitMessage,
+  UpdateLogLevelMessage,
   RPCMethodReturnTypes,
 } from './transformers-worker-types';
 
@@ -37,10 +39,33 @@ export class TransformersWorker extends WithLogging {
     { resolve: (value: any) => void; reject: (error: any) => void }
   >();
   private initPromise: Promise<void>;
+  private unsubscribeLogLevel?: () => void;
 
   constructor(protected configManager: ConfigManager) {
     super();
     this.initPromise = this.initialize();
+    this.setupLogLevelListener();
+  }
+
+  private setupLogLevelListener(): void {
+    this.unsubscribeLogLevel = this.configManager.subscribe(
+      'debugMode',
+      (_key, value) => {
+        this.updateLogLevel(value as 'error' | 'warn' | 'log');
+      }
+    );
+  }
+
+  private updateLogLevel(logLevel: 'error' | 'warn' | 'log'): void {
+    if (!this.worker) {
+      return;
+    }
+    const msg: UpdateLogLevelMessage = {
+      __kind: 'update-log-level',
+      logLevel,
+    };
+    this.worker.postMessage(msg);
+    this.log(`Log level updated to: ${logLevel}`);
   }
 
   private async initialize(): Promise<void> {
@@ -75,6 +100,14 @@ export class TransformersWorker extends WithLogging {
       this.worker = worker;
 
       await this.waitForReady();
+
+      const logLevel = this.configManager.get('debugMode');
+      const initMsg: InitMessage = {
+        __kind: 'init',
+        logLevel,
+      };
+      worker.postMessage(initMsg);
+
       this.log('Initialized');
     } catch (error) {
       this.error(`Failed to initialize: ${error}`);
@@ -160,6 +193,10 @@ export class TransformersWorker extends WithLogging {
   }
 
   cleanup(): void {
+    if (this.unsubscribeLogLevel) {
+      this.unsubscribeLogLevel();
+      this.unsubscribeLogLevel = undefined;
+    }
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;

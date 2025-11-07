@@ -482,7 +482,10 @@ export class IndexManager extends WithLogging {
       const batchTexts = batchItems.map(item => item.text);
 
       // Generate embeddings for this batch
-      const batchEmbeddings = await this.embedder.getEmbeddings(batchTexts);
+      const batchEmbeddings = await this.embedder.getEmbeddings(
+        batchTexts,
+        'passage'
+      );
 
       // Associate embeddings with files
       for (let j = 0; j < batchItems.length; j++) {
@@ -753,9 +756,10 @@ export class IndexManager extends WithLogging {
 
     if (chunks.length === 0) {
       // Empty file: index only title
-      const titleEmbeddings = await this.embedder.getEmbeddings([
-        file.basename,
-      ]);
+      const titleEmbeddings = await this.embedder.getEmbeddings(
+        [file.basename],
+        'passage'
+      );
       const titleEmbedding = titleEmbeddings[0];
 
       const docId = `${file.path}#0`;
@@ -809,10 +813,14 @@ export class IndexManager extends WithLogging {
         });
       }
 
-      const embeddings = await this.embedder.getEmbeddings(chunkContents);
-      const titleEmbeddings = await this.embedder.getEmbeddings([
-        file.basename,
-      ]);
+      const embeddings = await this.embedder.getEmbeddings(
+        chunkContents,
+        'passage'
+      );
+      const titleEmbeddings = await this.embedder.getEmbeddings(
+        [file.basename],
+        'passage'
+      );
       const titleEmbedding = titleEmbeddings[0];
       const embeddingData: Array<{
         id: string;
@@ -856,7 +864,7 @@ export class IndexManager extends WithLogging {
   ): Promise<void> {
     this.log('Rebuilding index...');
     const startTime = Date.now();
-    await this.clearIndex();
+    await this.clearCurrentIndex();
     const stats = await this.performSync(progressCallback);
     const duration = formatDuration(Date.now() - startTime);
     const message = `Rebuild complete: ${stats.newCount} files indexed in ${duration}${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
@@ -962,7 +970,7 @@ export class IndexManager extends WithLogging {
     this.statusBarItem.setText(`Sonar: ${paddedText}`);
   }
 
-  async clearIndex(): Promise<void> {
+  async clearCurrentIndex(): Promise<void> {
     await this.metadataStore.clearAll();
     await this.embeddingStore.clearAll();
     await this.bm25Store.clearAll();

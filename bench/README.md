@@ -268,7 +268,6 @@ VAULT = /path/to/the/vault
 #   "benchmarkQueriesPath": "queries.jsonl"
 #   "benchmarkQrelsPath": "qrels.tsv"
 #   "benchmarkOutputDir": "/path/to/your/vault/runs"
-#   "benchmarkChunkTopK": 100
 
 mkdir -p $VAULT/.obsidian/plugins/sonar/
 cp ../main.js ../manifest.json ../styles.css data.json $VAULT/.obsidian/plugins/sonar/

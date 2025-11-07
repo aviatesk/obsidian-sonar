@@ -142,18 +142,20 @@ export class BenchmarkRunner extends WithLogging {
    * Run BM25 search for all queries.
    */
   private async runBM25Search(queries: Query[]): Promise<TrecResult[]> {
-    const topK = this.configManager.get('topK');
-    const chunkTopK = this.configManager.get('benchmarkChunkTopK');
+    const topK = this.configManager.get('benchmarkTopK');
     const results: TrecResult[] = [];
 
     for (const query of queries) {
-      const searchResults = await this.searchManager.search(query.text, topK, {
-        embeddingWeight: 0,
-        bm25Weight: 1,
-        titleWeight: 0,
-        contentWeight: 1,
-        chunkTopK,
-      });
+      const searchResults = await this.searchManager.searchBenchmark(
+        query.text,
+        topK,
+        {
+          embeddingWeight: 0,
+          bm25Weight: 1,
+          titleWeight: 0,
+          contentWeight: 1,
+        }
+      );
 
       for (let i = 0; i < searchResults.length; i++) {
         const result = searchResults[i];
@@ -173,18 +175,20 @@ export class BenchmarkRunner extends WithLogging {
    * Run Vector search for all queries.
    */
   private async runVectorSearch(queries: Query[]): Promise<TrecResult[]> {
-    const topK = this.configManager.get('topK');
-    const chunkTopK = this.configManager.get('benchmarkChunkTopK');
+    const topK = this.configManager.get('benchmarkTopK');
     const results: TrecResult[] = [];
 
     for (const query of queries) {
-      const searchResults = await this.searchManager.search(query.text, topK, {
-        embeddingWeight: 1,
-        bm25Weight: 0,
-        titleWeight: 0,
-        contentWeight: 1,
-        chunkTopK,
-      });
+      const searchResults = await this.searchManager.searchBenchmark(
+        query.text,
+        topK,
+        {
+          embeddingWeight: 1,
+          bm25Weight: 0,
+          titleWeight: 0,
+          contentWeight: 1,
+        }
+      );
 
       for (let i = 0; i < searchResults.length; i++) {
         const result = searchResults[i];
@@ -204,18 +208,20 @@ export class BenchmarkRunner extends WithLogging {
    * Run Hybrid search for all queries.
    */
   private async runHybridSearch(queries: Query[]): Promise<TrecResult[]> {
-    const topK = this.configManager.get('topK');
-    const chunkTopK = this.configManager.get('benchmarkChunkTopK');
+    const topK = this.configManager.get('benchmarkTopK');
     const results: TrecResult[] = [];
 
     for (const query of queries) {
-      const searchResults = await this.searchManager.search(query.text, topK, {
-        embeddingWeight: 0.6,
-        bm25Weight: 0.4,
-        titleWeight: 0,
-        contentWeight: 1,
-        chunkTopK,
-      });
+      const searchResults = await this.searchManager.searchBenchmark(
+        query.text,
+        topK,
+        {
+          embeddingWeight: 0.5,
+          bm25Weight: 0.5,
+          titleWeight: 0,
+          contentWeight: 1,
+        }
+      );
 
       for (let i = 0; i < searchResults.length; i++) {
         const result = searchResults[i];

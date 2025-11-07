@@ -54,3 +54,13 @@ export interface ReadyMessage {
   __kind: 'ready';
   ts: number;
 }
+
+export interface InitMessage {
+  __kind: 'init';
+  logLevel: 'error' | 'warn' | 'log';
+}
+
+export interface UpdateLogLevelMessage {
+  __kind: 'update-log-level';
+  logLevel: 'error' | 'warn' | 'log';
+}

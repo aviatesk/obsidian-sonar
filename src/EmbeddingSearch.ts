@@ -91,32 +91,32 @@ export class EmbeddingSearch extends WithLogging {
 
   /**
    * Search title only (searches title embeddings: path#title entries)
+   * Computes similarity for all title embeddings, returns all results sorted by score
    */
   async searchTitle(
     query: string,
-    topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    return this.searchByType(query, topK, 'title', options);
+    return this.searchByType(query, 'title', options);
   }
 
   /**
    * Search content only (searches chunk embeddings: path#0, path#1, ... entries)
+   * Computes similarity for all chunks, aggregates by file, returns all documents sorted by score
    */
   async searchContent(
     query: string,
-    topK: number,
     options?: SearchOptions
   ): Promise<SearchResult[]> {
-    return this.searchByType(query, topK, 'content', options);
+    return this.searchByType(query, 'content', options);
   }
 
   /**
    * Core search implementation for a specific type (title or content)
+   * Computes similarity for all chunks, aggregates, and returns all results
    */
   private async searchByType(
     query: string,
-    topK: number,
     type: 'title' | 'content',
     options?: SearchOptions
   ): Promise<SearchResult[]> {
@@ -143,9 +143,8 @@ export class EmbeddingSearch extends WithLogging {
     results.sort((a, b) => b.score - a.score);
 
     if (type === 'title') {
-      // For title search, return one result per file (no aggregation needed)
-      const topResults = results.slice(0, topK);
-      return topResults.map(result => ({
+      // For title search, return all results (one per file, no aggregation needed)
+      return results.map(result => ({
         filePath: result.document.metadata.filePath,
         title:
           result.document.metadata.title || result.document.metadata.filePath,
@@ -159,13 +158,9 @@ export class EmbeddingSearch extends WithLogging {
         fileSize: result.document.metadata.size,
       }));
     } else {
-      // For content search, aggregate chunks by file
-      const chunkTopKMultiplier = this.configManager.get('chunkTopKMultiplier');
-      const chunkCount = options?.chunkTopK ?? topK * chunkTopKMultiplier;
-      const topResults = results.slice(0, chunkCount);
-
+      // For content search, aggregate all chunks by file
       const groupedByFile = new Map<string, typeof results>();
-      for (const result of topResults) {
+      for (const result of results) {
         const filePath = result.document.metadata.filePath;
         if (!groupedByFile.has(filePath)) {
           groupedByFile.set(filePath, []);
@@ -219,7 +214,8 @@ export class EmbeddingSearch extends WithLogging {
 
       aggregated.sort((a, b) => b.score - a.score);
 
-      return aggregated.slice(0, topK);
+      // Return all aggregated documents (no topK limit)
+      return aggregated;
     }
   }
 }
