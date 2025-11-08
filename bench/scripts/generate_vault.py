@@ -107,7 +107,7 @@ def main():
     print("\nGenerating Obsidian vault...")
     write_vault_files(corpus, doc_ids, output_dir)
 
-    print(f"\nVault generation complete!")
+    print("\nVault generation complete!")
     print(f"  Output: {output_dir}")
     print(f"  Files: {len(doc_ids)}")
 

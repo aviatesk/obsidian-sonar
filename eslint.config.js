@@ -17,6 +17,7 @@ export default [
       'src/generated/**',
       'scripts/esbuild-worker.mjs',
       'bench',
+      '.venv/**',
     ],
   },
 

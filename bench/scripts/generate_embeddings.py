@@ -98,7 +98,7 @@ def generate_embeddings(
     device: str = "auto",
     max_chunk_tokens: int = 512,
     chunk_overlap: int = 128,
-    limit: int = None,
+    limit: int | None = None,
 ) -> None:
     """
     Generate chunk-level embeddings for corpus documents.
@@ -141,12 +141,13 @@ def generate_embeddings(
         print(f"Total documents: {total_docs}")
 
     # Process documents one by one (streaming)
-    print(f"Generating embeddings...")
+    print("Generating embeddings...")
     doc_count = 0
     chunk_count = 0
 
     # Performance timing
     import time
+
     timings = {
         "text_prep": 0.0,
         "chunking": 0.0,
@@ -218,12 +219,17 @@ def generate_embeddings(
     # Print timing breakdown
     print("\n=== Performance Timing Breakdown ===")
     print(f"Total time: {total_time:.2f}s")
-    print(f"  Text prep: {timings['text_prep']:.2f}s ({timings['text_prep']/total_time*100:.1f}%)")
-    print(f"  Chunking: {timings['chunking']:.2f}s ({timings['chunking']/total_time*100:.1f}%)")
-    print(f"  Embedding: {timings['embedding']:.2f}s ({timings['embedding']/total_time*100:.1f}%)")
-    print(f"  Write: {timings['write']:.2f}s ({timings['write']/total_time*100:.1f}%)")
+    text_prep_pct = timings["text_prep"] / total_time * 100
+    print(f"  Text prep: {timings['text_prep']:.2f}s ({text_prep_pct:.1f}%)")
+    chunking_pct = timings["chunking"] / total_time * 100
+    print(f"  Chunking: {timings['chunking']:.2f}s ({chunking_pct:.1f}%)")
+    embedding_pct = timings["embedding"] / total_time * 100
+    print(f"  Embedding: {timings['embedding']:.2f}s ({embedding_pct:.1f}%)")
+    write_pct = timings["write"] / total_time * 100
+    print(f"  Write: {timings['write']:.2f}s ({write_pct:.1f}%)")
     other = total_time - sum(timings.values())
-    print(f"  Other/overhead: {other:.2f}s ({other/total_time*100:.1f}%)")
+    other_pct = other / total_time * 100
+    print(f"  Other/overhead: {other:.2f}s ({other_pct:.1f}%)")
     print("====================================")
 
 
@@ -243,10 +249,12 @@ Examples:
   %(prog)s --corpus corpus.jsonl --output embeddings.jsonl --batch-size 128
 
   # Use larger chunks with more overlap
-  %(prog)s --corpus corpus.jsonl --output embeddings.jsonl --max-chunk-tokens 768 --chunk-overlap 192
+  %(prog)s --corpus corpus.jsonl --output embeddings.jsonl \\
+    --max-chunk-tokens 768 --chunk-overlap 192
 
   # Disable chunking (single chunk per document)
-  %(prog)s --corpus corpus.jsonl --output embeddings.jsonl --max-chunk-tokens 999999 --chunk-overlap 0
+  %(prog)s --corpus corpus.jsonl --output embeddings.jsonl \\
+    --max-chunk-tokens 999999 --chunk-overlap 0
         """,
     )
     parser.add_argument(

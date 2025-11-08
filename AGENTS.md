@@ -24,6 +24,13 @@ npm run check:svelte  # Svelte check -- included in `npm run check`
 npm run check:tsc     # Strict type checking (no `skipLibCheck`) -- included in `npm run check`
 ```
 
+For Python files in `bench/scripts/`:
+
+```bash
+uv run basedpyright   # Type checking for Python code
+uv run ruff check .   # Linting for Python code (checks formatting, line length, etc.)
+```
+
 ## Code quality fixes
 
 ```bash
@@ -187,8 +194,12 @@ format conventions:
 **Do**:
 
 - **Always verify code quality before finalizing changes:**
-  - During development: Use `npm run build` for quick compilation checks
-  - Before completing work: Run `npm run check` for comprehensive validation
+  - TypeScript/JavaScript (`main.ts`, `src/`):
+    - During development: Use `npm run build` for quick compilation checks
+    - Before completing work: Run `npm run check` for comprehensive validation
+  - Python (`bench/scripts/`):
+    - Before completing work: Run `uv run basedpyright` and
+      `uv run ruff check .`
 - Provide defaults and validation in settings.
 - Write idempotent code paths so `reload`/`unload` doesn't leak listeners or
   intervals.

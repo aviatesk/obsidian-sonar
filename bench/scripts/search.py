@@ -16,12 +16,11 @@ from pathlib import Path
 # Add scripts directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from elasticsearch import Elasticsearch
-from tqdm import tqdm
 import weaviate
 import weaviate.classes as wvc
-
 from common import aggregate_chunk_scores, rrf_fusion
+from elasticsearch import Elasticsearch
+from tqdm import tqdm
 
 
 def search_es_bm25(es, index_name, query_text, chunk_top_k, agg_method, agg_m):
@@ -32,24 +31,44 @@ def search_es_bm25(es, index_name, query_text, chunk_top_k, agg_method, agg_m):
         size=chunk_top_k,
     )
 
-    chunk_hits = [(hit["_source"]["doc_id"], hit["_score"]) for hit in result["hits"]["hits"]]
+    chunk_hits = [
+        (hit["_source"]["doc_id"], hit["_score"]) for hit in result["hits"]["hits"]
+    ]
     return aggregate_chunk_scores(chunk_hits, method=agg_method, m=agg_m)
 
 
 def search_es_vector(es, index_name, query_embedding, chunk_top_k, agg_method, agg_m):
-    """Vector search in Elasticsearch."""
+    """
+    Vector search in Elasticsearch using kNN with HNSW index.
+
+    Uses ANN (Approximate Nearest Neighbor) search with HNSW algorithm,
+    which efficiently searches large vector spaces. The num_candidates
+    parameter controls the search quality-speed tradeoff.
+    """
+    # Elasticsearch has a hard limit of 10000 for num_candidates
+    # See: https://www.elastic.co/guide/en/elasticsearch/reference/current/knn-search.html
+    num_candidates = min(chunk_top_k * 2, 10000)
+
     result = es.search(
         index=index_name,
         knn={
             "field": "embedding",
             "query_vector": query_embedding,
             "k": chunk_top_k,
-            "num_candidates": chunk_top_k * 10,
+            # num_candidates: Number of candidates considered per shard
+            # during ANN search. Higher values improve accuracy at the cost
+            # of speed. Limited to 10000 (Elasticsearch constraint)
+            "num_candidates": num_candidates,
         },
         size=chunk_top_k,
     )
 
-    chunk_hits = [(hit["_source"]["doc_id"], hit["_score"]) for hit in result["hits"]["hits"]]
+    # Elasticsearch kNN returns normalized scores: score = (1 + cosine_similarity) / 2
+    # Convert back to raw cosine similarity for fair comparison with other backends
+    chunk_hits = [
+        (hit["_source"]["doc_id"], hit["_score"] * 2 - 1)
+        for hit in result["hits"]["hits"]
+    ]
     return aggregate_chunk_scores(chunk_hits, method=agg_method, m=agg_m)
 
 
@@ -78,14 +97,22 @@ def search_weaviate_bm25(
         return_metadata=wvc.query.MetadataQuery(score=True),
     )
 
-    chunk_hits = [(obj.properties["doc_id"], obj.metadata.score) for obj in response.objects]
+    chunk_hits = [
+        (obj.properties["doc_id"], obj.metadata.score) for obj in response.objects
+    ]
     return aggregate_chunk_scores(chunk_hits, method=agg_method, m=agg_m)
 
 
 def search_weaviate_vector(
     client, class_name, query_embedding, chunk_top_k, agg_method, agg_m
 ):
-    """Vector search in Weaviate."""
+    """
+    Vector search in Weaviate using HNSW index.
+
+    Uses ANN (Approximate Nearest Neighbor) search with HNSW algorithm,
+    which efficiently searches large vector spaces. The limit parameter
+    controls how many results to retrieve.
+    """
     collection = client.collections.get(class_name)
 
     response = collection.query.near_vector(
@@ -95,7 +122,8 @@ def search_weaviate_vector(
     )
 
     chunk_hits = [
-        (obj.properties["doc_id"], 1 - obj.metadata.distance) for obj in response.objects
+        (obj.properties["doc_id"], 1 - obj.metadata.distance)
+        for obj in response.objects
     ]
     return aggregate_chunk_scores(chunk_hits, method=agg_method, m=agg_m)
 
@@ -162,7 +190,10 @@ def main():
         "--host",
         type=str,
         default=None,
-        help="Backend host (default: localhost:9200 for ES, localhost:8080 for Weaviate)",
+        help=(
+            "Backend host (default: localhost:9200 for ES, "
+            "localhost:8080 for Weaviate)"
+        ),
     )
     parser.add_argument(
         "--top-k",
@@ -173,8 +204,13 @@ def main():
     parser.add_argument(
         "--chunk-top-k",
         type=int,
-        default=100,
-        help="Number of chunks to retrieve per query (default: 100)",
+        default=10000,
+        help=(
+            "Number of chunks to retrieve per query before aggregation "
+            "(default: 10000). Should be >= total number of chunks to ensure "
+            "all documents are considered. ANN indexes (HNSW) make large "
+            "values efficient."
+        ),
     )
     parser.add_argument(
         "--agg-method",
@@ -258,6 +294,7 @@ def main():
         print(f"Searching with method: {args.method}")
 
         for query_id, query_text in tqdm(queries.items(), desc="Searching"):
+            hits = []
             if args.method == "bm25":
                 hits = search_es_bm25(
                     es,
@@ -297,7 +334,10 @@ def main():
             results[query_id] = hits[: args.top_k]
 
         if len(results) == 0:
-            print("Warning: No results found for any queries. Check if embeddings match query IDs.")
+            print(
+                "Warning: No results found for any queries. "
+                "Check if embeddings match query IDs."
+            )
 
     elif args.backend == "weaviate":
         class_name = args.index_name if args.index_name != "benchmark" else "Document"
@@ -324,6 +364,7 @@ def main():
         print(f"Searching with method: {args.method}")
 
         for query_id, query_text in tqdm(queries.items(), desc="Searching"):
+            hits = []
             if args.method == "bm25":
                 hits = search_weaviate_bm25(
                     client,
@@ -365,7 +406,10 @@ def main():
         client.close()
 
         if len(results) == 0:
-            print("Warning: No results found for any queries. Check if embeddings match query IDs.")
+            print(
+                "Warning: No results found for any queries. "
+                "Check if embeddings match query IDs."
+            )
 
     # Write TREC run file
     output_file.parent.mkdir(parents=True, exist_ok=True)

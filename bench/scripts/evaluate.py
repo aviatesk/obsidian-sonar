@@ -38,7 +38,7 @@ def load_qrels(qrels_file: Path):
 
 
 def evaluate_runs(
-    run_files: List[Path], qrels_file: Path, output_file: Path = None
+    run_files: List[Path], qrels_file: Path, output_file: Path | None = None
 ) -> None:
     """
     Evaluate TREC run files.
@@ -78,9 +78,10 @@ def evaluate_runs(
         aggregated = calc_aggregate(metrics, qrels, run)
 
         # Extract results
-        result = {"run": run_file.stem}
+        result: Dict[str, str | float] = {"run": run_file.stem}
         for measure, value in aggregated.items():
-            # Format metric name (check longer/specific strings first to avoid substring matches)
+            # Format metric name (check longer/specific strings first
+            # to avoid substring matches)
             metric_name = str(measure)
             # Replace measure names for clarity
             if "nDCG@10" in metric_name:
@@ -122,7 +123,8 @@ def evaluate_runs(
     print("COMPARISON TABLE")
     print("=" * length)
     print(
-        f"{'Run':<40} {'nDCG@10':>10} {'Recall@10':>10} {'Recall@100':>11} {'MRR@10':>10} {'MAP':>10}"
+        f"{'Run':<40} {'nDCG@10':>10} {'Recall@10':>10} "
+        f"{'Recall@100':>11} {'MRR@10':>10} {'MAP':>10}"
     )
     print("-" * length)
     for result in results:

@@ -159,7 +159,8 @@ def list_available_datasets():
     """List all available MIRACL datasets."""
     print("\nAvailable MIRACL datasets:")
     print(
-        "  Languages: ar, bn, en, es, fa, fi, fr, hi, id, ja, ko, ru, sw, te, th, zh, de, yo"
+        "  Languages: ar, bn, en, es, fa, fi, fr, hi, id, ja, ko, ru, "
+        "sw, te, th, zh, de, yo"
     )
     print("  Splits: train, dev, test (availability varies by language)")
     print("\nAvailable BEIR datasets:")
@@ -187,7 +188,10 @@ def main():
         "--splits",
         type=str,
         default="dev",
-        help="MIRACL splits to download (comma-separated: dev,train,test) (default: dev)",
+        help=(
+            "MIRACL splits to download (comma-separated: dev,train,test) "
+            "(default: dev)"
+        ),
     )
     parser.add_argument(
         "--list",

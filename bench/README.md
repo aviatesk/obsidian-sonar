@@ -171,7 +171,7 @@ Generate corpus embeddings:
 uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/miracl_ja_dev_miracl_en_dev_subset/corpus.jsonl \
   --output embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/corpus_embeddings.jsonl \
-  --model intfloat/multilingual-e5-base \
+  --model intfloat/multilingual-e5-base
 ```
 
 Generate query embeddings:
@@ -180,7 +180,7 @@ Generate query embeddings:
 uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
   --output embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl \
-  --model intfloat/multilingual-e5-base \
+  --model intfloat/multilingual-e5-base
 ```
 
 ###### SCIDOCS embeddings

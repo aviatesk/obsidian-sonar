@@ -39,3 +39,12 @@ ignore = []
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.33.0",
+]
+
+[tool.basedpyright]
+include = ["bench"]
+typeCheckingMode = "standard"

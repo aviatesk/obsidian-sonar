@@ -11,15 +11,16 @@ Supports:
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
+import weaviate
+import weaviate.classes as wvc
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk as es_bulk
 from tqdm import tqdm
-import weaviate
-import weaviate.classes as wvc
 
 
-def create_es_index(es: Elasticsearch, index_name: str, vector_dims: int = None):
+def create_es_index(es: Elasticsearch, index_name: str, vector_dims: int | None = None):
     """Create Elasticsearch index with appropriate mappings."""
     settings = {
         "analysis": {
@@ -37,7 +38,7 @@ def create_es_index(es: Elasticsearch, index_name: str, vector_dims: int = None)
         }
     }
 
-    mappings = {
+    mappings: dict[str, Any] = {
         "properties": {
             "doc_id": {"type": "keyword"},
             "chunk_index": {"type": "integer"},
@@ -46,12 +47,13 @@ def create_es_index(es: Elasticsearch, index_name: str, vector_dims: int = None)
     }
 
     if vector_dims:
-        mappings["properties"]["embedding"] = {
+        embedding_config: dict[str, str | int | bool] = {
             "type": "dense_vector",
             "dims": vector_dims,
             "index": True,
             "similarity": "cosine",
         }
+        mappings["properties"]["embedding"] = embedding_config
 
     if es.indices.exists(index=index_name):
         es.indices.delete(index=index_name)
@@ -88,8 +90,8 @@ def create_weaviate_schema(client: weaviate.WeaviateClient, class_name: str):
 def index_to_es(
     es: Elasticsearch,
     index_name: str,
-    corpus_file: Path = None,
-    embedding_file: Path = None,
+    corpus_file: Path | None = None,
+    embedding_file: Path | None = None,
 ):
     """Index corpus into Elasticsearch."""
     if embedding_file and embedding_file.exists():
@@ -169,8 +171,8 @@ def index_to_es(
 def index_to_weaviate(
     client: weaviate.WeaviateClient,
     class_name: str,
-    corpus_file: Path = None,
-    embedding_file: Path = None,
+    corpus_file: Path | None = None,
+    embedding_file: Path | None = None,
 ):
     """Index corpus into Weaviate."""
     collection = client.collections.get(class_name)
@@ -269,13 +271,19 @@ def main():
         "--host",
         type=str,
         default=None,
-        help="Backend host (default: localhost:9200 for ES, localhost:8080 for Weaviate)",
+        help=(
+            "Backend host (default: localhost:9200 for ES, "
+            "localhost:8080 for Weaviate)"
+        ),
     )
     parser.add_argument(
         "--vector-dims",
         type=int,
         default=None,
-        help="Vector dimensions for embeddings (default: None for BM25-only, 768 for embeddings)",
+        help=(
+            "Vector dimensions for embeddings "
+            "(default: None for BM25-only, 768 for embeddings)"
+        ),
     )
 
     args = parser.parse_args()

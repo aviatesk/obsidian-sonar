@@ -1,6 +1,10 @@
 # Node
 node_modules/
 
+# Python
+.venv/
+*.egg-info/
+
 # Obsidian
 # data.json # TODO When releasing
 main.js

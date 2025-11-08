@@ -2,10 +2,6 @@
 datasets/
 vaults/
 
-# Python
-.venv/
-*.egg-info/
-
 # Benchmark outputs
 embeddings/
 runs/
