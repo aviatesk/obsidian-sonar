@@ -508,9 +508,9 @@ export class IndexManager extends WithLogging {
     }
 
     // Generate embeddings for batch -> index metadata/embeddings
-    const BATCH_SIZE = 32;
+    const batchSize = this.configManager.get('indexingBatchSize');
     this.log(
-      `Processing ${allTextItems.length} texts in batches of ${BATCH_SIZE}...`
+      `Processing ${allTextItems.length} texts in batches of ${batchSize}...`
     );
     const fileEmbeddingsMap = new Map<
       number,
@@ -520,10 +520,10 @@ export class IndexManager extends WithLogging {
         embedding: number[];
       }>
     >();
-    for (let i = 0; i < allTextItems.length; i += BATCH_SIZE) {
+    for (let i = 0; i < allTextItems.length; i += batchSize) {
       const batchItems = allTextItems.slice(
         i,
-        Math.min(i + BATCH_SIZE, allTextItems.length)
+        Math.min(i + batchSize, allTextItems.length)
       );
       const batchTexts = batchItems.map(item => item.text);
 
@@ -619,7 +619,7 @@ export class IndexManager extends WithLogging {
         }
       }
 
-      const progress = Math.min(i + BATCH_SIZE, allTextItems.length);
+      const progress = Math.min(i + batchSize, allTextItems.length);
       this.log(`Processed: ${progress}/${allTextItems.length} texts`);
     }
 

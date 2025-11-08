@@ -304,6 +304,21 @@ export class SettingTab extends PluginSettingTab {
             await this.configManager.set('statusBarMaxLength', value);
           })
       );
+
+    new Setting(containerEl)
+      .setName('Indexing batch size')
+      .setDesc(
+        'Number of texts (titles + chunks) to process in a single batch during indexing. Larger values process more texts at once but use more memory. Smaller values reduce memory usage but increase the number of calls to the embedder. (default: 32)'
+      )
+      .addSlider(slider =>
+        slider
+          .setLimits(1, 128, 1)
+          .setValue(this.configManager.get('indexingBatchSize'))
+          .setDynamicTooltip()
+          .onChange(async value => {
+            await this.configManager.set('indexingBatchSize', value);
+          })
+      );
   }
 
   private getCurrentConfigInfo(): string {

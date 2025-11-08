@@ -29,6 +29,7 @@ export interface ObsidianSettings {
   autoIndex: boolean; // [UI]
   relatedNotesDebounceMs: number; // [UI]
   statusBarMaxLength: number; // [UI]
+  indexingBatchSize: number; // [UI] Number of texts to process in a single batch during indexing
 
   // ===========================================================================
   // Hidden settings (not exposed in SettingTab.ts)
@@ -88,6 +89,7 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   autoIndex: false,
   relatedNotesDebounceMs: 5000,
   statusBarMaxLength: 40,
+  indexingBatchSize: 32,
 
   // ===========================================================================
   // Hidden settings (not exposed in UI)
