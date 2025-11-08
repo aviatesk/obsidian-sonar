@@ -3,5 +3,6 @@ datasets/
 vaults/
 
 # Benchmark outputs
+debug/samples/
 embeddings/
 runs/

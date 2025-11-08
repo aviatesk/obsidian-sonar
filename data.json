@@ -24,5 +24,6 @@
   "benchmarkQueriesPath": "",
   "benchmarkQrelsPath": "",
   "benchmarkOutputDir": "",
-  "benchmarkTopK": 100
+  "benchmarkTopK": 100,
+  "debugSamplesPath": ""
 }

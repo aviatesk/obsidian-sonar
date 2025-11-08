@@ -58,6 +58,12 @@ export interface ObsidianSettings {
   benchmarkQrelsPath: string; // Absolute path to qrels.tsv file
   benchmarkOutputDir: string; // Absolute path to directory for TREC output files
   benchmarkTopK: number; // Number of documents to return for benchmarks (default: 100)
+
+  // ===========================================================================
+  // Debug settings (not exposed in SettingTab.ts)
+  // ===========================================================================
+
+  debugSamplesPath: string; // Absolute path to debug samples directory (default: bench/debug)
 }
 
 export const DEFAULT_SETTINGS: ObsidianSettings = {
@@ -111,4 +117,10 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   benchmarkQrelsPath: '',
   benchmarkOutputDir: '',
   benchmarkTopK: 100,
+
+  // ===========================================================================
+  // Debug settings
+  // ===========================================================================
+
+  debugSamplesPath: '',
 };

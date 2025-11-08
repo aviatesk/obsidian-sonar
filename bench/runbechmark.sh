@@ -7,6 +7,7 @@ MODEL="multilingual-e5-base"
 OUTPUT_DIR=""
 BACKENDS="elasticsearch,weaviate"
 METHODS="bm25,vector,hybrid"
+VECTOR_DIMS="768"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -31,6 +32,10 @@ while [[ $# -gt 0 ]]; do
             OUTPUT_DIR="$2"
             shift 2
             ;;
+        --vector-dims)
+            VECTOR_DIMS="$2"
+            shift 2
+            ;;
         --help)
             echo "Usage: $0 [options]"
             echo ""
@@ -40,6 +45,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --backends LIST       Comma-separated list: elasticsearch,weaviate (default: both)"
             echo "  --methods LIST        Comma-separated list: bm25,vector,hybrid (default: all)"
             echo "  --output-dir PATH     Output directory for results (default: runs/<dataset-name>/<model-name>)"
+            echo "  --vector-dims NUM     Vector dimension (default: 768)"
             echo "  --help                Show this help message"
             echo ""
             echo "Example:"
@@ -178,7 +184,7 @@ run_backend() {
         uv run scripts/index.py \
             --backend "$backend" \
             --embeddings "$EMBEDDINGS" \
-            --vector-dims 768
+            --vector-dims "$VECTOR_DIMS"
         echo ""
     fi
 
