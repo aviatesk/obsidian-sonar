@@ -104,8 +104,9 @@ export default class SonarPlugin extends Plugin {
       this.embedder = new TransformersEmbedder(
         embeddingModel,
         this.configManager,
-        'webgpu', // device: WebGPU backend
-        'q8' // dtype: quantization level (webgpu will use fp16)
+        // TODO Make GPU use configurable
+        'webgpu',
+        'fp16'
       );
       this.log(
         `Transformers.js embedder initialized: ${embeddingModel} (${this.embedder.getDevice()})`

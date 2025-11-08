@@ -4,5 +4,6 @@ vaults/
 
 # Benchmark outputs
 debug/samples/
+debug/*.txt
 embeddings/
 runs/

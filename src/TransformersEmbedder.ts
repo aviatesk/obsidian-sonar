@@ -15,16 +15,14 @@ export class TransformersEmbedder extends WithLogging implements Embedder {
     private modelId: string,
     protected configManager: ConfigManager,
     private device: 'webgpu' | 'wasm' = 'wasm',
-    private dtype: 'q8' | 'q4' | 'fp32' = 'q8'
+    private dtype: 'q8' | 'q4' | 'fp16' | 'fp32' = 'q8'
   ) {
     super();
-    // Check WebGPU availability
     const hasWebGPU = navigator.gpu !== undefined;
     if (this.device === 'webgpu' && !hasWebGPU) {
       this.warn('WebGPU not available, falling back to WASM');
       this.device = 'wasm';
     }
-
     this.worker = new TransformersWorker(configManager);
     this.log(
       `Initialized with ${this.modelId} (${this.device}, ${this.dtype})`

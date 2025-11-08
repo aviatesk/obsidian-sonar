@@ -67,21 +67,17 @@ const tokenizerCache = new Map<string, Promise<PreTrainedTokenizer>>();
 async function getFeatureExtractor(
   modelId: string,
   device: 'webgpu' | 'wasm',
-  dtype: 'q8' | 'q4' | 'fp32'
+  dtype: 'q8' | 'q4' | 'fp16' | 'fp32'
 ): Promise<FeatureExtractionPipeline> {
-  const dtypeFixed = device === 'webgpu' ? 'fp16' : dtype;
-  const cacheKey = `${modelId}-${device}-${dtypeFixed}`;
+  const cacheKey = `${modelId}-${device}-${dtype}`;
   if (!featureExtractorCache.has(cacheKey)) {
-    // Embedding extractor (HuggingFace calls this 'feature-extraction')
     const promise = pipeline('feature-extraction', modelId, {
       device,
-      // WebGPU requires fp16 for optimal performance (hardware accelerated)
-      // WASM uses quantized models (q8/q4) or fp32 for CPU efficiency
-      dtype: dtypeFixed,
+      dtype,
     });
     featureExtractorCache.set(cacheKey, promise);
     log(
-      `Created feature extractor cache for ${modelId} with device=${device}, dtype=${dtypeFixed}`
+      `Created feature extractor cache for ${modelId} with device=${device}, dtype=${dtype}`
     );
   }
   return featureExtractorCache.get(cacheKey)!;

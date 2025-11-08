@@ -65,38 +65,55 @@ export class BenchmarkRunner extends WithLogging {
       const queries = await this.loadQueries(queriesPath);
       this.log(`Loaded ${queries.length} queries`);
 
-      // Step 3: Run BM25 search
-      this.log('Step 3: Running BM25 search...');
-      new Notice(`Running BM25 search on ${queries.length} queries...`);
-      const bm25Results = await this.runBM25Search(queries);
-      await this.writeTrecResults(
-        bm25Results,
-        `${outputDir}/sonar.bm25.trec`,
-        'sonar.bm25'
-      );
-      this.log(`BM25 results written to ${outputDir}/sonar.bm25.trec`);
+      // Step 3: Run all search methods
+      const searchMethods = [
+        {
+          name: 'BM25',
+          runId: 'sonar.bm25',
+          weights: {
+            embeddingWeight: 0,
+            bm25Weight: 1,
+            titleWeight: 0,
+            contentWeight: 1,
+          },
+        },
+        {
+          name: 'Vector',
+          runId: 'sonar.vector',
+          weights: {
+            embeddingWeight: 1,
+            bm25Weight: 0,
+            titleWeight: 0,
+            contentWeight: 1,
+          },
+        },
+        {
+          name: 'Hybrid',
+          runId: 'sonar.hybrid',
+          weights: {
+            embeddingWeight: 0.5,
+            bm25Weight: 0.5,
+            titleWeight: 0,
+            contentWeight: 1,
+          },
+        },
+      ];
 
-      // Step 4: Run Vector search
-      this.log('Step 4: Running Vector search...');
-      new Notice(`Running Vector search on ${queries.length} queries...`);
-      const vectorResults = await this.runVectorSearch(queries);
-      await this.writeTrecResults(
-        vectorResults,
-        `${outputDir}/sonar.vector.trec`,
-        'sonar.vector'
-      );
-      this.log(`Vector results written to ${outputDir}/sonar.vector.trec`);
+      for (let i = 0; i < searchMethods.length; i++) {
+        const method = searchMethods[i];
+        const stepNum = i + 3;
 
-      // Step 5: Run Hybrid search
-      this.log('Step 5: Running Hybrid search...');
-      new Notice(`Running Hybrid search on ${queries.length} queries...`);
-      const hybridResults = await this.runHybridSearch(queries);
-      await this.writeTrecResults(
-        hybridResults,
-        `${outputDir}/sonar.hybrid.trec`,
-        'sonar.hybrid'
-      );
-      this.log(`Hybrid results written to ${outputDir}/sonar.hybrid.trec`);
+        this.log(`Step ${stepNum}: Running ${method.name} search...`);
+        new Notice(
+          `Running ${method.name} search on ${queries.length} queries...`
+        );
+
+        const results = await this.runSearch(queries, method.weights);
+        const outputPath = `${outputDir}/${method.runId}.trec`;
+
+        await this.writeTrecResults(results, outputPath, method.runId);
+        this.log(`${method.name} results written to ${outputPath}`);
+      }
 
       new Notice('Benchmark complete! Results written to output directory.');
       this.log('Benchmark complete');
@@ -139,42 +156,17 @@ export class BenchmarkRunner extends WithLogging {
   }
 
   /**
-   * Run BM25 search for all queries.
+   * Run search for all queries with given weights.
    */
-  private async runBM25Search(queries: Query[]): Promise<TrecResult[]> {
-    const topK = this.configManager.get('benchmarkTopK');
-    const results: TrecResult[] = [];
-
-    for (const query of queries) {
-      const searchResults = await this.searchManager.searchBenchmark(
-        query.text,
-        topK,
-        {
-          embeddingWeight: 0,
-          bm25Weight: 1,
-          titleWeight: 0,
-          contentWeight: 1,
-        }
-      );
-
-      for (let i = 0; i < searchResults.length; i++) {
-        const result = searchResults[i];
-        results.push({
-          queryId: query._id,
-          docId: this.normalizeDocId(result.filePath),
-          rank: i + 1,
-          score: result.score,
-        });
-      }
+  private async runSearch(
+    queries: Query[],
+    weights: {
+      embeddingWeight: number;
+      bm25Weight: number;
+      titleWeight: number;
+      contentWeight: number;
     }
-
-    return results;
-  }
-
-  /**
-   * Run Vector search for all queries.
-   */
-  private async runVectorSearch(queries: Query[]): Promise<TrecResult[]> {
+  ): Promise<TrecResult[]> {
     const topK = this.configManager.get('benchmarkTopK');
     const results: TrecResult[] = [];
 
@@ -182,45 +174,7 @@ export class BenchmarkRunner extends WithLogging {
       const searchResults = await this.searchManager.searchBenchmark(
         query.text,
         topK,
-        {
-          embeddingWeight: 1,
-          bm25Weight: 0,
-          titleWeight: 0,
-          contentWeight: 1,
-        }
-      );
-
-      for (let i = 0; i < searchResults.length; i++) {
-        const result = searchResults[i];
-        results.push({
-          queryId: query._id,
-          docId: this.normalizeDocId(result.filePath),
-          rank: i + 1,
-          score: result.score,
-        });
-      }
-    }
-
-    return results;
-  }
-
-  /**
-   * Run Hybrid search for all queries.
-   */
-  private async runHybridSearch(queries: Query[]): Promise<TrecResult[]> {
-    const topK = this.configManager.get('benchmarkTopK');
-    const results: TrecResult[] = [];
-
-    for (const query of queries) {
-      const searchResults = await this.searchManager.searchBenchmark(
-        query.text,
-        topK,
-        {
-          embeddingWeight: 0.5,
-          bm25Weight: 0.5,
-          titleWeight: 0,
-          contentWeight: 1,
-        }
+        weights
       );
 
       for (let i = 0; i < searchResults.length; i++) {
