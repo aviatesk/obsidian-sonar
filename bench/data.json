@@ -13,7 +13,7 @@
   "relatedNotesDebounceMs": 5000,
   "statusBarMaxLength": 40,
   "indexingBatchSize": 32,
-  "bm25AggMethod": "top_m_sum",
+  "bm25AggMethod": "max_p",
   "vectorAggMethod": "max_p",
   "aggM": 3,
   "aggL": 3,

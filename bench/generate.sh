@@ -3,8 +3,8 @@ set -e
 
 # Default configuration
 DATASETS="miracl,scidocs"
-MODEL="intfloat/multilingual-e5-base"
-MODEL_NAME="multilingual-e5-base"
+MODEL="intfloat/multilingual-e5-small"
+MODEL_NAME="multilingual-e5-small"
 MIRACL_QUERIES=200
 SCIDOCS_QUERIES=100
 BATCH_SIZE=128
@@ -53,8 +53,8 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --datasets LIST           Comma-separated list: miracl,scidocs (default: both)"
-            echo "  --model MODEL_ID          HuggingFace model ID (default: intfloat/multilingual-e5-base)"
-            echo "  --model-name NAME         Short model name for paths (default: multilingual-e5-base)"
+            echo "  --model MODEL_ID          HuggingFace model ID (default: intfloat/multilingual-e5-small)"
+            echo "  --model-name NAME         Short model name for paths (default: multilingual-e5-small)"
             echo "  --miracl-queries N        Number of MIRACL queries (default: 200)"
             echo "  --scidocs-queries N       Number of SCIDOCS queries (default: 100)"
             echo "  --batch-size N            Embedding batch size (default: 128)"

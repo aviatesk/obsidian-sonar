@@ -93,7 +93,7 @@ def chunk_text(text: str, max_length: int, tokenizer, overlap: int = 50) -> List
 def generate_embeddings(
     corpus_file: Path,
     output_file: Path,
-    model_name: str = "intfloat/multilingual-e5-base",
+    model_name: str = "intfloat/multilingual-e5-small",
     batch_size: int = 32,
     device: str = "auto",
     max_chunk_tokens: int = 512,
@@ -272,8 +272,8 @@ Examples:
     parser.add_argument(
         "--model",
         type=str,
-        default="intfloat/multilingual-e5-base",
-        help="Model name (default: intfloat/multilingual-e5-base)",
+        default="intfloat/multilingual-e5-small",
+        help="Model name (default: intfloat/multilingual-e5-small)",
     )
     parser.add_argument(
         "--batch-size",

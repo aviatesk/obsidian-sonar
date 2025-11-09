@@ -126,7 +126,7 @@ self.addEventListener('message', async (e: MessageEvent) => {
         params.dtype
       );
       const out = await extractor(params.texts, {
-        pooling: 'cls',
+        pooling: 'mean',
         normalize: true,
       });
       result = out.tolist();

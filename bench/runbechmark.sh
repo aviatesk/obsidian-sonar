@@ -3,11 +3,11 @@ set -e
 
 # Default configuration
 DATASET="datasets/processed/miracl_ja_dev_miracl_en_dev_subset"
-MODEL="multilingual-e5-base"
+MODEL="multilingual-e5-small"
 OUTPUT_DIR=""
 BACKENDS="elasticsearch,weaviate"
 METHODS="bm25,vector,hybrid"
-VECTOR_DIMS="768"
+VECTOR_DIMS="384"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -41,11 +41,11 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --dataset PATH        Dataset directory (default: datasets/processed/miracl_ja_dev_miracl_en_dev_subset)"
-            echo "  --model NAME          Model name for embeddings path (default: multilingual-e5-base)"
+            echo "  --model NAME          Model name for embeddings path (default: multilingual-e5-small)"
             echo "  --backends LIST       Comma-separated list: elasticsearch,weaviate (default: both)"
             echo "  --methods LIST        Comma-separated list: bm25,vector,hybrid (default: all)"
             echo "  --output-dir PATH     Output directory for results (default: runs/<dataset-name>/<model-name>)"
-            echo "  --vector-dims NUM     Vector dimension (default: 768)"
+            echo "  --vector-dims NUM     Vector dimension (default: 384)"
             echo "  --help                Show this help message"
             echo ""
             echo "Example:"
@@ -112,9 +112,6 @@ echo "=========================================="
 echo "Step 1: Starting Docker services"
 echo "=========================================="
 docker compose up -d
-
-echo "Waiting for services to be ready..."
-sleep 5
 
 # Wait for Elasticsearch
 if [[ "$BACKENDS" == *"elasticsearch"* ]]; then
@@ -241,9 +238,3 @@ echo "=========================================="
 echo "Benchmark complete!"
 echo "=========================================="
 echo "Results saved in: $OUTPUT_DIR/"
-echo ""
-echo "To stop Docker services:"
-echo "  docker compose down"
-echo ""
-echo "To stop and remove volumes:"
-echo "  docker compose down -v"

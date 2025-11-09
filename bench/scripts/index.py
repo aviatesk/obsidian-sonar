@@ -282,7 +282,7 @@ def main():
         default=None,
         help=(
             "Vector dimensions for embeddings "
-            "(default: None for BM25-only, 768 for embeddings)"
+            "(default: None for BM25-only, 384 for embeddings)"
         ),
     )
 
@@ -310,7 +310,7 @@ def main():
 
     # Auto-detect vector dims if using embeddings
     if embedding_file and args.vector_dims is None:
-        args.vector_dims = 768
+        args.vector_dims = 384
 
     # Set default hosts
     if args.host is None:

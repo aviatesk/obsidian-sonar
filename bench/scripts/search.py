@@ -202,14 +202,13 @@ def main():
         help="Number of documents to return (default: 100)",
     )
     parser.add_argument(
-        "--chunk-top-k",
+        "--retrieval-multiplier",
         type=int,
-        default=10000,
+        default=10,
         help=(
-            "Number of chunks to retrieve per query before aggregation "
-            "(default: 10000). Should be >= total number of chunks to ensure "
-            "all documents are considered. ANN indexes (HNSW) make large "
-            "values efficient."
+            "Multiplier for hybrid search pre-fusion limit (default: 10). "
+            "Limit = top_k * retrieval_multiplier. Lower values (e.g., 5) "
+            "focus on high-quality results, higher values (e.g., 20) increase recall."
         ),
     )
     parser.add_argument(
@@ -239,6 +238,9 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Calculate chunk_top_k from top_k and retrieval_multiplier
+    chunk_top_k = args.top_k * args.retrieval_multiplier
 
     queries_file = Path(args.queries)
     output_file = Path(args.output)
@@ -300,7 +302,7 @@ def main():
                     es,
                     index_name,
                     query_text,
-                    args.chunk_top_k,
+                    chunk_top_k,
                     args.agg_method,
                     args.agg_m,
                 )
@@ -312,7 +314,7 @@ def main():
                     es,
                     index_name,
                     query_embedding,
-                    args.chunk_top_k,
+                    chunk_top_k,
                     args.agg_method,
                     args.agg_m,
                 )
@@ -325,7 +327,7 @@ def main():
                     index_name,
                     query_text,
                     query_embedding,
-                    args.chunk_top_k,
+                    chunk_top_k,
                     args.agg_method,
                     args.agg_m,
                     args.rrf_k,
@@ -370,7 +372,7 @@ def main():
                     client,
                     class_name,
                     query_text,
-                    args.chunk_top_k,
+                    chunk_top_k,
                     args.agg_method,
                     args.agg_m,
                 )
@@ -382,7 +384,7 @@ def main():
                     client,
                     class_name,
                     query_embedding,
-                    args.chunk_top_k,
+                    chunk_top_k,
                     args.agg_method,
                     args.agg_m,
                 )
@@ -395,7 +397,7 @@ def main():
                     class_name,
                     query_text,
                     query_embedding,
-                    args.chunk_top_k,
+                    chunk_top_k,
                     args.agg_method,
                     args.agg_m,
                     args.rrf_k,

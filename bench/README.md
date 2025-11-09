@@ -79,7 +79,7 @@ Generate both subsets (Step 3) and embeddings (Step 4) with a single script:
 This will generate:
 - MIRACL subset (200 queries, 1:1 ja:en)
 - SCIDOCS subset (100 queries)
-- Embeddings for both datasets using `multilingual-e5-base`
+- Embeddings for both datasets using `multilingual-e5-small`
 
 Options:
 
@@ -170,8 +170,8 @@ Generate corpus embeddings:
 ```bash
 uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/miracl_ja_dev_miracl_en_dev_subset/corpus.jsonl \
-  --output embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/corpus_embeddings.jsonl \
-  --model intfloat/multilingual-e5-base
+  --output embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-small/corpus_embeddings.jsonl \
+  --model intfloat/multilingual-e5-small
 ```
 
 Generate query embeddings:
@@ -179,8 +179,8 @@ Generate query embeddings:
 ```bash
 uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
-  --output embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl \
-  --model intfloat/multilingual-e5-base
+  --output embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-small/query_embeddings.jsonl \
+  --model intfloat/multilingual-e5-small
 ```
 
 ###### SCIDOCS embeddings
@@ -190,8 +190,8 @@ Generate corpus embeddings:
 ```bash
 uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/scidocs_subset/corpus.jsonl \
-  --output embeddings/scidocs_subset/multilingual-e5-base/corpus_embeddings.jsonl \
-  --model intfloat/multilingual-e5-base \
+  --output embeddings/scidocs_subset/multilingual-e5-small/corpus_embeddings.jsonl \
+  --model intfloat/multilingual-e5-small \
 ```
 
 Generate query embeddings:
@@ -199,8 +199,8 @@ Generate query embeddings:
 ```bash
 uv run scripts/generate_embeddings.py \
   --corpus datasets/processed/scidocs_subset/queries.jsonl \
-  --output embeddings/scidocs_subset/multilingual-e5-base/query_embeddings.jsonl \
-  --model intfloat/multilingual-e5-base \
+  --output embeddings/scidocs_subset/multilingual-e5-small/query_embeddings.jsonl \
+  --model intfloat/multilingual-e5-small \
 ```
 
 ###### Device selection
@@ -223,8 +223,8 @@ uv run scripts/generate_embeddings.py \
 Any sentence-transformers compatible model from Hugging Face can be used.
 Examples:
 
-- `intfloat/multilingual-e5-base` (768 dims, ~1.1GB, recommended)
-- `intfloat/multilingual-e5-small` (384 dims, ~470MB, faster)
+- `intfloat/multilingual-e5-small` (384 dims, ~470MB, default)
+- `intfloat/multilingual-e5-base` (768 dims, ~1.1GB, currently has accuracy issues when used with Transformers.js)
 - `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 dims)
 
 ### Step 4.5: Generate Obsidian vault (Sonar only)
@@ -287,20 +287,6 @@ cp data.json $VAULT/.obsidian/plugins/sonar/data.json
 #    - /path/to/your/vault/runs/sonar.hybrid.trec
 ```
 
-Configuration tips:
-
-- Use `intfloat/multilingual-e5-base` model (Transformers.js compatible)
-- Set `maxChunkSize: 512` and `chunkOverlap: 128` to match other backends
-- Adjust `chunkTopKMultiplier` to control chunk retrieval (1 = topK chunks, 4 =
-  topK\*4 chunks)
-- Use `bm25AggMethod` and `vectorAggMethod` to test different aggregation
-  strategies:
-  - `max_p`: Maximum chunk score
-  - `top_m_sum`: Sum of top M chunks (default: M=3)
-  - `top_m_avg`: Average of top M chunks
-  - `rrf_per_doc`: RRF-based aggregation
-  - `weighted_top_l_sum`: Weighted decay (Sonar's original method)
-
 #### Elasticsearch & Weaviate
 
 ##### Quick start: automated benchmark
@@ -321,8 +307,8 @@ Options:
 # Use a different dataset
 ./runbechmark.sh --dataset datasets/processed/scidocs_subset
 
-# Use a different model for embeddings
-./runbechmark.sh --model multilingual-e5-small --dataset datasets/processed/scidocs_subset
+# Use a different model for embeddings (need to specify vector dimention depending on model to be used)
+./runbechmark.sh --model multilingual-e5-small --dataset datasets/processed/scidocs_subset --vector-dims 768
 ```
 
 Use `./runbechmark.sh --help` for full options.
@@ -371,8 +357,7 @@ Vector/hybrid search (requires embeddings from Step 4):
 # Index chunks with embeddings
 uv run scripts/index.py \
   --backend elasticsearch \
-  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/corpus_embeddings.jsonl \
-  --vector-dims 768
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-small/corpus_embeddings.jsonl
 
 # Vector search
 uv run scripts/search.py \
@@ -380,7 +365,7 @@ uv run scripts/search.py \
   --queries datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
   --output runs/es.vector.trec \
   --method vector \
-  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-small/query_embeddings.jsonl
 
 # Hybrid search (BM25 + Vector with RRF fusion)
 uv run scripts/search.py \
@@ -388,7 +373,7 @@ uv run scripts/search.py \
   --queries datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
   --output runs/es.hybrid.trec \
   --method hybrid \
-  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-small/query_embeddings.jsonl
 ```
 
 ###### Weaviate
@@ -415,7 +400,7 @@ Vector/hybrid search (requires embeddings from Step 4):
 # Index chunks with embeddings
 uv run scripts/index.py \
   --backend weaviate \
-  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/corpus_embeddings.jsonl
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-small/corpus_embeddings.jsonl
 
 # Vector search
 uv run scripts/search.py \
@@ -423,7 +408,7 @@ uv run scripts/search.py \
   --queries datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
   --output runs/weaviate.vector.trec \
   --method vector \
-  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-small/query_embeddings.jsonl
 
 # Hybrid search (BM25 + Vector with RRF fusion)
 uv run scripts/search.py \
@@ -431,7 +416,7 @@ uv run scripts/search.py \
   --queries datasets/processed/miracl_ja_dev_miracl_en_dev_subset/queries.jsonl \
   --output runs/weaviate.hybrid.trec \
   --method hybrid \
-  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-base/query_embeddings.jsonl
+  --embeddings embeddings/miracl_ja_dev_miracl_en_dev_subset/multilingual-e5-small/query_embeddings.jsonl
 ```
 
 ##### Advanced: Chunk aggregation parameters
@@ -527,7 +512,7 @@ methods.
 
 ### Results: MIRACL (Japanese + English)
 
-> [`intfloat/multilingual-e5-base`](https://huggingface.co/intfloat/multilingual-e5-base)
+> [`intfloat/multilingual-e5-small`](https://huggingface.co/intfloat/multilingual-e5-small)
 
 | Backend       | Method | nDCG@10 | Recall@10 | Recall@100 | MRR@10 | MAP    |
 | ------------- | ------ | ------- | --------- | ---------- | ------ | ------ |
@@ -543,7 +528,7 @@ methods.
 
 ### Results: SCIDOCS
 
-> [`intfloat/multilingual-e5-base`](https://huggingface.co/intfloat/multilingual-e5-base)
+> [`intfloat/multilingual-e5-small`](https://huggingface.co/intfloat/multilingual-e5-small)
 
 | Backend       | Method | nDCG@10 | Recall@10 | Recall@100 | MRR@10 | MAP    |
 | ------------- | ------ | ------- | --------- | ---------- | ------ | ------ |
