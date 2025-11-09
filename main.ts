@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
 import { SearchManager } from './src/SearchManager';
 import { EmbeddingSearch } from './src/EmbeddingSearch';
 import { BM25Store } from './src/BM25Store';
@@ -15,7 +15,7 @@ import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
 import { MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
-import { formatDuration } from './src/ObsidianUtils';
+import { confirmAction, formatDuration } from './src/ObsidianUtils';
 import type { Embedder } from './src/Embedder';
 import { TransformersEmbedder } from './src/TransformersEmbedder';
 import { OllamaEmbedder } from './src/OllamaEmbedder';
@@ -239,7 +239,12 @@ export default class SonarPlugin extends Plugin {
       callback: async () => {
         if (!this.checkInitialized()) return;
         const confirmMessage = `Clear current search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will remove all indexed data for the current configuration. This cannot be undone.`;
-        const confirmed = await this.confirmAction(confirmMessage);
+        const confirmed = await confirmAction(
+          this.app,
+          'Clear current index',
+          confirmMessage,
+          'Clear'
+        );
         if (!confirmed) return;
         await this.indexManager!.clearCurrentIndex();
         new Notice('Current index cleared');
@@ -260,7 +265,12 @@ export default class SonarPlugin extends Plugin {
       callback: async () => {
         if (!this.checkInitialized()) return;
         const confirmMessage = `Rebuild entire search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear all indexed data and reindex all files. This cannot be undone.`;
-        const confirmed = await this.confirmAction(confirmMessage);
+        const confirmed = await confirmAction(
+          this.app,
+          'Rebuild index',
+          confirmMessage,
+          'Rebuild'
+        );
         if (!confirmed) return;
         await this.indexManager!.rebuildIndex((current, total, filePath) => {
           this.log(`Rebuilding index: ${current}/${total} - ${filePath}`);
@@ -443,7 +453,12 @@ export default class SonarPlugin extends Plugin {
 
     const confirmMessage = `Found ${databases.length} database(s) for vault "${vaultName}":\n\n${databases.map(db => `  - ${db}`).join('\n')}\n\nDelete all? This cannot be undone.`;
 
-    const confirmed = await this.confirmAction(confirmMessage);
+    const confirmed = await confirmAction(
+      this.app,
+      'Clear all vault indices',
+      confirmMessage,
+      'Delete All'
+    );
     if (!confirmed) {
       return;
     }
@@ -468,52 +483,6 @@ export default class SonarPlugin extends Plugin {
     } else {
       new Notice('Failed to delete any databases - check console');
     }
-  }
-
-  private async confirmAction(message: string): Promise<boolean> {
-    return new Promise(resolve => {
-      const modal = new (class extends Modal {
-        constructor(
-          app: App,
-          private message: string,
-          private callback: (result: boolean) => void
-        ) {
-          super(app);
-        }
-
-        onOpen() {
-          const { contentEl, titleEl } = this;
-          titleEl.setText('Confirm Action');
-          contentEl.createEl('p', {
-            text: this.message,
-            attr: { style: 'white-space: pre-wrap;' },
-          });
-
-          const buttonContainer = contentEl.createDiv({
-            cls: 'modal-button-container',
-          });
-          buttonContainer
-            .createEl('button', { text: 'Cancel' })
-            .addEventListener('click', () => {
-              this.close();
-              this.callback(false);
-            });
-          buttonContainer
-            .createEl('button', { text: 'Delete All', cls: 'mod-warning' })
-            .addEventListener('click', () => {
-              this.close();
-              this.callback(true);
-            });
-        }
-
-        onClose() {
-          const { contentEl } = this;
-          contentEl.empty();
-        }
-      })(this.app, message, resolve);
-
-      modal.open();
-    });
   }
 
   async onunload() {

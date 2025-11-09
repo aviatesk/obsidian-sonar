@@ -1,4 +1,4 @@
-import { MarkdownView } from 'obsidian';
+import { App, MarkdownView, Modal } from 'obsidian';
 
 interface DocumentContext {
   lineStart: number;
@@ -158,4 +158,38 @@ export function formatDuration(milliseconds: number): string {
     return `${hours}h ${remainingMinutes}m`;
   }
   return `${hours}h`;
+}
+
+export function confirmAction(
+  app: App,
+  title: string,
+  message: string,
+  actionButtonText: string
+): Promise<boolean> {
+  return new Promise(resolve => {
+    const modal = new Modal(app);
+    modal.titleEl.setText(title);
+    modal.contentEl.createEl('p', {
+      text: message,
+      attr: { style: 'white-space: pre-wrap;' },
+    });
+
+    const buttonContainer = modal.contentEl.createDiv({
+      cls: 'modal-button-container',
+    });
+    buttonContainer
+      .createEl('button', { text: 'Cancel' })
+      .addEventListener('click', () => {
+        modal.close();
+        resolve(false);
+      });
+    buttonContainer
+      .createEl('button', { text: actionButtonText, cls: 'mod-warning' })
+      .addEventListener('click', () => {
+        modal.close();
+        resolve(true);
+      });
+
+    modal.open();
+  });
 }

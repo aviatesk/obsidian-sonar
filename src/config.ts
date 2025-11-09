@@ -8,37 +8,38 @@ export type AggregationMethod =
   | 'weighted_top_l_sum';
 
 export interface ObsidianSettings {
-  // ===========================================================================
-  // UI-configurable settings (exposed in SettingTab.ts)
-  // ===========================================================================
+  // Index configuration
+  // ===================
+  indexPath: string; // Path to index (empty = entire vault)
+  excludedPaths: string[]; // Paths to ignore during indexing
 
-  // Embedder configuration [UI]
-  embeddingModel: string; // [UI] HuggingFace model ID (e.g., 'Xenova/bge-m3') or Ollama model name
+  // UI preferences
+  // ==============
+  autoOpenRelatedNotes: boolean; // Auto-open related notes view on startup
+  showRelatedNotesQuery: boolean; // Show search query in related notes view
+  showRelatedNotesExcerpts: boolean; // Show text excerpts in related notes view
+  showKnowledgeGraph: boolean; // Show knowledge graph visualization
+  searchResultsCount: number; // Number of final documents to return to user
 
-  // Search parameters [UI]
-  maxChunkSize: number; // [UI]
-  chunkOverlap: number; // [UI]
-  maxQueryTokens: number; // [UI] Maximum tokens for search queries
-  searchResultsCount: number; // [UI] Number of final documents to return to user
+  // Auto-indexing
+  // =============
+  autoIndex: boolean; // Enable auto-indexing on file changes
+  relatedNotesDebounceMs: number; // Delay before updating related notes view
+  indexingBatchSize: number; // Number of texts to process in a single batch during indexing
 
-  // Obsidian-specific [UI]
-  indexPath: string; // [UI]
-  debugMode: LogLevel; // [UI]
-  excludedPaths: string[]; // [UI]
-  autoOpenRelatedNotes: boolean; // [UI]
-  autoIndex: boolean; // [UI]
-  relatedNotesDebounceMs: number; // [UI]
-  statusBarMaxLength: number; // [UI]
-  indexingBatchSize: number; // [UI] Number of texts to process in a single batch during indexing
+  // Chunking configuration
+  // ======================
+  maxChunkSize: number; // Maximum tokens per chunk
+  chunkOverlap: number; // Overlapping tokens between chunks
+  maxQueryTokens: number; // Maximum tokens for search queries
 
-  // ===========================================================================
-  // Hidden settings (not exposed in SettingTab.ts)
-  // ===========================================================================
+  // Embedder configuration
+  // ======================
+  embedderType: EmbedderType; // Embedder type: 'transformers' or 'ollama'
+  embeddingModel: string; // HuggingFace model ID (e.g., 'Xenova/bge-m3') or Ollama model name
 
-  // Embedder configuration (hidden)
-  embedderType: EmbedderType; // 'transformers' or 'ollama'
-
-  // Chunk retrieval and aggregation parameters (hidden, for benchmark compatibility)
+  // Search parameters
+  // =================
   bm25AggMethod: AggregationMethod; // BM25 aggregation method (default: 'max_p')
   vectorAggMethod: AggregationMethod; // Vector aggregation method (default: 'weighted_top_l_sum')
   aggM: number; // Number of top chunks for top_m_sum/top_m_avg (default: 3)
@@ -46,83 +47,76 @@ export interface ObsidianSettings {
   aggDecay: number; // Decay factor for weighted_top_l_sum (default: 0.95)
   aggRrfK: number; // RRF k parameter for rrf_per_doc (default: 60)
 
-  // UI view preferences (hidden)
-  showRelatedNotesQuery: boolean;
-  showRelatedNotesExcerpts: boolean;
-  showKnowledgeGraph: boolean;
+  // Logging configuration
+  // =====================
+  statusBarMaxLength: number; // Maximum characters in status bar (0 = no limit)
+  debugMode: LogLevel; // Logging verbosity level
 
-  // ===========================================================================
-  // Benchmark-specific settings (not exposed in SettingTab.ts)
-  // ===========================================================================
-
+  // Benchmark configuration
+  // =======================
   benchmarkQueriesPath: string; // Absolute path to queries.jsonl file
   benchmarkQrelsPath: string; // Absolute path to qrels.tsv file
   benchmarkOutputDir: string; // Absolute path to directory for TREC output files
   benchmarkTopK: number; // Number of documents to return for benchmarks (default: 100)
 
-  // ===========================================================================
-  // Debug settings (not exposed in SettingTab.ts)
-  // ===========================================================================
-
+  // Debug configuration
+  // ===================
   debugSamplesPath: string; // Absolute path to debug samples directory (default: bench/debug)
 }
 
 export const DEFAULT_SETTINGS: ObsidianSettings = {
-  // ===========================================================================
-  // UI-configurable settings (exposed in SettingTab.ts)
-  // ===========================================================================
-
-  // Embedder configuration [UI]
-  embeddingModel: 'Xenova/bge-m3', // Transformers.js compatible model
-
-  // Search parameters [UI]
-  maxChunkSize: 512, // tokens
-  chunkOverlap: 64, // tokens (roughly 10% of chunk size)
-  maxQueryTokens: 128, // tokens for search queries
-  searchResultsCount: 10, // default number of documents to return to user
-
-  // Obsidian-specific [UI]
+  // Index configuration
+  // ===================
   indexPath: '',
-  debugMode: 'error',
   excludedPaths: [],
+
+  // UI preferences
+  // ==============
   autoOpenRelatedNotes: true,
-  autoIndex: false,
-  relatedNotesDebounceMs: 5000,
-  statusBarMaxLength: 40,
-  indexingBatchSize: 32,
-
-  // ===========================================================================
-  // Hidden settings (not exposed in UI)
-  // ===========================================================================
-
-  // Embedder configuration (hidden)
-  embedderType: 'transformers',
-
-  // Chunk retrieval and aggregation parameters (hidden, for benchmark compatibility)
-  bm25AggMethod: 'max_p', // MaxP for BM25 (keyword dominance)
-  vectorAggMethod: 'weighted_top_l_sum', // Weighted decay for vector (context matters)
-  aggM: 3, // top 3 chunks for top_m_sum/avg
-  aggL: 3, // top 3 chunks for weighted_top_l_sum
-  aggDecay: 0.95, // decay factor for weighted aggregation
-  aggRrfK: 60, // RRF k parameter
-
-  // UI view preferences (hidden)
   showRelatedNotesQuery: true,
   showRelatedNotesExcerpts: true,
   showKnowledgeGraph: true,
+  searchResultsCount: 10,
 
-  // ===========================================================================
-  // Benchmark-specific settings
-  // ===========================================================================
+  // Auto-indexing
+  // =============
+  autoIndex: false,
+  relatedNotesDebounceMs: 5000,
+  indexingBatchSize: 32,
 
+  // Chunking configuration
+  // ======================
+  maxChunkSize: 512,
+  chunkOverlap: 64,
+  maxQueryTokens: 128,
+
+  // Embedder configuration
+  // ======================
+  embedderType: 'transformers',
+  embeddingModel: 'Xenova/bge-m3',
+
+  // Search parameters
+  // =================
+  bm25AggMethod: 'max_p',
+  vectorAggMethod: 'weighted_top_l_sum',
+  aggM: 3,
+  aggL: 3,
+  aggDecay: 0.95,
+  aggRrfK: 60,
+
+  // Logging configuration
+  // =====================
+  statusBarMaxLength: 40,
+  debugMode: 'error',
+
+  // Benchmark configuration
+  // =======================
   benchmarkQueriesPath: '',
   benchmarkQrelsPath: '',
   benchmarkOutputDir: '',
   benchmarkTopK: 100,
 
-  // ===========================================================================
-  // Debug settings
-  // ===========================================================================
-
+  // Debug configuration
+  // ===================
   debugSamplesPath: '',
 };
