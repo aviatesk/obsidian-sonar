@@ -164,7 +164,10 @@ export class SearchManager extends WithLogging {
 
   /**
    * Hybrid search for either title or content
-   * Returns Map<filePath, score> normalized to [0, 1] based on theoretical maximum
+   * Returns Map<filePath, score> normalized to [0, 1]
+   *
+   * For pure BM25/vector search (one weight is 0), returns raw aggregated scores.
+   * For hybrid search (both weights > 0), applies RRF fusion.
    */
   private async hybridSearch(
     query: string,
@@ -188,7 +191,25 @@ export class SearchManager extends WithLogging {
         : Promise.resolve([]),
     ]);
 
-    // Apply RRF (handles empty results gracefully)
+    // Pure BM25 search: return raw scores
+    if (embeddingWeight === 0 && bm25Weight > 0) {
+      const scores = new Map<string, number>();
+      for (const result of bm25Results) {
+        scores.set(result.filePath, result.score);
+      }
+      return scores;
+    }
+
+    // Pure vector search: return raw scores
+    if (bm25Weight === 0 && embeddingWeight > 0) {
+      const scores = new Map<string, number>();
+      for (const result of embeddingResults) {
+        scores.set(result.filePath, result.score);
+      }
+      return scores;
+    }
+
+    // Hybrid search: apply RRF fusion
     const rrfScores = this.reciprocalRankFusion(
       embeddingResults,
       bm25Results,
