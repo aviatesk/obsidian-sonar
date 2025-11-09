@@ -83,11 +83,9 @@ export default class SonarPlugin extends Plugin {
 
     // Initialize embedder based on type
     if (embedderType === 'ollama') {
-      // Create worker for tokenization (shared with Ollama embedder)
       const { TransformersWorker } = await import('./src/TransformersWorker');
       const worker = new TransformersWorker(this.configManager);
-      // Use bge-m3 tokenizer for tokenization
-      const tokenizerModel = 'Xenova/bge-m3';
+      const tokenizerModel = 'Xenova/multilingual-e5-small';
       this.embedder = new OllamaEmbedder(
         embeddingModel,
         this.configManager,

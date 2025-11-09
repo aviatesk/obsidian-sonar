@@ -48,14 +48,10 @@ export class TransformersEmbedder extends WithLogging implements Embedder {
     texts: string[],
     type?: 'query' | 'passage'
   ): string[] {
-    // E5 models require task-specific prefixes for optimal performance
-    // https://huggingface.co/intfloat/multilingual-e5-base#usage
     if (this.modelId.includes('e5')) {
       const prefix = type === 'query' ? 'query: ' : 'passage: ';
       return texts.map(text => prefix + text);
     }
-
-    // Other models: no prefix needed
     return texts;
   }
 
