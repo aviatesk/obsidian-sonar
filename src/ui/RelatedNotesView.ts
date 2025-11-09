@@ -18,7 +18,7 @@ import { SearchManager, type SearchResult } from '../SearchManager';
 import { processQuery, type QueryOptions } from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';
 import type { Embedder } from '../Embedder';
-import { getCurrentContext } from '../ObsidianUtils';
+import { getCurrentContext } from '../Utils';
 import RelatedNotesContent from './RelatedNotesContent.svelte';
 
 export const RELATED_NOTES_VIEW_TYPE = 'related-notes-view';

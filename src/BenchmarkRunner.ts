@@ -53,6 +53,8 @@ export class BenchmarkRunner extends WithLogging {
     this.log('Starting benchmark');
     new Notice('Starting Sonar benchmark...');
 
+    const startTime = Date.now();
+
     try {
       // Step 1: Sync index
       this.log('Step 1: Syncing index...');
@@ -115,8 +117,10 @@ export class BenchmarkRunner extends WithLogging {
         this.log(`${method.name} results written to ${outputPath}`);
       }
 
-      new Notice('Benchmark complete! Results written to output directory.');
-      this.log('Benchmark complete');
+      const elapsedMs = Date.now() - startTime;
+      const elapsedSec = (elapsedMs / 1000).toFixed(1);
+      new Notice(`Benchmark completed in ${elapsedSec}s`, 0);
+      this.log(`Benchmark completed in ${elapsedSec}s`);
     } catch (error) {
       const errorMsg = `Benchmark failed: ${error}`;
       this.error(errorMsg);

@@ -10,7 +10,7 @@ import { ConfigManager } from '../ConfigManager';
 import type SonarPlugin from '../../main';
 import { getIndexableFilesCount } from 'src/fileFilters';
 import type { EmbedderType, AggregationMethod } from '../config';
-import { confirmAction } from '../ObsidianUtils';
+import { confirmAction } from '../Utils';
 
 export class SettingTab extends PluginSettingTab {
   plugin: SonarPlugin;

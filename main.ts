@@ -15,11 +15,13 @@ import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
 import { MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
-import { confirmAction, formatDuration } from './src/ObsidianUtils';
+import { confirmAction } from './src/Utils';
 import type { Embedder } from './src/Embedder';
 import { TransformersEmbedder } from './src/TransformersEmbedder';
 import { OllamaEmbedder } from './src/OllamaEmbedder';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
+import { DebugRunner } from './src/EmbeddingDebugger';
+
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
@@ -27,6 +29,7 @@ export default class SonarPlugin extends Plugin {
   indexManager: IndexManager | null = null;
   metadataStore: MetadataStore | null = null;
   embedder: Embedder | null = null;
+  debugRunner: DebugRunner | null = null;
 
   private log(msg: string): void {
     this.configManager.getLogger().log(`[Sonar.Plugin] ${msg}`);
@@ -104,7 +107,7 @@ export default class SonarPlugin extends Plugin {
         this.configManager,
         // TODO Make GPU use configurable
         'webgpu',
-        'fp16'
+        'fp32'
       );
       this.log(
         `Transformers.js embedder initialized: ${embeddingModel} (${this.embedder.getDevice()})`
@@ -171,6 +174,8 @@ export default class SonarPlugin extends Plugin {
       this.configManager,
       this.statusBarItem
     );
+
+    this.debugRunner = new DebugRunner(this.configManager, this.embedder);
 
     this.registerViews(this.searchManager, this.embedder);
 
@@ -309,32 +314,7 @@ export default class SonarPlugin extends Plugin {
     this.addCommand({
       id: 'probe-gpu-capabilities',
       name: 'Probe GPU capabilities (WebGPU/WebGL)',
-      callback: async () => {
-        const result = await probeGPU();
-        const webgpuStatus = result.webgpu.available
-          ? `Available${result.webgpu.isFallbackAdapter ? ' (fallback adapter)' : ''}`
-          : `Not available - ${result.webgpu.reason}`;
-        const webglStatus = result.webgl.available
-          ? `Available (${result.webgl.version}${result.webgl.renderer ? `, ${result.webgl.renderer}` : ''})`
-          : `Not available - ${result.webgl.reason}`;
-        const message = [
-          'Graphics Capabilities:',
-          '',
-          `- WebGPU: ${webgpuStatus}`,
-          result.webgpu.available && result.webgpu.features
-            ? `  * Features: ${result.webgpu.features.length} available`
-            : '',
-          '',
-          `- WebGL: ${webglStatus}`,
-          '',
-          `- Electron: ${(window as any).process?.versions?.electron ?? 'N/A'}`,
-          `- Chrome: ${(window as any).process?.versions?.chrome ?? 'N/A'}`,
-        ]
-          .filter(l => l !== '')
-          .join('\n');
-        new Notice(message, 0);
-        this.log('GPU probe result: ' + JSON.stringify(result, null, 2));
-      },
+      callback: this.probeGPU,
     });
 
     this.addCommand({
@@ -342,35 +322,7 @@ export default class SonarPlugin extends Plugin {
       name: 'Show indexable files statistics',
       callback: async () => {
         if (!this.checkInitialized()) return;
-
-        const startTime = Date.now();
-        try {
-          const stats = await this.indexManager!.getIndexableFilesStats();
-          const duration = formatDuration(Date.now() - startTime);
-          const message = [
-            `Indexable Files Statistics (calculated in ${duration}):`,
-            ``,
-            `Files: ${stats.fileCount.toLocaleString()}`,
-            ``,
-            `Tokens:`,
-            `  Total: ${stats.totalTokens.toLocaleString()}`,
-            `  Average: ${stats.averageTokens.toLocaleString()}`,
-            ``,
-            `Characters:`,
-            `  Total: ${stats.totalCharacters.toLocaleString()}`,
-            `  Average: ${stats.averageCharacters.toLocaleString()}`,
-            ``,
-            `File Size:`,
-            `  Total: ${this.formatBytes(stats.totalSize)}`,
-            `  Average: ${this.formatBytes(stats.averageSize)}`,
-          ].join('\n');
-
-          this.log(message);
-          new Notice(message, 0);
-        } catch (error) {
-          this.error(`Failed to calculate statistics: ${error}`);
-          new Notice('Failed to calculate statistics - check console');
-        }
+        await this.indexManager!.showIndexableFilesStats();
       },
     });
 
@@ -392,14 +344,15 @@ export default class SonarPlugin extends Plugin {
         }
       },
     });
-  }
 
-  private formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${Math.round((bytes / Math.pow(k, i)) * 100) / 100} ${sizes[i]}`;
+    this.addCommand({
+      id: 'debug-generate-sample-embeddings',
+      name: 'Debug: Generate sample embeddings',
+      callback: () => {
+        if (!this.checkInitialized()) return;
+        this.debugRunner!.generateSampleEmbeddings();
+      },
+    });
   }
 
   async activateRelatedNotesView() {
@@ -434,6 +387,33 @@ export default class SonarPlugin extends Plugin {
       this.configManager
     );
     modal.open();
+  }
+
+  private async probeGPU() {
+    const result = await probeGPU();
+    const webgpuStatus = result.webgpu.available
+      ? `Available${result.webgpu.isFallbackAdapter ? ' (fallback adapter)' : ''}`
+      : `Not available - ${result.webgpu.reason}`;
+    const webglStatus = result.webgl.available
+      ? `Available (${result.webgl.version}${result.webgl.renderer ? `, ${result.webgl.renderer}` : ''})`
+      : `Not available - ${result.webgl.reason}`;
+    const message = [
+      'Graphics Capabilities:',
+      '',
+      `- WebGPU: ${webgpuStatus}`,
+      result.webgpu.available && result.webgpu.features
+        ? `  * Features: ${result.webgpu.features.length} available`
+        : '',
+      '',
+      `- WebGL: ${webglStatus}`,
+      '',
+      `- Electron: ${(window as any).process?.versions?.electron ?? 'N/A'}`,
+      `- Chrome: ${(window as any).process?.versions?.chrome ?? 'N/A'}`,
+    ]
+      .filter(l => l !== '')
+      .join('\n');
+    new Notice(message, 0);
+    this.log('GPU probe result: ' + JSON.stringify(result, null, 2));
   }
 
   async clearAllVaultIndices(): Promise<void> {

@@ -18,7 +18,7 @@ import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
 import type { Embedder } from './Embedder';
 import { BM25Store } from './BM25Store';
-import { formatDuration } from './ObsidianUtils';
+import { formatBytes, formatDuration } from './Utils';
 import { WithLogging } from './WithLogging';
 
 /**
@@ -1023,7 +1023,38 @@ export class IndexManager extends WithLogging {
     return await this.metadataStore.getStats();
   }
 
-  async getIndexableFilesStats(): Promise<{
+  async showIndexableFilesStats(): Promise<void> {
+    const startTime = Date.now();
+    try {
+      const stats = await this.getIndexableFilesStats();
+      const duration = formatDuration(Date.now() - startTime);
+      const message = [
+        `Indexable Files Statistics (calculated in ${duration}):`,
+        ``,
+        `Files: ${stats.fileCount.toLocaleString()}`,
+        ``,
+        `Tokens:`,
+        `  Total: ${stats.totalTokens.toLocaleString()}`,
+        `  Average: ${stats.averageTokens.toLocaleString()}`,
+        ``,
+        `Characters:`,
+        `  Total: ${stats.totalCharacters.toLocaleString()}`,
+        `  Average: ${stats.averageCharacters.toLocaleString()}`,
+        ``,
+        `File Size:`,
+        `  Total: ${formatBytes(stats.totalSize)}`,
+        `  Average: ${formatBytes(stats.averageSize)}`,
+      ].join('\n');
+
+      this.log(message);
+      new Notice(message, 0);
+    } catch (error) {
+      this.error(`Failed to calculate statistics: ${error}`);
+      new Notice('Failed to calculate statistics - check console');
+    }
+  }
+
+  private async getIndexableFilesStats(): Promise<{
     fileCount: number;
     totalTokens: number;
     averageTokens: number;
