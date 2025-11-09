@@ -65,15 +65,24 @@ export class EmbeddingSearch extends WithLogging {
       return true; // no filter
     });
 
+    const metadataById = new Map<string, DocumentMetadata>();
+    const metadataByFilePath = new Map<string, DocumentMetadata>();
+    for (const meta of metadata) {
+      metadataById.set(meta.id, meta);
+      if (!metadataByFilePath.has(meta.filePath)) {
+        metadataByFilePath.set(meta.filePath, meta);
+      }
+    }
+
     for (const emb of filteredEmbeddings) {
       // For title entries, find the first chunk metadata of the file
       // For content entries, use the exact metadata match
       let meta: DocumentMetadata | undefined;
       if (emb.id.endsWith('#title')) {
         const filePath = emb.id.replace(/#title$/, '');
-        meta = metadata.find(m => m.filePath === filePath);
+        meta = metadataByFilePath.get(filePath);
       } else {
-        meta = metadata.find(m => m.id === emb.id);
+        meta = metadataById.get(emb.id);
       }
 
       if (meta) {
