@@ -21,6 +21,7 @@ import json
 import random
 import shutil
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
@@ -650,6 +651,51 @@ def main():
                 if doc_id in candidate_pool:
                     f.write(f"{query_id}\t{doc_id}\t1\n")
     print(f"  Subset qrels saved: {subset_qrels_file}")
+
+    # Write metadata
+    metadata_file = output_dir / "metadata.json"
+    metadata = {
+        "parameters": {
+            "seed": args.seed,
+            "n_queries": args.n_queries,
+            "bm25_top_m": args.bm25_top_m,
+            "max_docs_per_dataset": args.max_docs_per_dataset,
+        },
+        "input_files": {
+            "corpus": [str(f) for f in corpus_files],
+            "queries": [str(f) for f in queries_files],
+            "qrels": [str(f) for f in qrels_files],
+        },
+        "statistics": {
+            "corpus_size": len(candidate_pool),
+            "queries_count": len(queries),
+            "qrels_count": len(qrels),
+        },
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Add query_ratio if specified
+    if query_ratio:
+        metadata["parameters"]["query_ratio"] = query_ratio
+
+    # Add per-dataset statistics for multiple datasets
+    if len(corpus_files) > 1 and dataset_prefixes:
+        per_dataset_stats = {}
+        for prefix in dataset_prefixes:
+            dataset_name = prefix.rstrip("#")
+            doc_count = sum(
+                1 for doc_id in candidate_pool if doc_id.startswith(prefix)
+            )
+            query_count = sum(1 for qid in queries.keys() if qid.startswith(prefix))
+            per_dataset_stats[dataset_name] = {
+                "docs": doc_count,
+                "queries": query_count,
+            }
+        metadata["per_dataset_stats"] = per_dataset_stats
+
+    with open(metadata_file, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+    print(f"  Metadata saved: {metadata_file}")
 
     print("\nSubset generation complete!")
     print(f"  Output: {output_dir}")

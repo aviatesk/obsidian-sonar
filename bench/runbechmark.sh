@@ -2,7 +2,7 @@
 set -e
 
 # Default configuration
-DATASET="datasets/processed/miracl_ja_dev_miracl_en_dev_subset"
+DATASET="datasets/processed/miracl-ja-en_query-200"
 MODEL="intfloat/multilingual-e5-small"
 OUTPUT_DIR=""
 BACKENDS="elasticsearch,weaviate"

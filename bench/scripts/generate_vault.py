@@ -8,6 +8,7 @@ directory structure with one markdown file per document.
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 from typing import Dict
 
@@ -96,6 +97,11 @@ def main():
 
     print(f"\nGenerating vault from corpus: {corpus_file}")
     print(f"Output directory: {output_dir}")
+
+    # Clean output directory if it exists
+    if output_dir.exists():
+        print(f"\nCleaning output directory: {output_dir}")
+        shutil.rmtree(output_dir)
 
     # Load corpus
     print("\nLoading corpus...")

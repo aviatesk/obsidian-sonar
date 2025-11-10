@@ -132,8 +132,8 @@ if ! $SKIP_EMBEDDINGS; then
     echo "=========================================="
 
     if [[ "$DATASETS" == *"miracl"* ]]; then
-        MIRACL_DATASET="datasets/processed/miracl_ja_dev_miracl_en_dev_subset"
-        MIRACL_EMBEDDINGS_DIR="embeddings/miracl_ja_dev_miracl_en_dev_subset/${MODEL_NAME}"
+        MIRACL_DATASET="datasets/processed/miracl-ja-en_query-200"
+        MIRACL_EMBEDDINGS_DIR="embeddings/miracl-ja-en_query-200/${MODEL_NAME}"
 
         echo ""
         echo "Generating MIRACL embeddings..."
@@ -198,7 +198,7 @@ echo ""
 if ! $SKIP_SUBSET; then
     echo "Generated subsets:"
     if [[ "$DATASETS" == *"miracl"* ]]; then
-        echo "  - datasets/processed/miracl_ja_dev_miracl_en_dev_subset/"
+        echo "  - datasets/processed/miracl-ja-en_query-200/"
     fi
     if [[ "$DATASETS" == *"scidocs"* ]]; then
         echo "  - datasets/processed/scidocs_subset/"
@@ -209,7 +209,7 @@ fi
 if ! $SKIP_EMBEDDINGS; then
     echo "Generated embeddings:"
     if [[ "$DATASETS" == *"miracl"* ]]; then
-        echo "  - embeddings/miracl_ja_dev_miracl_en_dev_subset/${MODEL_NAME}/"
+        echo "  - embeddings/miracl-ja-en_query-200/${MODEL_NAME}/"
     fi
     if [[ "$DATASETS" == *"scidocs"* ]]; then
         echo "  - embeddings/scidocs_subset/${MODEL_NAME}/"
