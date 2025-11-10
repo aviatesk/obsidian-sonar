@@ -29,30 +29,13 @@ export class TransformersEmbedder extends WithLogging implements Embedder {
     );
   }
 
-  async getEmbeddings(
-    texts: string[],
-    type?: 'query' | 'passage'
-  ): Promise<number[][]> {
-    // Add model-specific prefixes for better retrieval performance
-    const prefixedTexts = this.addModelPrefixes(texts, type);
-
+  async getEmbeddings(texts: string[]): Promise<number[][]> {
     return this.worker.call('embeddings', {
-      texts: prefixedTexts,
+      texts: texts,
       modelId: this.modelId,
       device: this.device,
       dtype: this.dtype,
     });
-  }
-
-  private addModelPrefixes(
-    texts: string[],
-    type?: 'query' | 'passage'
-  ): string[] {
-    if (this.modelId.includes('e5')) {
-      const prefix = type === 'query' ? 'query: ' : 'passage: ';
-      return texts.map(text => prefix + text);
-    }
-    return texts;
   }
 
   async countTokens(text: string): Promise<number> {

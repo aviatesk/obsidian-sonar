@@ -7,11 +7,13 @@ export type AggregationMethod =
   | 'rrf_per_doc'
   | 'weighted_top_l_sum';
 
-export interface ObsidianSettings {
+export interface SonarSettings {
   // Index configuration
   // ===================
   indexPath: string; // Path to index (empty = entire vault)
   excludedPaths: string[]; // Paths to ignore during indexing
+  indexingBatchSize: number; // Number of texts to process in a single batch during indexing
+  autoIndex: boolean; // Enable auto-indexing on file changes
 
   // UI preferences
   // ==============
@@ -20,12 +22,7 @@ export interface ObsidianSettings {
   showRelatedNotesExcerpts: boolean; // Show text excerpts in related notes view
   showKnowledgeGraph: boolean; // Show knowledge graph visualization
   searchResultsCount: number; // Number of final documents to return to user
-
-  // Auto-indexing
-  // =============
-  autoIndex: boolean; // Enable auto-indexing on file changes
   relatedNotesDebounceMs: number; // Delay before updating related notes view
-  indexingBatchSize: number; // Number of texts to process in a single batch during indexing
 
   // Chunking configuration
   // ======================
@@ -65,11 +62,13 @@ export interface ObsidianSettings {
   debugSamplesPath: string; // Absolute path to debug samples directory (default: bench/debug)
 }
 
-export const DEFAULT_SETTINGS: ObsidianSettings = {
+export const DEFAULT_SETTINGS: SonarSettings = {
   // Index configuration
   // ===================
   indexPath: '',
   excludedPaths: [],
+  indexingBatchSize: 32,
+  autoIndex: false,
 
   // UI preferences
   // ==============
@@ -78,12 +77,7 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   showRelatedNotesExcerpts: true,
   showKnowledgeGraph: true,
   searchResultsCount: 10,
-
-  // Auto-indexing
-  // =============
-  autoIndex: false,
   relatedNotesDebounceMs: 5000,
-  indexingBatchSize: 32,
 
   // Chunking configuration
   // ======================

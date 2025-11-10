@@ -30,7 +30,6 @@ export class SettingTab extends PluginSettingTab {
     this.createStatisticsSection(containerEl);
     this.createIndexConfigSection(containerEl);
     this.createUiPreferencesSection(containerEl);
-    this.createAutoIndexingSection(containerEl);
     this.createChunkingConfigSection(containerEl);
     this.createEmbedderConfigSection(containerEl);
     this.createSearchParamsSection(containerEl);
@@ -220,6 +219,40 @@ Supports:
       text.inputEl.rows = 5;
       text.inputEl.cols = 50;
     });
+
+    const indexingBatchSetting = new Setting(indexConfigContainer).setName(
+      'Indexing batch size'
+    );
+    this.renderMarkdownDesc(
+      indexingBatchSetting.descEl,
+      `Number of texts (titles + chunks) to process in a single batch during indexing (default: \`32\`).
+- Larger values: process more texts at once but use more memory.
+- Smaller values: reduce memory usage but increase the number of calls to the embedder.`
+    );
+    indexingBatchSetting.addSlider(slider =>
+      slider
+        .setLimits(1, 128, 1)
+        .setValue(this.configManager.get('indexingBatchSize'))
+        .setDynamicTooltip()
+        .onChange(async value => {
+          await this.configManager.set('indexingBatchSize', value);
+        })
+    );
+
+    const autoIndexSetting = new Setting(indexConfigContainer).setName(
+      'Enable auto-indexing'
+    );
+    this.renderMarkdownDesc(
+      autoIndexSetting.descEl,
+      'Automatically index files when they are created, modified, or deleted.'
+    );
+    autoIndexSetting.addToggle(toggle =>
+      toggle
+        .setValue(this.configManager.get('autoIndex'))
+        .onChange(async value => {
+          await this.configManager.set('autoIndex', value);
+        })
+    );
   }
 
   private createUiPreferencesSection(containerEl: HTMLElement): void {
@@ -310,32 +343,8 @@ This is the final number after chunk aggregation:
           await this.configManager.set('searchResultsCount', value);
         })
     );
-  }
 
-  private createAutoIndexingSection(containerEl: HTMLElement): void {
-    const autoIndexingDetails = containerEl.createEl('details', {
-      cls: 'sonar-settings-section',
-    });
-    autoIndexingDetails.setAttr('open', '');
-    autoIndexingDetails.createEl('summary', { text: 'Auto-indexing' });
-    const autoIndexingContainer = autoIndexingDetails.createDiv();
-
-    const autoIndexSetting = new Setting(autoIndexingContainer).setName(
-      'Enable auto-indexing'
-    );
-    this.renderMarkdownDesc(
-      autoIndexSetting.descEl,
-      'Automatically index files when they are created, modified, or deleted.'
-    );
-    autoIndexSetting.addToggle(toggle =>
-      toggle
-        .setValue(this.configManager.get('autoIndex'))
-        .onChange(async value => {
-          await this.configManager.set('autoIndex', value);
-        })
-    );
-
-    const debounceSetting = new Setting(autoIndexingContainer).setName(
+    const debounceSetting = new Setting(uiPreferencesContainer).setName(
       'Related notes update delay'
     );
     this.renderMarkdownDesc(
@@ -349,25 +358,6 @@ This is the final number after chunk aggregation:
         .setDynamicTooltip()
         .onChange(async value => {
           await this.configManager.set('relatedNotesDebounceMs', value);
-        })
-    );
-
-    const indexingBatchSetting = new Setting(autoIndexingContainer).setName(
-      'Indexing batch size'
-    );
-    this.renderMarkdownDesc(
-      indexingBatchSetting.descEl,
-      `Number of texts (titles + chunks) to process in a single batch during indexing (default: \`32\`).
-- Larger values: process more texts at once but use more memory.
-- Smaller values: reduce memory usage but increase the number of calls to the embedder.`
-    );
-    indexingBatchSetting.addSlider(slider =>
-      slider
-        .setLimits(1, 128, 1)
-        .setValue(this.configManager.get('indexingBatchSize'))
-        .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('indexingBatchSize', value);
         })
     );
   }

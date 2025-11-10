@@ -127,9 +127,9 @@ export class EmbeddingSearch extends WithLogging {
   private async searchByType(
     query: string,
     type: 'title' | 'content',
-    options: FullSearchOptions & { queryId?: string }
+    options: FullSearchOptions
   ): Promise<SearchResult[]> {
-    const queryEmbeddings = await this.embedder.getEmbeddings([query], 'query');
+    const queryEmbeddings = await this.embedder.getEmbeddings([query]);
     const queryEmbedding = queryEmbeddings[0];
 
     const documents = await this.getCombinedDocuments(type);

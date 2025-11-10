@@ -66,7 +66,7 @@ export class DebugRunner extends WithLogging {
       this.log(`Processing: ${txtFile}`);
       this.log(`  Text: ${text.slice(0, 50)}...`);
 
-      const embedding = await this.embedder.getEmbeddings([text], 'query');
+      const embedding = await this.embedder.getEmbeddings([text]);
       const emb = embedding[0];
 
       const l2norm = Math.sqrt(emb.reduce((sum, val) => sum + val * val, 0));

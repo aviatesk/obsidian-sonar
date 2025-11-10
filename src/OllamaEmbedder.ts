@@ -24,10 +24,7 @@ export class OllamaEmbedder extends WithLogging implements Embedder {
     );
   }
 
-  async getEmbeddings(
-    texts: string[],
-    _type?: 'query' | 'passage' // Ollama doesn't require task-specific prefixes
-  ): Promise<number[][]> {
+  async getEmbeddings(texts: string[]): Promise<number[][]> {
     const embeddings: number[][] = [];
 
     for (const text of texts) {

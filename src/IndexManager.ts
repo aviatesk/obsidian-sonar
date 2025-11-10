@@ -529,10 +529,7 @@ export class IndexManager extends WithLogging {
 
       // Generate embeddings for this batch
       const embeddingStart = Date.now();
-      const batchEmbeddings = await this.embedder.getEmbeddings(
-        batchTexts,
-        'passage'
-      );
+      const batchEmbeddings = await this.embedder.getEmbeddings(batchTexts);
       timings.embeddingGeneration += Date.now() - embeddingStart;
       timings.workerCalls++;
 
@@ -798,10 +795,9 @@ export class IndexManager extends WithLogging {
 
     if (chunks.length === 0) {
       // Empty file: index only title
-      const titleEmbeddings = await this.embedder.getEmbeddings(
-        [file.basename],
-        'passage'
-      );
+      const titleEmbeddings = await this.embedder.getEmbeddings([
+        file.basename,
+      ]);
       const titleEmbedding = titleEmbeddings[0];
 
       const docId = `${file.path}#0`;
@@ -855,14 +851,10 @@ export class IndexManager extends WithLogging {
         });
       }
 
-      const embeddings = await this.embedder.getEmbeddings(
-        chunkContents,
-        'passage'
-      );
-      const titleEmbeddings = await this.embedder.getEmbeddings(
-        [file.basename],
-        'passage'
-      );
+      const embeddings = await this.embedder.getEmbeddings(chunkContents);
+      const titleEmbeddings = await this.embedder.getEmbeddings([
+        file.basename,
+      ]);
       const titleEmbedding = titleEmbeddings[0];
       const embeddingData: Array<{
         id: string;
