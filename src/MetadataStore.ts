@@ -268,6 +268,13 @@ export class MetadataStore extends WithLogging {
       request.onsuccess = () => resolve();
       request.onerror = () =>
         reject(new Error(`Failed to delete database: ${dbName}`));
+      request.onblocked = () => {
+        reject(
+          new Error(
+            `Database deletion blocked: ${dbName} (database is still open)`
+          )
+        );
+      };
     });
   }
 }
