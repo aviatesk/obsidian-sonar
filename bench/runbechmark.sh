@@ -89,7 +89,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --host HOST                    Backend host (default: localhost:9200 for ES, localhost:8080 for Weaviate)"
             echo "  --top-k NUM                    Number of documents to return (default: 100)"
             echo "  --retrieval-multiplier NUM     Multiplier for hybrid search pre-fusion limit (default: 10)"
-            echo "  --agg-method METHOD            Document aggregation method: max_p,top_m_sum,top_m_avg,rrf_per_doc (default: top_m_sum)"
+            echo "  --agg-method METHOD            Document aggregation method: max_p,top_m_sum,top_m_avg,rrf_per_doc (default: max_p)"
             echo "  --agg-m NUM                    Number of top chunks per document for top_m_* methods (default: 3)"
             echo "  --rrf-k NUM                    RRF k parameter for hybrid search (default: 60)"
             echo ""

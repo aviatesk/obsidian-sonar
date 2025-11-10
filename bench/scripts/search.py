@@ -213,9 +213,9 @@ def main():
     parser.add_argument(
         "--agg-method",
         type=str,
-        default="top_m_sum",
+        default="max_p",
         choices=["max_p", "top_m_sum", "top_m_avg", "rrf_per_doc"],
-        help="Document aggregation method (default: top_m_sum)",
+        help="Document aggregation method (default: max_p)",
     )
     parser.add_argument(
         "--agg-m",

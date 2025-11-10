@@ -78,7 +78,7 @@ export class BenchmarkRunner extends WithLogging {
       // Step 1: Sync index
       this.log('Step 1: Syncing index...');
       new Notice('Syncing index...');
-      await this.indexManager.syncIndex();
+      await this.indexManager.syncIndex(true);
       this.log('Index synced');
 
       // Step 2: Load queries

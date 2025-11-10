@@ -26,9 +26,7 @@ def rrf_fusion(hits1: list, hits2: list, k: int = 60) -> list:
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
-def aggregate_chunk_scores(
-    chunk_hits: list, method: str = "top_m_sum", m: int = 3
-) -> list:
+def aggregate_chunk_scores(chunk_hits: list, method: str, m: int) -> list:
     """
     Aggregate chunk-level scores to document-level scores.
 
