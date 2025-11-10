@@ -1,6 +1,4 @@
 import type { Embedder } from './Embedder';
-import { OllamaClient } from './OllamaClient';
-import type { Logger } from './Logger';
 
 export interface QueryOptions {
   fileName: string;
@@ -151,41 +149,4 @@ async function truncateToTokens(
   }
 
   return result.join(' ');
-}
-
-export async function extractWithLLM(
-  input: string,
-  maxTokens: number,
-  ollamaUrl: string,
-  summaryModel: string,
-  logger: Logger
-): Promise<string> {
-  const ollamaClient = new OllamaClient({
-    ollamaUrl,
-    model: summaryModel,
-  });
-
-  const summaryTokens = Math.max(20, Math.floor(maxTokens * 0.4));
-  const keywordTokens = maxTokens - summaryTokens;
-
-  const prompt = `Extract a search query from the following text for finding related documents in a RAG system.
-Requirements:
-1. Write in the same language as the input text (do not translate)
-2. Start with ONE concise sentence summarizing the main topic or question (max ${summaryTokens} tokens)
-3. Follow with relevant keywords, concepts, and entities separated by commas (max ${keywordTokens} tokens)
-4. Total output should be approximately ${maxTokens} tokens
-5. Focus on searchable terms that would help find similar or related documents
-
-Text to analyze follows:
-========================
-
-${input}`;
-
-  try {
-    const extractionQuery = await ollamaClient.generate(prompt);
-    return extractionQuery.trim();
-  } catch (err) {
-    logger.warn(`LLM extraction generation failed: ${err}`);
-    return input;
-  }
 }

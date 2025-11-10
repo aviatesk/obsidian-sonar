@@ -10,6 +10,14 @@ privately on your device.
 ## Requirements
 
 - Node.js 18+
+- (Optional) [llama.cpp](https://github.com/ggerganov/llama.cpp) for embedding
+  generation
+  - Build llama.cpp with the `llama-server` binary
+  - Models are downloaded automatically from HuggingFace on first use
+  - Example models:
+    - [BAAI/bge-m3-gguf](https://huggingface.co/BAAI/bge-m3-gguf) (multilingual)
+    - [BAAI/bge-small-en-v1.5-gguf](https://huggingface.co/BAAI/bge-small-en-v1.5-gguf)
+      (English)
 
 ## Installation
 
@@ -38,7 +46,9 @@ TODO
 
 Built with:
 
+- [llama.cpp](https://github.com/ggerganov/llama.cpp) for local embedding
+  generation
 - [Transformers.js](https://huggingface.co/docs/transformers.js) for
-  tokenization
+  browser-based embeddings
 - [Svelte](https://svelte.dev/) for reactive UI components
 - [Obsidian API](https://docs.obsidian.md/) for vault integration

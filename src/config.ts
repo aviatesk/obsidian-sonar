@@ -1,5 +1,5 @@
 export type LogLevel = 'error' | 'warn' | 'log';
-export type EmbedderBackend = 'transformers' | 'ollama';
+export type EmbedderBackend = 'transformers' | 'llamacpp';
 export type AggregationMethod =
   | 'max_p'
   | 'top_m_sum'
@@ -32,8 +32,11 @@ export interface SonarSettings {
 
   // Embedder configuration
   // ======================
-  embedderBackend: EmbedderBackend; // Embedder type: 'transformers' or 'ollama'
-  embeddingModel: string; // HuggingFace model ID (e.g., 'Xenova/bge-m3') or Ollama model name
+  embedderBackend: EmbedderBackend; // Embedder backend: 'transformers' or 'llamacpp'
+  embeddingModel: string; // HuggingFace model ID (e.g., 'Xenova/bge-m3')
+  llamacppServerPath: string; // Path to llama.cpp server binary (e.g., 'llama-server')
+  llamacppModelRepo: string; // HuggingFace repository for llama.cpp (e.g., 'BAAI/bge-m3-gguf')
+  llamacppModelFile: string; // GGUF filename in the repository (e.g., 'bge-m3-q8_0.gguf')
 
   // Search parameters
   // =================
@@ -89,6 +92,9 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   // ======================
   embedderBackend: 'transformers',
   embeddingModel: 'Xenova/bge-m3',
+  llamacppServerPath: 'llama-server',
+  llamacppModelRepo: 'BAAI/bge-m3-gguf',
+  llamacppModelFile: 'bge-m3-q8_0.gguf',
 
   // Search parameters
   // =================

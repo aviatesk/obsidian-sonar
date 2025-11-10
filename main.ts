@@ -17,7 +17,7 @@ import { MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
 import type { Embedder } from './src/Embedder';
 import { TransformersEmbedder } from './src/TransformersEmbedder';
-import { OllamaEmbedder } from './src/OllamaEmbedder';
+import { LlamaCppEmbedder } from './src/LlamaCppEmbedder';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { DebugRunner } from './src/EmbeddingDebugger';
 
@@ -83,19 +83,30 @@ export default class SonarPlugin extends Plugin {
     const embedderBackend = this.configManager.get('embedderBackend');
     const embeddingModel = this.configManager.get('embeddingModel');
 
-    if (embedderBackend === 'ollama') {
-      const { TransformersWorker } = await import('./src/TransformersWorker');
-      const worker = new TransformersWorker(this.configManager);
-      const tokenizerModel = 'Xenova/multilingual-e5-small';
-      this.embedder = new OllamaEmbedder(
-        embeddingModel,
-        this.configManager,
-        worker,
-        tokenizerModel
+    if (embedderBackend === 'llamacpp') {
+      const serverPath = this.configManager.get('llamacppServerPath');
+      const modelRepo = this.configManager.get('llamacppModelRepo');
+      const modelFile = this.configManager.get('llamacppModelFile');
+      this.embedder = new LlamaCppEmbedder(
+        serverPath,
+        modelRepo,
+        modelFile,
+        this.configManager
       );
-      this.log(
-        `Ollama embedder initialized: ${embeddingModel} (tokenizer: ${tokenizerModel})`
-      );
+      try {
+        if (this.embedder.initialize) {
+          await this.embedder.initialize();
+        }
+        this.log(`llama.cpp embedder initialized: ${modelRepo}/${modelFile}`);
+      } catch (error) {
+        this.error(`Failed to initialize llama.cpp embedder: ${error}`);
+        new Notice(
+          'Failed to initialize llama.cpp embedder. Check console for details.'
+        );
+        this.embedder.cleanup();
+        this.embedder = null;
+        return;
+      }
     } else {
       // Uses Blob URL Worker with inlined code to make Transformers.js think this Electron environment is a browser environment
       this.embedder = new TransformersEmbedder(

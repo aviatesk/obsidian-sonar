@@ -1,9 +1,17 @@
 /**
  * Unified interface for embedding generation
- * Supports both Transformers.js and Ollama backends
+ * Supports both Transformers.js and llama.cpp backends
  */
 export interface Embedder {
-  getEmbeddings(texts: string[]): Promise<number[][]>;
+  /**
+   * Initialize the embedder (optional, for backends that need async setup)
+   */
+  initialize?(): Promise<void>;
+
+  getEmbeddings(
+    texts: string[],
+    type?: 'query' | 'passage'
+  ): Promise<number[][]>;
 
   /**
    * Counts the number of tokens in the given text.

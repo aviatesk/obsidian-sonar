@@ -35,7 +35,7 @@
     "bm25",
     "transformers",
     "webgpu",
-    "ollama",
+    "llamacpp",
     "local",
     "offline"
   ],
@@ -65,7 +65,6 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.1.6",
     "obsidian": "^1.8.7",
-    "ollama": "^0.5.17",
     "prettier": "^3.6.2",
     "svelte": "^5.39.4",
     "svelte-check": "^4.3.2",
