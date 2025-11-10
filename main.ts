@@ -204,12 +204,6 @@ export default class SonarPlugin extends Plugin {
     return true;
   }
 
-  private getCurrentConfigInfo(): string {
-    const embedderType = this.configManager.get('embedderType');
-    const embeddingModel = this.configManager.get('embeddingModel');
-    return `Embedder: ${embedderType}\nModel: ${embeddingModel}`;
-  }
-
   private registerViews(
     searchManager: SearchManager,
     embedder: Embedder
@@ -241,7 +235,7 @@ export default class SonarPlugin extends Plugin {
       name: 'Clear current search index',
       callback: async () => {
         if (!this.checkInitialized()) return;
-        const confirmMessage = `Clear current search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will remove all indexed data for the current configuration. This cannot be undone.`;
+        const confirmMessage = `Clear current search index?\n\n${this.configManager.getCurrentConfigInfo()}\n\nThis will remove all indexed data for the current configuration. This cannot be undone.`;
         const confirmed = await confirmAction(
           this.app,
           'Clear current index',
@@ -255,10 +249,10 @@ export default class SonarPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: 'clear-vault-indices',
-      name: 'Clear all search indices for this vault',
+      id: 'delete-vault-databases',
+      name: 'Delete all search databases for this vault',
       callback: async () => {
-        await this.clearAllVaultIndices();
+        await this.deleteAllVaultDatabases();
       },
     });
 
@@ -267,7 +261,7 @@ export default class SonarPlugin extends Plugin {
       name: 'Rebuild entire search index',
       callback: async () => {
         if (!this.checkInitialized()) return;
-        const confirmMessage = `Rebuild entire search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear all indexed data and reindex all files. This cannot be undone.`;
+        const confirmMessage = `Rebuild entire search index?\n\n${this.configManager.getCurrentConfigInfo()}\n\nThis will clear all indexed data and reindex all files. This cannot be undone.`;
         const confirmed = await confirmAction(
           this.app,
           'Rebuild index',
@@ -416,7 +410,7 @@ export default class SonarPlugin extends Plugin {
     this.log('GPU probe result: ' + JSON.stringify(result, null, 2));
   }
 
-  async clearAllVaultIndices(): Promise<void> {
+  async deleteAllVaultDatabases(): Promise<void> {
     const vaultName = this.app.vault.getName();
     const databases = await MetadataStore.listDatabasesForVault(vaultName);
 
@@ -429,16 +423,34 @@ export default class SonarPlugin extends Plugin {
       `Found ${databases.length} database(s) for vault ${vaultName}: ${databases.join(', ')}`
     );
 
-    const confirmMessage = `Found ${databases.length} database(s) for vault "${vaultName}":\n\n${databases.map(db => `  - ${db}`).join('\n')}\n\nDelete all? This cannot be undone.`;
+    const confirmMessage = `Found ${databases.length} database(s) for vault "${vaultName}":\n\n${databases.map(db => `  - \`${db}\``).join('\n')}\n\nDelete all? This cannot be undone.`;
 
     const confirmed = await confirmAction(
       this.app,
-      'Clear all vault indices',
+      'Delete all vault databases',
       confirmMessage,
       'Delete All'
     );
     if (!confirmed) {
       return;
+    }
+
+    // Close current database connections if they're in the list to be deleted
+    if (this.metadataStore) {
+      const embedderType = this.configManager.get('embedderType');
+      const embeddingModel = this.configManager.get('embeddingModel');
+      const { getDBName } = await import('./src/MetadataStore');
+      const currentDbName = getDBName(vaultName, embedderType, embeddingModel);
+
+      if (databases.includes(currentDbName)) {
+        this.log(`Closing current database before deletion: ${currentDbName}`);
+        await this.metadataStore.close();
+        this.metadataStore = null;
+        if (this.indexManager) {
+          this.indexManager.cleanup();
+          this.indexManager = null;
+        }
+      }
     }
 
     let deletedCount = 0;
@@ -453,10 +465,7 @@ export default class SonarPlugin extends Plugin {
     }
 
     if (deletedCount > 0) {
-      new Notice(
-        `Deleted ${deletedCount} database(s). Please reload Obsidian to reinitialize.`,
-        0
-      );
+      new Notice(`Deleted ${deletedCount} database(s).`, 0);
       this.log(`Deleted ${deletedCount} database(s) for vault ${vaultName}`);
     } else {
       new Notice('Failed to delete any databases - check console');

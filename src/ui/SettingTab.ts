@@ -134,19 +134,19 @@ export class SettingTab extends PluginSettingTab {
         })
     );
 
-    const clearAllSetting = new Setting(actionsContainer).setName(
-      'Clear all search indices for this vault'
+    const deleteAllSetting = new Setting(actionsContainer).setName(
+      'Delete all search databases for this vault'
     );
     this.renderMarkdownDesc(
-      clearAllSetting.descEl,
-      'Remove all indexed data for all embedders and models used in this vault.'
+      deleteAllSetting.descEl,
+      'Delete all search databases for all embedders and models used in this vault.'
     );
-    clearAllSetting.addButton(button =>
+    deleteAllSetting.addButton(button =>
       button
-        .setButtonText('Clear All')
+        .setButtonText('Delete All')
         .setWarning()
         .onClick(async () => {
-          await this.plugin.clearAllVaultIndices();
+          await this.plugin.deleteAllVaultDatabases();
           await this.updateStats();
         })
     );
@@ -776,17 +776,11 @@ Hybrid search limits both embedding and BM25 results to \`top_k * retrieval_mult
     );
   }
 
-  private getCurrentConfigInfo(): string {
-    const embedderType = this.configManager.get('embedderType');
-    const embeddingModel = this.configManager.get('embeddingModel');
-    return `Embedder: ${embedderType}\nModel: ${embeddingModel}`;
-  }
-
   async confirmRebuildIndex(): Promise<boolean> {
     return confirmAction(
       this.app,
       'Rebuild index',
-      `Rebuild entire search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear all indexed data and reindex all files. This cannot be undone.`,
+      `Rebuild entire search index?\n\n${this.configManager.getCurrentConfigInfo()}\n\nThis will clear all indexed data and reindex all files. This cannot be undone.`,
       'Rebuild'
     );
   }
@@ -795,7 +789,7 @@ Hybrid search limits both embedding and BM25 results to \`top_k * retrieval_mult
     return confirmAction(
       this.app,
       'Clear current index',
-      `Clear current search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will remove all indexed data for the current configuration. This cannot be undone.`,
+      `Clear current search index?\n\n${this.configManager.getCurrentConfigInfo()}\n\nThis will remove all indexed data for the current configuration. This cannot be undone.`,
       'Clear'
     );
   }

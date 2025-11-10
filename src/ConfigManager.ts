@@ -54,6 +54,15 @@ export class ConfigManager extends EventEmitter {
   }
 
   /**
+   * Get formatted string of current embedder configuration
+   */
+  getCurrentConfigInfo(): string {
+    const embedderType = this.get('embedderType');
+    const embeddingModel = this.get('embeddingModel');
+    return `- Embedding backend: \`${embedderType}\`\n- Embedding model: \`${embeddingModel}\``;
+  }
+
+  /**
    * Update a single setting
    */
   async set<K extends keyof SonarSettings>(

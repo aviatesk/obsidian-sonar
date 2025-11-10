@@ -1,4 +1,10 @@
-import { App, MarkdownView, Modal } from 'obsidian';
+import {
+  App,
+  Component,
+  MarkdownRenderer,
+  MarkdownView,
+  Modal,
+} from 'obsidian';
 
 interface DocumentContext {
   lineStart: number;
@@ -177,11 +183,10 @@ export function confirmAction(
   return new Promise(resolve => {
     const modal = new Modal(app);
     modal.titleEl.setText(title);
-    modal.contentEl.createEl('p', {
-      text: message,
-      attr: { style: 'white-space: pre-wrap;' },
-    });
-
+    const component = new Component();
+    component.load();
+    const messageEl = modal.contentEl.createDiv();
+    MarkdownRenderer.render(app, message, messageEl, '', component);
     const buttonContainer = modal.contentEl.createDiv({
       cls: 'modal-button-container',
     });
@@ -197,7 +202,9 @@ export function confirmAction(
         modal.close();
         resolve(true);
       });
-
+    modal.onClose = () => {
+      component.unload();
+    };
     modal.open();
   });
 }
