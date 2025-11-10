@@ -139,12 +139,11 @@ export class BM25Store extends WithLogging {
       }
     }
 
-    // Phase 2: Read all existing data
+    // Phase 2: Read existing data and build inverted index
     const existingDocs = await Promise.all(
       documents.map(doc => this.getDocumentTokenInfo(doc.docId))
     );
 
-    // Collect tokens from existing docs
     for (const existingDoc of existingDocs) {
       if (existingDoc) {
         existingDoc.tokens.forEach(t => allTokensToFetch.add(t));
@@ -154,24 +153,14 @@ export class BM25Store extends WithLogging {
     const invertedEntries =
       await this.bulkGetInvertedIndexEntries(allTokensToFetch);
 
-    // Phase 3: Write transaction - all synchronous
-    const transaction = this.db.transaction(
-      [STORE_BM25_INVERTED_INDEX, STORE_BM25_DOC_TOKENS],
-      'readwrite'
-    );
+    // Phase 3: Build final inverted index in memory
+    const modifiedTokens = new Set<string>();
 
-    const docTokensStore = transaction.objectStore(STORE_BM25_DOC_TOKENS);
-    const invertedIndexStore = transaction.objectStore(
-      STORE_BM25_INVERTED_INDEX
-    );
-
-    // Process each document
     for (let i = 0; i < documents.length; i++) {
       const docInfo = docsTokenInfo[i];
       const existingDoc = existingDocs[i];
       const termFreq = this.calculateTermFrequency(docInfo.tokens);
 
-      // Remove old document if exists
       if (existingDoc) {
         const uniqueTokens = new Set(existingDoc.tokens);
         for (const token of uniqueTokens) {
@@ -180,20 +169,12 @@ export class BM25Store extends WithLogging {
             entry.postings = entry.postings.filter(
               p => p.docId !== docInfo.docId
             );
-            if (entry.postings.length === 0) {
-              invertedIndexStore.delete(token);
-            } else {
-              entry.documentFrequency = entry.postings.length;
-              invertedIndexStore.put(entry);
-            }
+            entry.documentFrequency = entry.postings.length;
+            modifiedTokens.add(token);
           }
         }
       }
 
-      // Add new document
-      docTokensStore.put(docInfo);
-
-      // Update inverted index
       for (const [token, freq] of termFreq.entries()) {
         const existing = invertedEntries.get(token);
         const newPosting: PostingEntry = {
@@ -204,16 +185,41 @@ export class BM25Store extends WithLogging {
         if (existing) {
           existing.postings.push(newPosting);
           existing.documentFrequency = existing.postings.length;
-          invertedIndexStore.put(existing);
         } else {
           const newEntry: InvertedIndexEntry = {
             token,
             postings: [newPosting],
             documentFrequency: 1,
           };
-          invertedIndexStore.put(newEntry);
           invertedEntries.set(token, newEntry);
         }
+        modifiedTokens.add(token);
+      }
+    }
+
+    // Phase 4: Write to database - only modified tokens
+    const transaction = this.db.transaction(
+      [STORE_BM25_INVERTED_INDEX, STORE_BM25_DOC_TOKENS],
+      'readwrite'
+    );
+
+    const docTokensStore = transaction.objectStore(STORE_BM25_DOC_TOKENS);
+    const invertedIndexStore = transaction.objectStore(
+      STORE_BM25_INVERTED_INDEX
+    );
+
+    // Write document token info
+    for (const docInfo of docsTokenInfo) {
+      docTokensStore.put(docInfo);
+    }
+
+    // Write inverted index
+    for (const token of modifiedTokens) {
+      const entry = invertedEntries.get(token);
+      if (!entry || entry.postings.length === 0) {
+        invertedIndexStore.delete(token);
+      } else {
+        invertedIndexStore.put(entry);
       }
     }
 

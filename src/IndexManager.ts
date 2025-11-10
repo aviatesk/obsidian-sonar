@@ -18,7 +18,12 @@ import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
 import type { Embedder } from './Embedder';
 import { BM25Store } from './BM25Store';
-import { formatDuration } from './ObsidianUtils';
+import {
+  formatBytes,
+  formatDuration,
+  hasNaNEmbedding,
+  countNaNValues,
+} from './Utils';
 import { WithLogging } from './WithLogging';
 
 /**
@@ -144,7 +149,8 @@ export class IndexManager extends WithLogging {
     modifiedCount: number;
     deletedCount: number;
     skippedCount: number;
-    errorCount: number;
+    errored: number;
+    skipped: number;
   }> {
     const dbFileMap = await this.metadataStore.getFileMetadataMap();
     const vaultFiles = getFilesToIndex(this.vault, this.configManager);
@@ -187,7 +193,7 @@ export class IndexManager extends WithLogging {
       `Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
     );
 
-    const errorCount = await this.processBatchOperations(
+    const { errored, skipped } = await this.processBatchOperations(
       operations,
       progressCallback
     );
@@ -197,7 +203,8 @@ export class IndexManager extends WithLogging {
       modifiedCount,
       deletedCount,
       skippedCount,
-      errorCount,
+      errored,
+      skipped,
     };
   }
 
@@ -299,34 +306,28 @@ export class IndexManager extends WithLogging {
     this.debouncedProcess();
   }
 
-  private async processPendingOperations(): Promise<number> {
+  private async processPendingOperations(): Promise<void> {
     if (this.pendingOperations.size === 0) {
-      return 0;
+      return;
     }
 
-    // Prevent concurrent processing
     if (this.isProcessing) {
-      return 0;
+      return; // Prevent concurrent processing
     }
 
     this.isProcessing = true;
     const operations = Array.from(this.pendingOperations.values());
     this.pendingOperations.clear();
 
-    if (operations.length > 0) {
-      this.log(`Processing ${operations.length} file operation(s)`);
-    }
+    const { errored } = await this.processBatchOperations(operations);
 
-    const errorCount = await this.processBatchOperations(operations);
-
-    if (errorCount > 0) {
-      new Notice(`Sonar index failed to update ${errorCount} files`);
+    if (errored > 0) {
+      new Notice(`Sonar index failed to update ${errored} files`);
     }
 
     this.isProcessing = false;
 
     await this.updateStatusBarWithFileCount();
-    return errorCount;
   }
 
   /**
@@ -340,10 +341,22 @@ export class IndexManager extends WithLogging {
       total: number,
       filePath: string
     ) => void | Promise<void>
-  ): Promise<number> {
+  ): Promise<{ errored: number; skipped: number }> {
     if (operations.length === 0) {
-      return 0;
+      return { errored: 0, skipped: 0 };
     }
+
+    // Performance timing
+    const timings = {
+      deletion: 0,
+      fileRead: 0,
+      chunking: 0,
+      embeddingGeneration: 0,
+      dbWrite: 0,
+      bm25Indexing: 0,
+      workerCalls: 0,
+    };
+    const startTotal = Date.now();
 
     // Batch delete all affected files from all stores first
     const filesToDelete: string[] = [];
@@ -361,6 +374,7 @@ export class IndexManager extends WithLogging {
     }
 
     if (filesToDelete.length > 0) {
+      const deletionStart = Date.now();
       this.log(`Deleting ${filesToDelete.length} files...`);
 
       // Get all document IDs from MetadataStore for these files (parallel)
@@ -381,66 +395,396 @@ export class IndexManager extends WithLogging {
         this.bm25Store.deleteDocuments(allDocIds),
       ]);
 
+      timings.deletion = Date.now() - deletionStart;
       this.log(`Deleted ${allDocIds.length} documents`);
     }
 
-    // Process each operation (only re-indexing for create/modify/rename)
+    // Filter operations that need indexing
+    const indexOperations = operations.filter(
+      op =>
+        (op.type === 'create' ||
+          op.type === 'modify' ||
+          op.type === 'rename') &&
+        op.file
+    );
+
+    if (indexOperations.length === 0) {
+      return { errored: 0, skipped: 0 };
+    }
+
+    // Step 1: Prepare all chunks for all files
+    this.log(`Preparing ${indexOperations.length} files for indexing...`);
+    interface FileChunkData {
+      operation: FileOperation;
+      file: TFile;
+      chunks: Array<{ content: string; headings: string[] }>;
+      indexedAt: number;
+    }
+
+    const fileChunkDataList: FileChunkData[] = [];
     let errorCount = 0;
-    for (let i = 0; i < operations.length; i++) {
-      const operation = operations[i];
-      const filePath = operation.file?.path || operation.oldPath || 'unknown';
 
-      if (progressCallback) {
-        await progressCallback(i + 1, operations.length, filePath);
+    for (const operation of indexOperations) {
+      const file = operation.file!;
+
+      const readStart = Date.now();
+      let content;
+      try {
+        content = await this.vault.cachedRead(file);
+      } catch (error) {
+        this.warn(`Failed to read ${file.path}: ${error}`);
+        errorCount++;
+        continue;
       }
+      timings.fileRead += Date.now() - readStart;
 
-      const fileName =
-        operation.file?.basename ||
-        operation.oldPath?.split('/').pop() ||
-        'unknown';
-      this.updateStatus({
-        action: this.getOperationAction(operation.type),
-        file: fileName,
-        filePath,
-        current: i + 1,
-        total: operations.length,
+      const chunkStart = Date.now();
+      const chunks = await createChunks(
+        content,
+        this.configManager.get('maxChunkSize'),
+        this.configManager.get('chunkOverlap'),
+        this.embedder
+      );
+      timings.chunking += Date.now() - chunkStart;
+
+      fileChunkDataList.push({
+        operation,
+        file,
+        chunks,
+        indexedAt: Date.now(),
+      });
+    }
+
+    // Step 2: Index all BM25 documents upfront (before embedding generation)
+    this.log('Preparing BM25 documents...');
+    const allBM25Documents: Array<{ docId: string; content: string }> = [];
+    for (const { file, chunks } of fileChunkDataList) {
+      allBM25Documents.push({
+        docId: `${file.path}#title`,
+        content: file.basename,
+      });
+      for (let i = 0; i < chunks.length; i++) {
+        allBM25Documents.push({
+          docId: `${file.path}#${i}`,
+          content: chunks[i].content,
+        });
+      }
+    }
+
+    if (allBM25Documents.length > 0) {
+      this.log(`Indexing ${allBM25Documents.length} BM25 documents...`);
+      const bm25Start = Date.now();
+      await this.bm25Store.indexDocumentBatch(allBM25Documents);
+      timings.bm25Indexing = Date.now() - bm25Start;
+      this.log(`Indexed ${allBM25Documents.length} BM25 documents`);
+    }
+
+    // Step 3: Process embeddings in batches
+    // Prepare all texts (titles + chunks) with metadata
+    interface TextItem {
+      text: string;
+      fileIndex: number;
+      type: 'title' | 'chunk';
+      chunkIndex?: number;
+    }
+
+    const allTextItems: TextItem[] = [];
+    for (let fileIndex = 0; fileIndex < fileChunkDataList.length; fileIndex++) {
+      const { file, chunks } = fileChunkDataList[fileIndex];
+
+      allTextItems.push({
+        text: file.basename,
+        fileIndex,
+        type: 'title',
       });
 
-      try {
-        await this.processOperationCore(operation);
-        this.log(`${this.getOperationAction(operation.type)} ${filePath}`);
-      } catch (error) {
-        this.warn(`Failed to ${operation.type} ${filePath}: ${error}`);
-        errorCount++;
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        allTextItems.push({
+          text: chunks[chunkIndex].content,
+          fileIndex,
+          type: 'chunk',
+          chunkIndex,
+        });
       }
     }
 
-    return errorCount;
+    // Generate embeddings for batch -> index metadata/embeddings
+    const batchSize = this.configManager.get('indexingBatchSize');
+    this.log(
+      `Processing ${allTextItems.length} texts in batches of ${batchSize}...`
+    );
+    const fileEmbeddingsMap = new Map<
+      number,
+      Array<{
+        type: 'title' | 'chunk';
+        chunkIndex?: number;
+        embedding: number[];
+      }>
+    >();
+    // Track files with NaN embeddings across all batches
+    const filesWithNaN = new Set<number>();
+
+    for (let i = 0; i < allTextItems.length; i += batchSize) {
+      const batchItems = allTextItems.slice(
+        i,
+        Math.min(i + batchSize, allTextItems.length)
+      );
+      const batchTexts = batchItems.map(item => item.text);
+
+      // Generate embeddings for this batch
+      const embeddingStart = Date.now();
+      const batchEmbeddings = await this.embedder.getEmbeddings(batchTexts);
+      timings.embeddingGeneration += Date.now() - embeddingStart;
+      timings.workerCalls++;
+
+      // Check for NaN embeddings in this batch
+      const batchFilesWithNaN = new Set<number>();
+      for (let j = 0; j < batchEmbeddings.length; j++) {
+        const embedding = batchEmbeddings[j];
+        if (hasNaNEmbedding(embedding)) {
+          const item = batchItems[j];
+          const { file } = fileChunkDataList[item.fileIndex];
+          const nanCount = countNaNValues(embedding);
+          this.warn(
+            `NaN embedding detected for ${file.path} (${item.type}${item.type === 'chunk' ? ` #${item.chunkIndex}` : ''}): ${nanCount}/${embedding.length} NaN values`
+          );
+          batchFilesWithNaN.add(item.fileIndex);
+          filesWithNaN.add(item.fileIndex);
+        }
+      }
+
+      // Associate embeddings with files (skip files with NaN from any batch)
+      for (let j = 0; j < batchItems.length; j++) {
+        const item = batchItems[j];
+        const embedding = batchEmbeddings[j];
+
+        // Skip files that have any NaN embeddings (from this or previous batches)
+        if (filesWithNaN.has(item.fileIndex)) {
+          continue;
+        }
+
+        if (!fileEmbeddingsMap.has(item.fileIndex)) {
+          fileEmbeddingsMap.set(item.fileIndex, []);
+        }
+        fileEmbeddingsMap.get(item.fileIndex)!.push({
+          type: item.type,
+          chunkIndex: item.chunkIndex,
+          embedding,
+        });
+      }
+
+      // Remove files with NaN from the map (in case they were partially added before)
+      for (const fileIndex of batchFilesWithNaN) {
+        fileEmbeddingsMap.delete(fileIndex);
+      }
+
+      // Check if we can index any complete files
+      const completedFileIndices: number[] = [];
+      for (const [fileIndex, embeddings] of fileEmbeddingsMap.entries()) {
+        const { chunks } = fileChunkDataList[fileIndex];
+        const expectedCount = 1 + chunks.length; // title + chunks
+        if (embeddings.length === expectedCount) {
+          completedFileIndices.push(fileIndex);
+        }
+      }
+
+      // Index completed files and remove from map
+      if (completedFileIndices.length > 0) {
+        const batchMetadata: DocumentMetadata[] = [];
+        const batchEmbeddingData: Array<{ id: string; embedding: number[] }> =
+          [];
+
+        for (const fileIndex of completedFileIndices) {
+          const { operation, file, chunks, indexedAt } =
+            fileChunkDataList[fileIndex];
+          const fileEmbeddings = fileEmbeddingsMap.get(fileIndex)!;
+
+          // This should never throw - all embeddings are guaranteed to exist
+          const indexData = this.prepareFileIndexData(
+            file,
+            chunks,
+            fileEmbeddings,
+            indexedAt
+          );
+
+          batchMetadata.push(...indexData.metadata);
+          batchEmbeddingData.push(...indexData.embeddingData);
+
+          if (progressCallback) {
+            try {
+              await progressCallback(
+                fileIndex + 1,
+                fileChunkDataList.length,
+                file.path
+              );
+            } catch (error) {
+              this.warn(`Progress callback failed for ${file.path}: ${error}`);
+            }
+          }
+
+          this.updateStatus({
+            action: this.getOperationAction(operation.type),
+            file: file.basename,
+            filePath: file.path,
+            current: fileIndex + 1,
+            total: fileChunkDataList.length,
+          });
+
+          this.log(`${this.getOperationAction(operation.type)} ${file.path}`);
+
+          fileEmbeddingsMap.delete(fileIndex);
+        }
+
+        // Write this batch to stores (metadata + embeddings only)
+        if (batchMetadata.length > 0) {
+          const writeStart = Date.now();
+          await Promise.all([
+            this.metadataStore.addDocuments(batchMetadata),
+            this.embeddingStore.addEmbeddings(batchEmbeddingData),
+          ]);
+          timings.dbWrite += Date.now() - writeStart;
+        }
+      }
+
+      const progress = Math.min(i + batchSize, allTextItems.length);
+      this.log(`Processed: ${progress}/${allTextItems.length} texts`);
+    }
+
+    // Count total files with NaN embeddings
+    errorCount += filesWithNaN.size;
+    const skippedFiles = Array.from(filesWithNaN).map(
+      idx => fileChunkDataList[idx].file.path
+    );
+
+    // Log skipped files
+    if (skippedFiles.length > 0) {
+      this.warn(`Skipped ${skippedFiles.length} files with NaN embeddings:`);
+      for (const filePath of skippedFiles) {
+        this.warn(`  - ${filePath}`);
+      }
+    }
+
+    // Debug assertion: all files should have been indexed
+    if (fileEmbeddingsMap.size > 0) {
+      const remainingFiles = Array.from(fileEmbeddingsMap.keys())
+        .map(idx => fileChunkDataList[idx].file.path)
+        .join(', ');
+      this.error(
+        `BUG: ${fileEmbeddingsMap.size} files remain in embeddings map after processing: ${remainingFiles}`
+      );
+      throw new Error(
+        `Incomplete file indexing detected: ${fileEmbeddingsMap.size} files not indexed`
+      );
+    }
+
+    const totalTime = Date.now() - startTotal;
+
+    // Log detailed timing breakdown
+    this.log('=== Performance Timing Breakdown ===');
+    this.log(`Total time: ${totalTime}ms (${(totalTime / 1000).toFixed(2)}s)`);
+    this.log(`  Deletion: ${timings.deletion}ms`);
+    this.log(`  File read: ${timings.fileRead}ms`);
+    this.log(`  Chunking: ${timings.chunking}ms`);
+    this.log(
+      `  Embedding generation: ${timings.embeddingGeneration}ms (${timings.workerCalls} worker calls)`
+    );
+    this.log(`  DB write (metadata + embeddings): ${timings.dbWrite}ms`);
+    this.log(`  BM25 indexing: ${timings.bm25Indexing}ms`);
+    this.log(
+      `  Other/overhead: ${totalTime - (timings.deletion + timings.fileRead + timings.chunking + timings.embeddingGeneration + timings.dbWrite + timings.bm25Indexing)}ms`
+    );
+    this.log('====================================');
+
+    this.log('Batch indexing complete');
+    return { errored: errorCount, skipped: skippedFiles.length };
   }
 
-  /**
-   * Core operation processing logic
-   * Assumes bulk deletion has already been performed
-   */
-  private async processOperationCore(operation: FileOperation): Promise<void> {
-    switch (operation.type) {
-      case 'create':
-      case 'modify':
-        if (operation.file) {
-          await this.indexFileInternalCore(operation.file);
-        }
-        break;
-
-      case 'delete':
-        // Nothing to do, already deleted in batch
-        break;
-
-      case 'rename':
-        if (operation.file) {
-          await this.indexFileInternalCore(operation.file);
-        }
-        break;
+  private prepareFileIndexData(
+    file: TFile,
+    chunks: Array<{ content: string; headings: string[] }>,
+    embeddings: Array<{
+      type: 'title' | 'chunk';
+      chunkIndex?: number;
+      embedding: number[];
+    }>,
+    indexedAt: number
+  ): {
+    metadata: DocumentMetadata[];
+    embeddingData: Array<{ id: string; embedding: number[] }>;
+    bm25Documents: Array<{ docId: string; content: string }>;
+  } {
+    const titleEmbedding = embeddings.find(e => e.type === 'title')?.embedding;
+    if (!titleEmbedding) {
+      throw new Error(`Title embedding not found for ${file.path}`);
     }
+
+    if (chunks.length === 0) {
+      // Empty file: index only title
+      const docId = `${file.path}#0`;
+      return {
+        metadata: [
+          {
+            id: docId,
+            filePath: file.path,
+            title: file.basename,
+            content: '',
+            headings: [],
+            mtime: file.stat.mtime,
+            size: file.stat.size,
+            indexedAt,
+          },
+        ],
+        embeddingData: [
+          { id: `${file.path}#title`, embedding: titleEmbedding },
+        ],
+        bm25Documents: [
+          { docId: `${file.path}#title`, content: file.basename },
+        ],
+      };
+    }
+
+    // Non-empty file: process chunks
+    const chunkContents = chunks.map(c => c.content);
+    const metadata: DocumentMetadata[] = [];
+    const embeddingData: Array<{ id: string; embedding: number[] }> = [];
+    const bm25Documents: Array<{ docId: string; content: string }> = [];
+
+    // Add metadata for each chunk
+    for (let i = 0; i < chunks.length; i++) {
+      metadata.push({
+        id: `${file.path}#${i}`,
+        filePath: file.path,
+        title: file.basename,
+        content: chunkContents[i],
+        headings: chunks[i].headings,
+        mtime: file.stat.mtime,
+        size: file.stat.size,
+        indexedAt,
+      });
+    }
+
+    // Add title to BM25 and embeddings
+    bm25Documents.push({ docId: `${file.path}#title`, content: file.basename });
+    embeddingData.push({ id: `${file.path}#title`, embedding: titleEmbedding });
+
+    // Add chunks to BM25 and embeddings
+    for (let i = 0; i < chunks.length; i++) {
+      bm25Documents.push({
+        docId: `${file.path}#${i}`,
+        content: chunkContents[i],
+      });
+    }
+
+    for (const emb of embeddings) {
+      if (emb.type === 'chunk' && emb.chunkIndex !== undefined) {
+        embeddingData.push({
+          id: `${file.path}#${emb.chunkIndex}`,
+          embedding: emb.embedding,
+        });
+      }
+    }
+
+    return { metadata, embeddingData, bm25Documents };
   }
 
   private getOperationAction(type: FileOperation['type']): string {
@@ -589,6 +933,21 @@ export class IndexManager extends WithLogging {
     new Notice(`Indexed: ${file.path}`);
   }
 
+  private buildIndexingCompleteMessage(
+    baseMessage: string,
+    errored: number,
+    skipped: number
+  ): string {
+    let message = baseMessage;
+    if (errored > 0) {
+      message += `, ${errored} errors`;
+    }
+    if (skipped > 0) {
+      message += ` (${skipped} files skipped due to NaN embeddings)`;
+    }
+    return message;
+  }
+
   async rebuildIndex(
     progressCallback?: (
       current: number,
@@ -598,26 +957,40 @@ export class IndexManager extends WithLogging {
   ): Promise<void> {
     this.log('Rebuilding index...');
     const startTime = Date.now();
-    await this.clearIndex();
+    await this.clearCurrentIndex();
     const stats = await this.performSync(progressCallback);
     const duration = formatDuration(Date.now() - startTime);
-    const message = `Rebuild complete: ${stats.newCount} files indexed in ${duration}${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
+    const message = this.buildIndexingCompleteMessage(
+      `Rebuild complete: ${stats.newCount} files indexed in ${duration}`,
+      stats.errored,
+      stats.skipped
+    );
     new Notice(message, 0);
-    this.log(`Rebuilt index (${stats.newCount} files)`);
+    this.log(message);
     await this.updateStatusBarWithFileCount();
   }
 
-  async syncIndex(onload: boolean = false): Promise<void> {
+  async syncIndex(onload: boolean = false): Promise<{
+    newCount: number;
+    modifiedCount: number;
+    deletedCount: number;
+    skippedCount: number;
+    errored: number;
+    skipped: number;
+  }> {
     this.log('Syncing index...');
     const startTime = Date.now();
     const stats = await this.performSync();
     const duration = formatDuration(Date.now() - startTime);
-    const message = `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted in ${duration}${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
-    new Notice(message, onload ? 10000 : 0);
-    this.log(
-      `Synced index (${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted)`
+    const message = this.buildIndexingCompleteMessage(
+      `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted in ${duration}`,
+      stats.errored,
+      stats.skipped
     );
+    new Notice(message, onload ? 10000 : 0);
+    this.log(message);
     await this.updateStatusBarWithFileCount();
+    return stats;
   }
 
   private unregisterEventHandlers(): void {
@@ -704,7 +1077,7 @@ export class IndexManager extends WithLogging {
     this.statusBarItem.setText(`Sonar: ${paddedText}`);
   }
 
-  async clearIndex(): Promise<void> {
+  async clearCurrentIndex(): Promise<void> {
     await this.metadataStore.clearAll();
     await this.embeddingStore.clearAll();
     await this.bm25Store.clearAll();
@@ -715,7 +1088,38 @@ export class IndexManager extends WithLogging {
     return await this.metadataStore.getStats();
   }
 
-  async getIndexableFilesStats(): Promise<{
+  async showIndexableFilesStats(): Promise<void> {
+    const startTime = Date.now();
+    try {
+      const stats = await this.getIndexableFilesStats();
+      const duration = formatDuration(Date.now() - startTime);
+      const message = [
+        `Indexable Files Statistics (calculated in ${duration}):`,
+        ``,
+        `Files: ${stats.fileCount.toLocaleString()}`,
+        ``,
+        `Tokens:`,
+        `  Total: ${stats.totalTokens.toLocaleString()}`,
+        `  Average: ${stats.averageTokens.toLocaleString()}`,
+        ``,
+        `Characters:`,
+        `  Total: ${stats.totalCharacters.toLocaleString()}`,
+        `  Average: ${stats.averageCharacters.toLocaleString()}`,
+        ``,
+        `File Size:`,
+        `  Total: ${formatBytes(stats.totalSize)}`,
+        `  Average: ${formatBytes(stats.averageSize)}`,
+      ].join('\n');
+
+      this.log(message);
+      new Notice(message, 0);
+    } catch (error) {
+      this.error(`Failed to calculate statistics: ${error}`);
+      new Notice('Failed to calculate statistics - check console');
+    }
+  }
+
+  private async getIndexableFilesStats(): Promise<{
     fileCount: number;
     totalTokens: number;
     averageTokens: number;

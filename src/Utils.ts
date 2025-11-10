@@ -1,4 +1,10 @@
-import { MarkdownView } from 'obsidian';
+import {
+  App,
+  Component,
+  MarkdownRenderer,
+  MarkdownView,
+  Modal,
+} from 'obsidian';
 
 interface DocumentContext {
   lineStart: number;
@@ -158,4 +164,61 @@ export function formatDuration(milliseconds: number): string {
     return `${hours}h ${remainingMinutes}m`;
   }
   return `${hours}h`;
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${Math.round((bytes / Math.pow(k, i)) * 100) / 100} ${sizes[i]}`;
+}
+
+export function confirmAction(
+  app: App,
+  title: string,
+  message: string,
+  actionButtonText: string
+): Promise<boolean> {
+  return new Promise(resolve => {
+    const modal = new Modal(app);
+    modal.titleEl.setText(title);
+    const component = new Component();
+    component.load();
+    const messageEl = modal.contentEl.createDiv();
+    MarkdownRenderer.render(app, message, messageEl, '', component);
+    const buttonContainer = modal.contentEl.createDiv({
+      cls: 'modal-button-container',
+    });
+    buttonContainer
+      .createEl('button', { text: 'Cancel' })
+      .addEventListener('click', () => {
+        modal.close();
+        resolve(false);
+      });
+    buttonContainer
+      .createEl('button', { text: actionButtonText, cls: 'mod-warning' })
+      .addEventListener('click', () => {
+        modal.close();
+        resolve(true);
+      });
+    modal.onClose = () => {
+      component.unload();
+    };
+    modal.open();
+  });
+}
+
+/**
+ * Check if an embedding contains NaN values
+ */
+export function hasNaNEmbedding(embedding: number[]): boolean {
+  return embedding.some(x => Number.isNaN(x));
+}
+
+/**
+ * Count NaN values in an embedding
+ */
+export function countNaNValues(embedding: number[]): number {
+  return embedding.filter(x => Number.isNaN(x)).length;
 }

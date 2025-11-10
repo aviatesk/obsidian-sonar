@@ -10,7 +10,7 @@ export interface RPCMethods {
       texts: string[];
       modelId: string;
       device: 'webgpu' | 'wasm';
-      dtype: 'q8' | 'q4' | 'fp32';
+      dtype: 'q8' | 'q4' | 'fp16' | 'fp32';
     };
     returns: number[][];
   };
@@ -53,4 +53,14 @@ export interface RPCResponse {
 export interface ReadyMessage {
   __kind: 'ready';
   ts: number;
+}
+
+export interface InitMessage {
+  __kind: 'init';
+  logLevel: 'error' | 'warn' | 'log';
+}
+
+export interface UpdateLogLevelMessage {
+  __kind: 'update-log-level';
+  logLevel: 'error' | 'warn' | 'log';
 }

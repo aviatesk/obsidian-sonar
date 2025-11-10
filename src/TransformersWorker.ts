@@ -5,6 +5,8 @@ import type {
   RPCRequest,
   RPCResponse,
   ReadyMessage,
+  InitMessage,
+  UpdateLogLevelMessage,
   RPCMethodReturnTypes,
 } from './transformers-worker-types';
 
@@ -37,21 +39,42 @@ export class TransformersWorker extends WithLogging {
     { resolve: (value: any) => void; reject: (error: any) => void }
   >();
   private initPromise: Promise<void>;
+  private unsubscribeLogLevel?: () => void;
 
   constructor(protected configManager: ConfigManager) {
     super();
     this.initPromise = this.initialize();
+    this.setupLogLevelListener();
+  }
+
+  private setupLogLevelListener(): void {
+    this.unsubscribeLogLevel = this.configManager.subscribe(
+      'debugMode',
+      (_key, value) => {
+        this.updateLogLevel(value as 'error' | 'warn' | 'log');
+      }
+    );
+  }
+
+  private updateLogLevel(logLevel: 'error' | 'warn' | 'log'): void {
+    if (!this.worker) {
+      return;
+    }
+    const msg: UpdateLogLevelMessage = {
+      __kind: 'update-log-level',
+      logLevel,
+    };
+    this.worker.postMessage(msg);
+    this.log(`Log level updated to: ${logLevel}`);
   }
 
   private async initialize(): Promise<void> {
     this.log('Initializing...');
 
     try {
-      // Create Blob URL from inlined Worker code
       const blob = new Blob([WORKER_MJS_TEXT], { type: 'text/javascript' });
       const workerUrl = URL.createObjectURL(blob);
 
-      // Create Module Worker from Blob URL
       const worker = new Worker(workerUrl, {
         type: 'module',
         name: 'transformers-embed-worker',
@@ -72,13 +95,19 @@ export class TransformersWorker extends WithLogging {
         this.error(`Worker message error: ${JSON.stringify(event.data)}`);
       });
 
-      // Set up message listener
       worker.addEventListener('message', this.handleMessage.bind(this));
 
       this.worker = worker;
 
-      // Wait for ready signal from Worker
       await this.waitForReady();
+
+      const logLevel = this.configManager.get('debugMode');
+      const initMsg: InitMessage = {
+        __kind: 'init',
+        logLevel,
+      };
+      worker.postMessage(initMsg);
+
       this.log('Initialized');
     } catch (error) {
       this.error(`Failed to initialize: ${error}`);
@@ -164,6 +193,10 @@ export class TransformersWorker extends WithLogging {
   }
 
   cleanup(): void {
+    if (this.unsubscribeLogLevel) {
+      this.unsubscribeLogLevel();
+      this.unsubscribeLogLevel = undefined;
+    }
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;

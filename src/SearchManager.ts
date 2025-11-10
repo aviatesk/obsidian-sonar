@@ -19,12 +19,28 @@ export interface SearchResult {
   fileSize: number;
 }
 
+/**
+ * Search options for both UI and benchmark searches
+ *
+ * Note: Sonar uses flat search (computes similarity for all chunks),
+ * unlike Elasticsearch/Weaviate which use ANN indexes (HNSW).
+ * This means Sonar doesn't need a chunkTopK parameter - all chunks
+ * are processed, aggregated to documents, and then sliced to topK.
+ */
 export interface SearchOptions {
   excludeFilePath?: string;
   titleWeight?: number;
   contentWeight?: number;
   embeddingWeight?: number;
   bm25Weight?: number;
+}
+
+export interface SearchOptionsWithTopK extends SearchOptions {
+  topK: number; // Number of results to return (for RRF limit calculation)
+}
+
+export interface FullSearchOptions extends SearchOptionsWithTopK {
+  retrievalLimit: number; // Number of chunks to compare (before file level aggregation)
 }
 
 /**
@@ -50,18 +66,26 @@ export class SearchManager extends WithLogging {
   }
 
   /**
-   * Main search entry point
-   * Supports pure embedding search, pure BM25 search, or hybrid search
+   * Core search implementation (flat search - all chunks processed)
+   *
+   * Unlike Elasticsearch/Weaviate which use ANN indexes (HNSW) to efficiently
+   * retrieve top-k chunks, Sonar computes similarity for ALL chunks, then:
+   * 1. Aggregate all chunks to documents
+   * 2. Apply RRF fusion on all aggregated documents
+   * 3. Return all documents sorted by score (caller slices to desired count)
+   *
+   * @param query Search query text
+   * @param options Search weights and filters
+   * @returns All aggregated documents sorted by score (no limit)
    */
   async search(
     query: string,
-    topK: number,
-    options?: SearchOptions
+    options: SearchOptionsWithTopK
   ): Promise<SearchResult[]> {
-    const titleWeight = options?.titleWeight ?? 0.0;
-    const contentWeight = options?.contentWeight ?? 1.0;
-    const embeddingWeight = options?.embeddingWeight ?? 0.6;
-    const bm25Weight = options?.bm25Weight ?? 0.4;
+    const titleWeight = options.titleWeight ?? 0.0;
+    const contentWeight = options.contentWeight ?? 1.0;
+    const embeddingWeight = options.embeddingWeight ?? 0.6;
+    const bm25Weight = options.bm25Weight ?? 0.4;
 
     // Validate weights
     if (titleWeight === 0 && contentWeight === 0) {
@@ -75,12 +99,11 @@ export class SearchManager extends WithLogging {
       );
     }
 
-    // Hybrid search: combine embedding and BM25 with RRF
+    // Perform hybrid search for title and/or content
     const [titleHybrid, contentHybrid] = await Promise.all([
       titleWeight > 0
-        ? this.hybridSearchSingle(
+        ? this.hybridSearch(
             query,
-            topK,
             'title',
             embeddingWeight,
             bm25Weight,
@@ -88,9 +111,8 @@ export class SearchManager extends WithLogging {
           )
         : Promise.resolve(new Map<string, number>()),
       contentWeight > 0
-        ? this.hybridSearchSingle(
+        ? this.hybridSearch(
             query,
-            topK,
             'content',
             embeddingWeight,
             bm25Weight,
@@ -118,37 +140,61 @@ export class SearchManager extends WithLogging {
       finalScores.set(filePath, finalScore);
     }
 
-    // Get documents and create SearchResults
-    return this.createSearchResults(finalScores, topK, options);
+    return this.createSearchResults(finalScores, options);
   }
 
   /**
    * Hybrid search for either title or content
-   * Returns Map<filePath, score> normalized to [0, 1] based on theoretical maximum
+   * Returns Map<filePath, score> normalized to [0, 1]
+   *
+   * For pure BM25/vector search (one weight is 0), returns raw aggregated scores.
+   * For hybrid search (both weights > 0), applies RRF fusion.
    */
-  private async hybridSearchSingle(
+  private async hybridSearch(
     query: string,
-    topK: number,
     type: 'title' | 'content',
     embeddingWeight: number,
     bm25Weight: number,
-    options?: SearchOptions
+    options: SearchOptionsWithTopK
   ): Promise<Map<string, number>> {
-    // Run searches in parallel (skip if weight is 0)
+    // Compute chunk-level limit before aggregation
+    const retrievalMultiplier = this.configManager.get('retrievalMultiplier');
+    const retrievalLimit = options.topK * retrievalMultiplier;
+
+    // Run searches with chunk-level limiting
+    const fullOptions = { ...options, retrievalLimit };
     const [embeddingResults, bm25Results] = await Promise.all([
       embeddingWeight > 0
         ? type === 'title'
-          ? this.embeddingSearch.searchTitle(query, topK * 2, options)
-          : this.embeddingSearch.searchContent(query, topK * 2, options)
+          ? this.embeddingSearch.searchTitle(query, fullOptions)
+          : this.embeddingSearch.searchContent(query, fullOptions)
         : Promise.resolve([]),
       bm25Weight > 0
         ? type === 'title'
-          ? this.bm25Search.searchTitle(query, topK * 2)
-          : this.bm25Search.searchContent(query, topK * 2)
+          ? this.bm25Search.searchTitle(query, fullOptions)
+          : this.bm25Search.searchContent(query, fullOptions)
         : Promise.resolve([]),
     ]);
 
-    // Apply RRF (handles empty results gracefully)
+    // Pure BM25 search: just return results
+    if (embeddingWeight === 0 && bm25Weight > 0) {
+      const scores = new Map<string, number>();
+      for (const result of bm25Results) {
+        scores.set(result.filePath, result.score);
+      }
+      return scores;
+    }
+
+    // Pure vector search: just return results
+    if (bm25Weight === 0 && embeddingWeight > 0) {
+      const scores = new Map<string, number>();
+      for (const result of embeddingResults) {
+        scores.set(result.filePath, result.score);
+      }
+      return scores;
+    }
+
+    // Hybrid search: apply RRF fusion
     const rrfScores = this.reciprocalRankFusion(
       embeddingResults,
       bm25Results,
@@ -217,13 +263,12 @@ export class SearchManager extends WithLogging {
    */
   private async createSearchResults(
     scoreMap: Map<string, number>,
-    topK: number,
-    options?: SearchOptions
+    options: SearchOptionsWithTopK
   ): Promise<SearchResult[]> {
     const documents = await this.metadataStore.getAllDocuments();
 
     let filteredDocuments = documents;
-    if (options?.excludeFilePath) {
+    if (options.excludeFilePath) {
       filteredDocuments = documents.filter(
         doc => doc.filePath !== options.excludeFilePath
       );
@@ -258,9 +303,7 @@ export class SearchManager extends WithLogging {
       });
     }
 
-    // Sort by score (already normalized to [0, 1] based on theoretical maximum)
     results.sort((a, b) => b.score - a.score);
-
-    return results.slice(0, topK);
+    return results.slice(0, options.topK);
   }
 }

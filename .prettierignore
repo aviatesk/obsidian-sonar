@@ -5,3 +5,6 @@ src/generated/**/*
 
 data.json
 data.*.json
+
+bench/
+!bench/README.md

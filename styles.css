@@ -24,6 +24,57 @@
 }
 
 /* Settings tab */
+.sonar-settings-section {
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 3px solid var(--background-modifier-border);
+}
+
+.sonar-settings-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.sonar-settings-section summary {
+  font-size: 1.3em;
+  font-weight: 600;
+  color: var(--text-normal);
+  margin-bottom: 16px;
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 0;
+  user-select: none;
+}
+
+.sonar-settings-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.sonar-settings-section summary::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 6px 0 6px 10px;
+  border-color: transparent transparent transparent var(--text-muted);
+  margin-right: 10px;
+  transition: transform 0.2s ease;
+  vertical-align: middle;
+}
+
+.sonar-settings-section[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.sonar-settings-section summary:hover {
+  color: var(--text-accent);
+}
+
+.sonar-settings-section summary:hover::before {
+  border-left-color: var(--text-accent);
+}
+
 .sonar-stats-in-settings {
   padding: 10px;
   background: var(--background-secondary);

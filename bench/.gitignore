@@ -1,0 +1,9 @@
+# Datasets
+datasets/
+vaults/
+
+# Benchmark outputs
+debug/sample_embeddings/
+debug/sample_texts/
+embeddings/
+runs/

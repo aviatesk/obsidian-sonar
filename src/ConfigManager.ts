@@ -1,29 +1,29 @@
 import { EventEmitter } from 'events';
-import type { ObsidianSettings } from './config';
+import type { App } from 'obsidian';
+import type { SonarSettings } from './config';
 import { Logger } from './Logger';
-
-export type { ObsidianSettings };
+import { confirmAction } from './Utils';
 
 export type ConfigChangeListener = (
-  key: keyof ObsidianSettings,
+  key: keyof SonarSettings,
   value: any,
   oldValue: any
 ) => void;
 
 export type ConfigBatchChangeListener = (
-  changes: Partial<ObsidianSettings>
+  changes: Partial<SonarSettings>
 ) => void;
 
 export class ConfigManager extends EventEmitter {
-  private settings: ObsidianSettings;
-  private saveCallback: (settings: ObsidianSettings) => Promise<void>;
+  private settings: SonarSettings;
+  private saveCallback: (settings: SonarSettings) => Promise<void>;
   private changeListeners: Map<string, Set<ConfigChangeListener>> = new Map();
   private batchChangeListeners: Set<ConfigBatchChangeListener> = new Set();
   logger: Logger;
 
   private constructor(
-    initialSettings: ObsidianSettings,
-    saveCallback: (settings: ObsidianSettings) => Promise<void>
+    initialSettings: SonarSettings,
+    saveCallback: (settings: SonarSettings) => Promise<void>
   ) {
     super();
     this.settings = { ...initialSettings };
@@ -37,7 +37,7 @@ export class ConfigManager extends EventEmitter {
   static async initialize(
     loadData: () => Promise<any>,
     saveData: (data: any) => Promise<void>,
-    defaultSettings: ObsidianSettings
+    defaultSettings: SonarSettings
   ): Promise<ConfigManager> {
     const loadedData = await loadData();
     const settings = Object.assign({}, defaultSettings, loadedData);
@@ -47,7 +47,7 @@ export class ConfigManager extends EventEmitter {
   /**
    * Get the current value of a setting
    */
-  get<K extends keyof ObsidianSettings>(key: K): ObsidianSettings[K] {
+  get<K extends keyof SonarSettings>(key: K): SonarSettings[K] {
     return this.settings[key];
   }
 
@@ -56,11 +56,61 @@ export class ConfigManager extends EventEmitter {
   }
 
   /**
+   * Get formatted string of current embedder configuration
+   */
+  getCurrentConfigInfo(): string {
+    const embedderBackend = this.get('embedderBackend');
+    const embeddingModel = this.get('embeddingModel');
+    return `- Embedding backend: \`${embedderBackend}\`\n- Embedding model: \`${embeddingModel}\``;
+  }
+
+  /**
+   * Show confirmation dialog for clearing current index
+   */
+  async confirmClearCurrentIndex(app: App): Promise<boolean> {
+    return confirmAction(
+      app,
+      'Clear current index',
+      `Clear current search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear the index for the current configuration. This cannot be undone.`,
+      'Clear'
+    );
+  }
+
+  /**
+   * Show confirmation dialog for rebuilding index
+   */
+  async confirmRebuildIndex(app: App): Promise<boolean> {
+    return confirmAction(
+      app,
+      'Rebuild index',
+      `Rebuild entire search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear and rebuild the index for the current configuration. This cannot be undone.`,
+      'Rebuild'
+    );
+  }
+
+  /**
+   * Show confirmation dialog for deleting all vault databases
+   */
+  async confirmDeleteAllVaultDatabases(
+    app: App,
+    vaultName: string,
+    databases: string[]
+  ): Promise<boolean> {
+    const message = `Delete all search databases for this vault?\n\nFound ${databases.length} database(s) for vault "${vaultName}":\n\n${databases.map(db => `  - \`${db}\``).join('\n')}\n\nThis will delete all databases for this vault. This cannot be undone.`;
+    return confirmAction(
+      app,
+      'Delete all vault databases',
+      message,
+      'Delete All'
+    );
+  }
+
+  /**
    * Update a single setting
    */
-  async set<K extends keyof ObsidianSettings>(
+  async set<K extends keyof SonarSettings>(
     key: K,
-    value: ObsidianSettings[K]
+    value: SonarSettings[K]
   ): Promise<void> {
     const oldValue = this.settings[key];
 
@@ -87,13 +137,13 @@ export class ConfigManager extends EventEmitter {
   /**
    * Update multiple settings at once
    */
-  async update(changes: Partial<ObsidianSettings>): Promise<void> {
-    const oldValues: Partial<ObsidianSettings> = {};
+  async update(changes: Partial<SonarSettings>): Promise<void> {
+    const oldValues: Partial<SonarSettings> = {};
     let hasChanges = false;
 
     // Check for actual changes
     for (const [key, value] of Object.entries(changes)) {
-      const k = key as keyof ObsidianSettings;
+      const k = key as keyof SonarSettings;
       if (this.settings[k] !== value) {
         (oldValues as any)[k] = this.settings[k];
         (this.settings as any)[k] = value;
@@ -107,7 +157,7 @@ export class ConfigManager extends EventEmitter {
 
     // Notify individual listeners for each changed key
     for (const [key, value] of Object.entries(changes)) {
-      const k = key as keyof ObsidianSettings;
+      const k = key as keyof SonarSettings;
       if (oldValues[k] !== undefined) {
         this.notifyListeners(k, value, oldValues[k]);
       }
@@ -126,7 +176,7 @@ export class ConfigManager extends EventEmitter {
   /**
    * Subscribe to changes for a specific setting key
    */
-  subscribe<K extends keyof ObsidianSettings>(
+  subscribe<K extends keyof SonarSettings>(
     key: K,
     listener: ConfigChangeListener
   ): () => void {
@@ -148,10 +198,10 @@ export class ConfigManager extends EventEmitter {
     };
   }
 
-  private notifyListeners<K extends keyof ObsidianSettings>(
+  private notifyListeners<K extends keyof SonarSettings>(
     key: K,
-    value: ObsidianSettings[K],
-    oldValue: ObsidianSettings[K]
+    value: SonarSettings[K],
+    oldValue: SonarSettings[K]
   ): void {
     const listeners = this.changeListeners.get(String(key));
     if (listeners) {
@@ -167,7 +217,7 @@ export class ConfigManager extends EventEmitter {
     }
   }
 
-  private notifyBatchListeners(changes: Partial<ObsidianSettings>): void {
+  private notifyBatchListeners(changes: Partial<SonarSettings>): void {
     this.batchChangeListeners.forEach(listener => {
       try {
         listener(changes);

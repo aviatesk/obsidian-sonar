@@ -18,7 +18,7 @@ import { SearchManager, type SearchResult } from '../SearchManager';
 import { processQuery, type QueryOptions } from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';
 import type { Embedder } from '../Embedder';
-import { getCurrentContext } from '../ObsidianUtils';
+import { getCurrentContext } from '../Utils';
 import RelatedNotesContent from './RelatedNotesContent.svelte';
 
 export const RELATED_NOTES_VIEW_TYPE = 'related-notes-view';
@@ -318,13 +318,10 @@ export class RelatedNotesView extends ItemView {
 
       if (query) {
         const tokenCount = await this.embedder.countTokens(query);
-        const searchResults = await this.searchManager.search(
-          query,
-          this.configManager.get('topK'),
-          {
-            excludeFilePath: activeFile.path,
-          }
-        );
+        const searchResults = await this.searchManager.search(query, {
+          topK: this.configManager.get('searchResultsCount'),
+          excludeFilePath: activeFile.path,
+        });
         this.updateStore({
           query: query,
           results: searchResults,

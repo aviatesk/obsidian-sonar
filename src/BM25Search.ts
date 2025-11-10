@@ -1,8 +1,9 @@
 import { BM25Store } from './BM25Store';
 import { MetadataStore } from './MetadataStore';
-import type { SearchResult } from './SearchManager';
+import type { SearchResult, FullSearchOptions } from './SearchManager';
 import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
+import { aggregateChunkScores } from './ChunkAggregation';
 
 /**
  * BM25 full-text search interface
@@ -24,9 +25,16 @@ export class BM25Search extends WithLogging {
   /**
    * Search title only
    * ChunkId format: "filePath#title"
+   * Computes BM25 for all titles, returns all results sorted by score
    */
-  async searchTitle(query: string, topK: number): Promise<SearchResult[]> {
-    const bm25Results = await this.bm25Store.search(query, topK * 4);
+  async searchTitle(
+    query: string,
+    options: FullSearchOptions
+  ): Promise<SearchResult[]> {
+    const bm25Results = await this.bm25Store.search(
+      query,
+      Number.MAX_SAFE_INTEGER
+    );
 
     if (bm25Results.length === 0) {
       return [];
@@ -38,53 +46,79 @@ export class BM25Search extends WithLogging {
       const chunkId = result.docId;
       if (chunkId.endsWith('#title')) {
         const filePath = this.extractFilePathFromChunkId(chunkId);
+        if (options?.excludeFilePath && filePath === options.excludeFilePath) {
+          continue;
+        }
         titleScores.set(filePath, result.score);
       }
     }
 
-    return this.createSearchResults(titleScores, topK);
+    return this.createSearchResults(titleScores);
   }
 
   /**
    * Search content only
    * ChunkId format: "filePath#0", "filePath#1", ...
+   * Computes BM25 for all chunks, aggregates by file, returns all documents sorted by score
    */
-  async searchContent(query: string, topK: number): Promise<SearchResult[]> {
-    const bm25Results = await this.bm25Store.search(query, topK * 4);
+  async searchContent(
+    query: string,
+    options: FullSearchOptions
+  ): Promise<SearchResult[]> {
+    const bm25Results = await this.bm25Store.search(
+      query,
+      Number.MAX_SAFE_INTEGER
+    );
 
     if (bm25Results.length === 0) {
       return [];
     }
 
-    // Filter only content chunks and aggregate by filePath
+    // Filter only content chunks
+    const contentChunks = bm25Results.filter(
+      result => !result.docId.endsWith('#title')
+    );
+
+    // Apply chunk-level limit before aggregation
+    const chunksToAggregate = contentChunks.slice(0, options.retrievalLimit);
+
+    // Aggregate by filePath
     const fileScores = new Map<string, number[]>();
-    for (const result of bm25Results) {
-      const chunkId = result.docId;
-      if (!chunkId.endsWith('#title')) {
-        const filePath = this.extractFilePathFromChunkId(chunkId);
-
-        if (!fileScores.has(filePath)) {
-          fileScores.set(filePath, []);
-        }
-        fileScores.get(filePath)!.push(result.score);
+    for (const result of chunksToAggregate) {
+      const filePath = this.extractFilePathFromChunkId(result.docId);
+      if (options?.excludeFilePath && filePath === options.excludeFilePath) {
+        continue;
       }
+      if (!fileScores.has(filePath)) {
+        fileScores.set(filePath, []);
+      }
+      fileScores.get(filePath)!.push(result.score);
     }
 
-    // Use max score for each file
-    const maxScores = new Map<string, number>();
-    for (const [filePath, scores] of fileScores.entries()) {
-      maxScores.set(filePath, Math.max(...scores));
-    }
+    // Aggregate chunk scores using configured method
+    const bm25AggMethod = this.configManager.get('bm25AggMethod');
+    const aggM = this.configManager.get('aggM');
+    const aggL = this.configManager.get('aggL');
+    const aggDecay = this.configManager.get('aggDecay');
+    const aggRrfK = this.configManager.get('aggRrfK');
 
-    return this.createSearchResults(maxScores, topK);
+    const aggregatedScores = aggregateChunkScores(fileScores, {
+      method: bm25AggMethod,
+      m: aggM,
+      l: aggL,
+      decay: aggDecay,
+      rrfK: aggRrfK,
+    });
+
+    return this.createSearchResults(aggregatedScores);
   }
 
   /**
    * Helper to create SearchResult array from score map
+   * Returns all results sorted by score (no limit)
    */
   private async createSearchResults(
-    scoreMap: Map<string, number>,
-    topK: number
+    scoreMap: Map<string, number>
   ): Promise<SearchResult[]> {
     if (scoreMap.size === 0) {
       return [];
@@ -124,10 +158,10 @@ export class BM25Search extends WithLogging {
       });
     }
 
-    // Sort by score and limit to topK
+    // Sort by score and return all results (no topK limit)
     searchResults.sort((a, b) => b.score - a.score);
 
-    return searchResults.slice(0, topK);
+    return searchResults;
   }
 
   /**

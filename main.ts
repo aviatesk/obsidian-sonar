@@ -15,10 +15,12 @@ import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
 import { MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
-import { formatDuration } from './src/ObsidianUtils';
 import type { Embedder } from './src/Embedder';
 import { TransformersEmbedder } from './src/TransformersEmbedder';
 import { OllamaEmbedder } from './src/OllamaEmbedder';
+import { BenchmarkRunner } from './src/BenchmarkRunner';
+import { DebugRunner } from './src/EmbeddingDebugger';
+
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
   statusBarItem!: HTMLElement;
@@ -26,6 +28,7 @@ export default class SonarPlugin extends Plugin {
   indexManager: IndexManager | null = null;
   metadataStore: MetadataStore | null = null;
   embedder: Embedder | null = null;
+  debugRunner: DebugRunner | null = null;
 
   private log(msg: string): void {
     this.configManager.getLogger().log(`[Sonar.Plugin] ${msg}`);
@@ -77,16 +80,14 @@ export default class SonarPlugin extends Plugin {
       this.warn(`WebGL not detected - ${result.webgl.reason}`);
     }
 
-    const embedderType = this.configManager.get('embedderType');
+    const embedderBackend = this.configManager.get('embedderBackend');
     const embeddingModel = this.configManager.get('embeddingModel');
 
     // Initialize embedder based on type
-    if (embedderType === 'ollama') {
-      // Create worker for tokenization (shared with Ollama embedder)
+    if (embedderBackend === 'ollama') {
       const { TransformersWorker } = await import('./src/TransformersWorker');
       const worker = new TransformersWorker(this.configManager);
-      // Use bge-m3 tokenizer for tokenization
-      const tokenizerModel = 'Xenova/bge-m3';
+      const tokenizerModel = 'Xenova/multilingual-e5-small';
       this.embedder = new OllamaEmbedder(
         embeddingModel,
         this.configManager,
@@ -103,8 +104,9 @@ export default class SonarPlugin extends Plugin {
       this.embedder = new TransformersEmbedder(
         embeddingModel,
         this.configManager,
-        'webgpu', // device: WebGPU backend
-        'q8' // dtype: quantization level (webgpu will use fp16)
+        // TODO Make GPU use configurable
+        'webgpu',
+        'fp32'
       );
       this.log(
         `Transformers.js embedder initialized: ${embeddingModel} (${this.embedder.getDevice()})`
@@ -113,7 +115,9 @@ export default class SonarPlugin extends Plugin {
 
     try {
       this.metadataStore = await MetadataStore.initialize(
-        embedderType,
+        this.app.vault.getName(),
+        embedderBackend,
+        embeddingModel,
         this.configManager
       );
     } catch (error) {
@@ -170,6 +174,8 @@ export default class SonarPlugin extends Plugin {
       this.statusBarItem
     );
 
+    this.debugRunner = new DebugRunner(this.configManager, this.embedder);
+
     this.registerViews(this.searchManager, this.embedder);
 
     if (this.configManager.get('autoOpenRelatedNotes')) {
@@ -187,6 +193,14 @@ export default class SonarPlugin extends Plugin {
 
   private isInitialized(): boolean {
     return this.indexManager !== null;
+  }
+
+  private checkInitialized(): boolean {
+    if (!this.isInitialized()) {
+      new Notice('Sonar is still initializing. Please wait...');
+      return false;
+    }
+    return true;
   }
 
   private registerViews(
@@ -210,23 +224,42 @@ export default class SonarPlugin extends Plugin {
       id: 'sync-index',
       name: 'Sync search index with vault',
       callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
+        if (!this.checkInitialized()) return;
         await this.indexManager!.syncIndex();
       },
     });
 
-    // TODO Delete this command when releasing
+    this.addCommand({
+      id: 'clear-current-index',
+      name: 'Clear current search index',
+      callback: async () => {
+        if (!this.checkInitialized()) return;
+        const confirmed = await this.configManager.confirmClearCurrentIndex(
+          this.app
+        );
+        if (!confirmed) return;
+        await this.indexManager!.clearCurrentIndex();
+        new Notice('Current index cleared');
+      },
+    });
+
+    this.addCommand({
+      id: 'delete-vault-databases',
+      name: 'Delete all search databases for this vault',
+      callback: async () => {
+        await this.deleteAllVaultDatabases();
+      },
+    });
+
     this.addCommand({
       id: 'rebuild-index',
       name: 'Rebuild entire search index',
       callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
+        if (!this.checkInitialized()) return;
+        const confirmed = await this.configManager.confirmRebuildIndex(
+          this.app
+        );
+        if (!confirmed) return;
         await this.indexManager!.rebuildIndex((current, total, filePath) => {
           this.log(`Rebuilding index: ${current}/${total} - ${filePath}`);
         });
@@ -237,10 +270,7 @@ export default class SonarPlugin extends Plugin {
       id: 'index-current-file',
       name: 'Index current file',
       callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
+        if (!this.checkInitialized()) return;
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
           new Notice('No active file');
@@ -269,88 +299,49 @@ export default class SonarPlugin extends Plugin {
     this.addCommand({
       id: 'probe-gpu-capabilities',
       name: 'Probe GPU capabilities (WebGPU/WebGL)',
-      callback: async () => {
-        const result = await probeGPU();
-        const webgpuStatus = result.webgpu.available
-          ? `Available${result.webgpu.isFallbackAdapter ? ' (fallback adapter)' : ''}`
-          : `Not available - ${result.webgpu.reason}`;
-        const webglStatus = result.webgl.available
-          ? `Available (${result.webgl.version}${result.webgl.renderer ? `, ${result.webgl.renderer}` : ''})`
-          : `Not available - ${result.webgl.reason}`;
-        const message = [
-          'Graphics Capabilities:',
-          '',
-          `- WebGPU: ${webgpuStatus}`,
-          result.webgpu.available && result.webgpu.features
-            ? `  * Features: ${result.webgpu.features.length} available`
-            : '',
-          '',
-          `- WebGL: ${webglStatus}`,
-          '',
-          `- Electron: ${(window as any).process?.versions?.electron ?? 'N/A'}`,
-          `- Chrome: ${(window as any).process?.versions?.chrome ?? 'N/A'}`,
-        ]
-          .filter(l => l !== '')
-          .join('\n');
-        new Notice(message, 0);
-        this.log('GPU probe result: ' + JSON.stringify(result, null, 2));
-      },
+      callback: this.probeGPU,
     });
 
     this.addCommand({
       id: 'show-indexable-files-stats',
       name: 'Show indexable files statistics',
       callback: async () => {
-        if (!this.isInitialized()) {
-          new Notice('Sonar is still initializing. Please wait...');
-          return;
-        }
+        if (!this.checkInitialized()) return;
+        await this.indexManager!.showIndexableFilesStats();
+      },
+    });
 
-        const startTime = Date.now();
+    this.addCommand({
+      id: 'run-benchmark',
+      name: 'Run benchmark (BM25, Vector, Hybrid)',
+      callback: async () => {
+        if (!this.checkInitialized()) return;
+        const benchmarkRunner = new BenchmarkRunner(
+          this.app,
+          this.configManager,
+          this.searchManager!,
+          this.indexManager!
+        );
         try {
-          const stats = await this.indexManager!.getIndexableFilesStats();
-          const duration = formatDuration(Date.now() - startTime);
-          const message = [
-            `Indexable Files Statistics (calculated in ${duration}):`,
-            ``,
-            `Files: ${stats.fileCount.toLocaleString()}`,
-            ``,
-            `Tokens:`,
-            `  Total: ${stats.totalTokens.toLocaleString()}`,
-            `  Average: ${stats.averageTokens.toLocaleString()}`,
-            ``,
-            `Characters:`,
-            `  Total: ${stats.totalCharacters.toLocaleString()}`,
-            `  Average: ${stats.averageCharacters.toLocaleString()}`,
-            ``,
-            `File Size:`,
-            `  Total: ${this.formatBytes(stats.totalSize)}`,
-            `  Average: ${this.formatBytes(stats.averageSize)}`,
-          ].join('\n');
-
-          this.log(message);
-          new Notice(message, 0);
+          await benchmarkRunner.runBenchmark();
         } catch (error) {
-          this.error(`Failed to calculate statistics: ${error}`);
-          new Notice('Failed to calculate statistics - check console');
+          this.error(`Benchmark failed: ${error}`);
         }
+      },
+    });
+
+    this.addCommand({
+      id: 'debug-generate-sample-embeddings',
+      name: 'Debug: Generate sample embeddings',
+      callback: () => {
+        if (!this.checkInitialized()) return;
+        this.debugRunner!.generateSampleEmbeddings();
       },
     });
   }
 
-  private formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${Math.round((bytes / Math.pow(k, i)) * 100) / 100} ${sizes[i]}`;
-  }
-
   async activateRelatedNotesView() {
-    if (!this.isInitialized()) {
-      new Notice('Sonar is still initializing. Please wait...');
-      return;
-    }
+    if (!this.checkInitialized()) return;
 
     const { workspace } = this.app;
 
@@ -374,17 +365,103 @@ export default class SonarPlugin extends Plugin {
   }
 
   openSemanticNoteFinder(): void {
-    if (!this.isInitialized()) {
-      new Notice('Sonar is still initializing. Please wait...');
-      return;
-    }
-
+    if (!this.checkInitialized()) return;
     const modal = new SemanticNoteFinder(
       this.app,
       this.searchManager!,
       this.configManager
     );
     modal.open();
+  }
+
+  private async probeGPU() {
+    const result = await probeGPU();
+    const webgpuStatus = result.webgpu.available
+      ? `Available${result.webgpu.isFallbackAdapter ? ' (fallback adapter)' : ''}`
+      : `Not available - ${result.webgpu.reason}`;
+    const webglStatus = result.webgl.available
+      ? `Available (${result.webgl.version}${result.webgl.renderer ? `, ${result.webgl.renderer}` : ''})`
+      : `Not available - ${result.webgl.reason}`;
+    const message = [
+      'Graphics Capabilities:',
+      '',
+      `- WebGPU: ${webgpuStatus}`,
+      result.webgpu.available && result.webgpu.features
+        ? `  * Features: ${result.webgpu.features.length} available`
+        : '',
+      '',
+      `- WebGL: ${webglStatus}`,
+      '',
+      `- Electron: ${(window as any).process?.versions?.electron ?? 'N/A'}`,
+      `- Chrome: ${(window as any).process?.versions?.chrome ?? 'N/A'}`,
+    ]
+      .filter(l => l !== '')
+      .join('\n');
+    new Notice(message, 0);
+    this.log('GPU probe result: ' + JSON.stringify(result, null, 2));
+  }
+
+  async deleteAllVaultDatabases(): Promise<void> {
+    const vaultName = this.app.vault.getName();
+    const databases = await MetadataStore.listDatabasesForVault(vaultName);
+
+    if (databases.length === 0) {
+      new Notice(`No indices found for vault: ${vaultName}`);
+      return;
+    }
+
+    this.log(
+      `Found ${databases.length} database(s) for vault ${vaultName}: ${databases.join(', ')}`
+    );
+
+    const confirmed = await this.configManager.confirmDeleteAllVaultDatabases(
+      this.app,
+      vaultName,
+      databases
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    // Close current database connections if they're in the list to be deleted
+    if (this.metadataStore) {
+      const embedderBackend = this.configManager.get('embedderBackend');
+      const embeddingModel = this.configManager.get('embeddingModel');
+      const { getDBName } = await import('./src/MetadataStore');
+      const currentDbName = getDBName(
+        vaultName,
+        embedderBackend,
+        embeddingModel
+      );
+
+      if (databases.includes(currentDbName)) {
+        this.log(`Closing current database before deletion: ${currentDbName}`);
+        await this.metadataStore.close();
+        this.metadataStore = null;
+        if (this.indexManager) {
+          this.indexManager.cleanup();
+          this.indexManager = null;
+        }
+      }
+    }
+
+    let deletedCount = 0;
+    for (const dbName of databases) {
+      try {
+        await MetadataStore.deleteDatabase(dbName);
+        deletedCount++;
+        this.log(`Deleted database: ${dbName}`);
+      } catch (error) {
+        this.error(`Failed to delete database ${dbName}: ${error}`);
+      }
+    }
+
+    if (deletedCount > 0) {
+      new Notice(`Deleted ${deletedCount} database(s).`, 0);
+      this.log(`Deleted ${deletedCount} database(s) for vault ${vaultName}`);
+    } else {
+      new Notice('Failed to delete any databases - check console');
+    }
   }
 
   async onunload() {
