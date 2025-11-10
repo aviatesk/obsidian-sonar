@@ -807,7 +807,7 @@ Hybrid search limits both embedding and BM25 results to \`top_k * retrieval_mult
       text: `Files indexed: ${stats.totalFiles} / ${indexableCount}`,
     });
     this.statsDiv.createEl('p', {
-      text: `Total chunks: ${stats.totalDocuments}`,
+      text: `Total chunks: ${stats.totalChunks}`,
     });
     this.statsDiv.createEl('p', {
       text: `Index path: ${this.configManager.get('indexPath')}`,

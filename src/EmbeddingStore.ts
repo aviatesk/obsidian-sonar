@@ -3,7 +3,7 @@ import { STORE_EMBEDDINGS } from './MetadataStore';
 import { WithLogging } from './WithLogging';
 
 /**
- * Embedding data for a document chunk or title
+ * Embedding data for a chunk or title
  */
 export interface EmbeddingData {
   id: string; // Format: filePath#chunkIndex or filePath#title
@@ -72,22 +72,22 @@ export class EmbeddingStore extends WithLogging {
     });
   }
 
-  async deleteEmbeddings(documentIds: string[]): Promise<void> {
-    if (documentIds.length === 0) {
+  async deleteEmbeddings(chunkIds: string[]): Promise<void> {
+    if (chunkIds.length === 0) {
       return;
     }
 
-    this.log(`Deleting ${documentIds.length} embeddings...`);
+    this.log(`Deleting ${chunkIds.length} embeddings...`);
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_EMBEDDINGS], 'readwrite');
       const store = transaction.objectStore(STORE_EMBEDDINGS);
-      documentIds.forEach(id => {
+      chunkIds.forEach(id => {
         store.delete(id);
       });
       transaction.oncomplete = () => {
         this.invalidateCache();
-        this.log(`Deleted ${documentIds.length} embeddings`);
+        this.log(`Deleted ${chunkIds.length} embeddings`);
         resolve();
       };
       transaction.onerror = () =>

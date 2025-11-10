@@ -124,37 +124,37 @@ export class BM25Search extends WithLogging {
       return [];
     }
 
-    const allDocuments = await this.metadataStore.getAllDocuments();
-    const docsByFilePath = new Map<string, typeof allDocuments>();
+    const allChunks = await this.metadataStore.getAllChunks();
+    const chunksByFilePath = new Map<string, typeof allChunks>();
 
-    for (const doc of allDocuments) {
-      const filePath = doc.filePath;
-      if (!docsByFilePath.has(filePath)) {
-        docsByFilePath.set(filePath, []);
+    for (const chunk of allChunks) {
+      const filePath = chunk.filePath;
+      if (!chunksByFilePath.has(filePath)) {
+        chunksByFilePath.set(filePath, []);
       }
-      docsByFilePath.get(filePath)!.push(doc);
+      chunksByFilePath.get(filePath)!.push(chunk);
     }
 
     // Convert to SearchResult format
     const searchResults: SearchResult[] = [];
 
     for (const [filePath, score] of scoreMap.entries()) {
-      const fileDocs = docsByFilePath.get(filePath);
-      if (!fileDocs || fileDocs.length === 0) continue;
+      const fileChunks = chunksByFilePath.get(filePath);
+      if (!fileChunks || fileChunks.length === 0) continue;
 
-      const topDoc = fileDocs[0];
+      const topChunk = fileChunks[0];
 
       searchResults.push({
         filePath,
-        title: topDoc.title || filePath,
+        title: topChunk.title || filePath,
         score,
         topChunk: {
-          content: topDoc.content,
+          content: topChunk.content,
           score,
-          metadata: topDoc,
+          metadata: topChunk,
         },
-        chunkCount: fileDocs.length,
-        fileSize: topDoc.size,
+        chunkCount: fileChunks.length,
+        fileSize: topChunk.size,
       });
     }
 

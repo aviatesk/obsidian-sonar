@@ -1,13 +1,13 @@
 import { EmbeddingSearch } from './EmbeddingSearch';
 import { BM25Search } from './BM25Search';
-import type { MetadataStore, DocumentMetadata } from './MetadataStore';
+import type { MetadataStore, ChunkMetadata } from './MetadataStore';
 import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
 
 export interface ChunkSearchResult {
   content: string;
   score: number;
-  metadata: DocumentMetadata;
+  metadata: ChunkMetadata;
 }
 
 export interface SearchResult {
@@ -265,41 +265,41 @@ export class SearchManager extends WithLogging {
     scoreMap: Map<string, number>,
     options: SearchOptionsWithTopK
   ): Promise<SearchResult[]> {
-    const documents = await this.metadataStore.getAllDocuments();
+    const chunks = await this.metadataStore.getAllChunks();
 
-    let filteredDocuments = documents;
+    let filteredChunks = chunks;
     if (options.excludeFilePath) {
-      filteredDocuments = documents.filter(
-        doc => doc.filePath !== options.excludeFilePath
+      filteredChunks = chunks.filter(
+        chunk => chunk.filePath !== options.excludeFilePath
       );
     }
 
-    const docsByFilePath = new Map<string, typeof filteredDocuments>();
-    for (const doc of filteredDocuments) {
-      const filePath = doc.filePath;
-      if (!docsByFilePath.has(filePath)) {
-        docsByFilePath.set(filePath, []);
+    const chunksByFilePath = new Map<string, typeof filteredChunks>();
+    for (const chunk of filteredChunks) {
+      const filePath = chunk.filePath;
+      if (!chunksByFilePath.has(filePath)) {
+        chunksByFilePath.set(filePath, []);
       }
-      docsByFilePath.get(filePath)!.push(doc);
+      chunksByFilePath.get(filePath)!.push(chunk);
     }
 
     const results: SearchResult[] = [];
     for (const [filePath, score] of scoreMap.entries()) {
-      const fileDocs = docsByFilePath.get(filePath);
-      if (!fileDocs || fileDocs.length === 0) continue;
+      const fileChunks = chunksByFilePath.get(filePath);
+      if (!fileChunks || fileChunks.length === 0) continue;
 
-      const topDoc = fileDocs[0];
+      const topChunk = fileChunks[0];
       results.push({
         filePath,
-        title: topDoc.title || filePath,
+        title: topChunk.title || filePath,
         score,
         topChunk: {
-          content: topDoc.content,
+          content: topChunk.content,
           score,
-          metadata: topDoc,
+          metadata: topChunk,
         },
-        chunkCount: fileDocs.length,
-        fileSize: topDoc.size,
+        chunkCount: fileChunks.length,
+        fileSize: topChunk.size,
       });
     }
 

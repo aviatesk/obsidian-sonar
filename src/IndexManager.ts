@@ -13,7 +13,7 @@ import {
   getFilesToIndex,
   getIndexableFilesCount,
 } from './fileFilters';
-import { type DocumentMetadata, MetadataStore } from './MetadataStore';
+import { type ChunkMetadata, MetadataStore } from './MetadataStore';
 import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
 import type { Embedder } from './Embedder';
@@ -130,7 +130,7 @@ export class IndexManager extends WithLogging {
 
   private needsReindex(
     file: TFile,
-    metadata: DocumentMetadata | undefined
+    metadata: ChunkMetadata | undefined
   ): boolean {
     if (!metadata) return true;
     return (
@@ -377,26 +377,26 @@ export class IndexManager extends WithLogging {
       const deletionStart = Date.now();
       this.log(`Deleting ${filesToDelete.length} files...`);
 
-      // Get all document IDs from MetadataStore for these files (parallel)
-      const docArrays = await Promise.all(
+      // Get all chunk IDs from MetadataStore for these files (parallel)
+      const chunkArrays = await Promise.all(
         filesToDelete.map(filePath =>
-          this.metadataStore.getDocumentsByFile(filePath)
+          this.metadataStore.getChunksByFile(filePath)
         )
       );
-      const allDocIds: string[] = [];
-      for (const docs of docArrays) {
-        allDocIds.push(...docs.map(d => d.id));
+      const allChunkIds: string[] = [];
+      for (const chunks of chunkArrays) {
+        allChunkIds.push(...chunks.map(c => c.id));
       }
 
       // Delete from all stores in parallel
       await Promise.all([
-        this.metadataStore.deleteDocuments(allDocIds),
-        this.embeddingStore.deleteEmbeddings(allDocIds),
-        this.bm25Store.deleteDocuments(allDocIds),
+        this.metadataStore.deleteChunks(allChunkIds),
+        this.embeddingStore.deleteEmbeddings(allChunkIds),
+        this.bm25Store.deleteChunks(allChunkIds),
       ]);
 
       timings.deletion = Date.now() - deletionStart;
-      this.log(`Deleted ${allDocIds.length} documents`);
+      this.log(`Deleted ${allChunkIds.length} chunks`);
     }
 
     // Filter operations that need indexing
@@ -566,7 +566,7 @@ export class IndexManager extends WithLogging {
 
       // Index completed files and remove from map
       if (completedFileIndices.length > 0) {
-        const batchMetadata: DocumentMetadata[] = [];
+        const batchMetadata: ChunkMetadata[] = [];
         const batchEmbeddingData: Array<{ id: string; embedding: number[] }> =
           [];
 
@@ -615,7 +615,7 @@ export class IndexManager extends WithLogging {
         if (batchMetadata.length > 0) {
           const writeStart = Date.now();
           await Promise.all([
-            this.metadataStore.addDocuments(batchMetadata),
+            this.metadataStore.addChunks(batchMetadata),
             this.embeddingStore.addEmbeddings(batchEmbeddingData),
           ]);
           timings.dbWrite += Date.now() - writeStart;
@@ -640,10 +640,10 @@ export class IndexManager extends WithLogging {
       }
     }
 
-    // Step 3: Index BM25 documents (excluding NaN files)
-    this.log('Preparing BM25 documents...');
+    // Step 3: Index BM25 chunks (excluding NaN files)
+    this.log('Preparing BM25 chunks...');
     this.updateStatusBar('Finalizing BM25 index...');
-    const allBM25Documents: Array<{ docId: string; content: string }> = [];
+    const allBM25Chunks: Array<{ docId: string; content: string }> = [];
     for (let fileIndex = 0; fileIndex < fileChunkDataList.length; fileIndex++) {
       // Skip files with NaN embeddings
       if (filesWithNaN.has(fileIndex)) {
@@ -651,24 +651,24 @@ export class IndexManager extends WithLogging {
       }
 
       const { file, chunks } = fileChunkDataList[fileIndex];
-      allBM25Documents.push({
+      allBM25Chunks.push({
         docId: `${file.path}#title`,
         content: file.basename,
       });
       for (let i = 0; i < chunks.length; i++) {
-        allBM25Documents.push({
+        allBM25Chunks.push({
           docId: `${file.path}#${i}`,
           content: chunks[i].content,
         });
       }
     }
 
-    if (allBM25Documents.length > 0) {
-      this.log(`Indexing ${allBM25Documents.length} BM25 documents...`);
+    if (allBM25Chunks.length > 0) {
+      this.log(`Indexing ${allBM25Chunks.length} BM25 chunks...`);
       const bm25Start = Date.now();
-      await this.bm25Store.indexDocumentBatch(allBM25Documents);
+      await this.bm25Store.indexChunkBatch(allBM25Chunks);
       timings.bm25Indexing = Date.now() - bm25Start;
-      this.log(`Indexed ${allBM25Documents.length} BM25 documents`);
+      this.log(`Indexed ${allBM25Chunks.length} BM25 chunks`);
     }
 
     // Debug assertion: all files should have been indexed
@@ -716,7 +716,7 @@ export class IndexManager extends WithLogging {
     }>,
     indexedAt: number
   ): {
-    metadata: DocumentMetadata[];
+    metadata: ChunkMetadata[];
     embeddingData: Array<{ id: string; embedding: number[] }>;
   } {
     const titleEmbedding = embeddings.find(e => e.type === 'title')?.embedding;
@@ -748,7 +748,7 @@ export class IndexManager extends WithLogging {
 
     // Non-empty file: process chunks
     const chunkContents = chunks.map(c => c.content);
-    const metadata: DocumentMetadata[] = [];
+    const metadata: ChunkMetadata[] = [];
     const embeddingData: Array<{ id: string; embedding: number[] }> = [];
 
     // Add metadata for each chunk
@@ -795,25 +795,25 @@ export class IndexManager extends WithLogging {
   }
 
   /**
-   * Helper to delete documents from stores by file path
-   * Gets document IDs from MetadataStore and deletes from all/selected stores
+   * Helper to delete chunks from stores by file path
+   * Gets chunk IDs from MetadataStore and deletes from all/selected stores
    */
-  private async deleteDocumentsFromStores(
+  private async deleteChunksFromStores(
     filePath: string,
     includeBM25: boolean = true
   ): Promise<void> {
-    const docs = await this.metadataStore.getDocumentsByFile(filePath);
-    const docIds = docs.map(d => d.id);
+    const chunks = await this.metadataStore.getChunksByFile(filePath);
+    const chunkIds = chunks.map(c => c.id);
 
-    await this.metadataStore.deleteDocuments(docIds);
-    await this.embeddingStore.deleteEmbeddings(docIds);
+    await this.metadataStore.deleteChunks(chunkIds);
+    await this.embeddingStore.deleteEmbeddings(chunkIds);
     if (includeBM25) {
-      await this.bm25Store.deleteDocuments(docIds);
+      await this.bm25Store.deleteChunks(chunkIds);
     }
   }
 
   private async indexFileInternal(file: TFile): Promise<void> {
-    await this.deleteDocumentsFromStores(file.path, true);
+    await this.deleteChunksFromStores(file.path, true);
     await this.indexFileInternalCore(file);
   }
 
@@ -838,9 +838,9 @@ export class IndexManager extends WithLogging {
       ]);
       const titleEmbedding = titleEmbeddings[0];
 
-      const docId = `${file.path}#0`;
-      const metadata: DocumentMetadata = {
-        id: docId,
+      const chunkId = `${file.path}#0`;
+      const metadata: ChunkMetadata = {
+        id: chunkId,
         filePath: file.path,
         title: file.basename,
         content: '',
@@ -849,14 +849,14 @@ export class IndexManager extends WithLogging {
         size: file.stat.size,
         indexedAt,
       };
-      await this.metadataStore.addDocument(metadata);
+      await this.metadataStore.addChunk(metadata);
 
       // Add title as separate BM25/embedding entries
       await this.embeddingStore.addEmbedding(
         `${file.path}#title`,
         titleEmbedding
       );
-      await this.bm25Store.indexDocumentBatch([
+      await this.bm25Store.indexChunkBatch([
         { docId: `${file.path}#title`, content: file.basename },
       ]);
     } else {
@@ -864,11 +864,11 @@ export class IndexManager extends WithLogging {
 
       const chunkContents = chunks.map(c => c.content);
 
-      const metadataDocuments: DocumentMetadata[] = [];
+      const metadataChunks: ChunkMetadata[] = [];
       for (let i = 0; i < chunks.length; i++) {
-        const docId = `${file.path}#${i}`;
-        metadataDocuments.push({
-          id: docId,
+        const chunkId = `${file.path}#${i}`;
+        metadataChunks.push({
+          id: chunkId,
           filePath: file.path,
           title: file.basename,
           content: chunkContents[i],
@@ -879,11 +879,11 @@ export class IndexManager extends WithLogging {
         });
       }
 
-      const bm25Documents = [
+      const bm25Chunks = [
         { docId: `${file.path}#title`, content: file.basename },
       ];
       for (let i = 0; i < chunks.length; i++) {
-        bm25Documents.push({
+        bm25Chunks.push({
           docId: `${file.path}#${i}`,
           content: chunkContents[i],
         });
@@ -906,9 +906,9 @@ export class IndexManager extends WithLogging {
       }
 
       // Batch index all chunks in single transactions
-      await this.metadataStore.addDocuments(metadataDocuments);
+      await this.metadataStore.addChunks(metadataChunks);
       await this.embeddingStore.addEmbeddings(embeddingData);
-      await this.bm25Store.indexDocumentBatch(bm25Documents);
+      await this.bm25Store.indexChunkBatch(bm25Chunks);
     }
   }
 
@@ -1078,7 +1078,7 @@ export class IndexManager extends WithLogging {
     await this.updateStatusBarWithFileCount();
   }
 
-  async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {
+  async getStats(): Promise<{ totalChunks: number; totalFiles: number }> {
     return await this.metadataStore.getStats();
   }
 

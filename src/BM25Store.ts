@@ -24,12 +24,12 @@ interface InvertedIndexEntry {
 }
 
 /**
- * Document metadata for BM25
+ * Chunk metadata for BM25
  */
-interface DocumentTokenInfo {
+interface ChunkTokenInfo {
   docId: string;
   tokens: string[];
-  length: number; // Total number of tokens in document
+  length: number; // Total number of tokens in chunk
 }
 
 /**
@@ -73,23 +73,24 @@ export class BM25Store extends WithLogging {
    * Called on initialization and after cache invalidation
    */
   private async refreshMetaDataCache(): Promise<void> {
-    const allDocs = await this.getAllDocumentTokenInfos();
+    const allChunks = await this.getAllChunkTokenInfos();
 
     const docLengths = new Map<string, number>();
     let totalLength = 0;
 
-    for (const doc of allDocs) {
-      docLengths.set(doc.docId, doc.length);
-      totalLength += doc.length;
+    for (const chunk of allChunks) {
+      docLengths.set(chunk.docId, chunk.length);
+      totalLength += chunk.length;
     }
 
     this.metadataCache = {
-      totalDocuments: allDocs.length,
-      averageDocLength: allDocs.length > 0 ? totalLength / allDocs.length : 0,
+      totalDocuments: allChunks.length,
+      averageDocLength:
+        allChunks.length > 0 ? totalLength / allChunks.length : 0,
       docLengths,
     };
 
-    this.log(`Index metadata refreshed (${allDocs.length} documents)`);
+    this.log(`Index metadata refreshed (${allChunks.length} chunks)`);
   }
 
   /**
@@ -111,25 +112,25 @@ export class BM25Store extends WithLogging {
   }
 
   /**
-   * Indexes multiple documents in a single transaction (much faster than individual indexing)
+   * Indexes multiple chunks in a single transaction (much faster than individual indexing)
    */
-  async indexDocumentBatch(
-    documents: Array<{ docId: string; content: string }>
+  async indexChunkBatch(
+    chunks: Array<{ docId: string; content: string }>
   ): Promise<void> {
-    if (documents.length === 0) return;
+    if (chunks.length === 0) return;
 
-    this.log(`Indexing ${documents.length} documents...`);
+    this.log(`Indexing ${chunks.length} chunks...`);
 
-    // Phase 1: Tokenize all documents
-    const docsTokenInfo: DocumentTokenInfo[] = [];
+    // Phase 1: Tokenize all chunks
+    const chunksTokenInfo: ChunkTokenInfo[] = [];
     const allTokensToFetch = new Set<string>();
 
-    for (const doc of documents) {
-      const tokens = await this.tokenize(doc.content);
+    for (const chunk of chunks) {
+      const tokens = await this.tokenize(chunk.content);
       const termFreq = this.calculateTermFrequency(tokens);
 
-      docsTokenInfo.push({
-        docId: doc.docId,
+      chunksTokenInfo.push({
+        docId: chunk.docId,
         tokens,
         length: tokens.length,
       });
@@ -140,13 +141,13 @@ export class BM25Store extends WithLogging {
     }
 
     // Phase 2: Read existing data and build inverted index
-    const existingDocs = await Promise.all(
-      documents.map(doc => this.getDocumentTokenInfo(doc.docId))
+    const existingChunks = await Promise.all(
+      chunks.map(chunk => this.getChunkTokenInfo(chunk.docId))
     );
 
-    for (const existingDoc of existingDocs) {
-      if (existingDoc) {
-        existingDoc.tokens.forEach(t => allTokensToFetch.add(t));
+    for (const existingChunk of existingChunks) {
+      if (existingChunk) {
+        existingChunk.tokens.forEach(t => allTokensToFetch.add(t));
       }
     }
 
@@ -156,18 +157,18 @@ export class BM25Store extends WithLogging {
     // Phase 3: Build final inverted index in memory
     const modifiedTokens = new Set<string>();
 
-    for (let i = 0; i < documents.length; i++) {
-      const docInfo = docsTokenInfo[i];
-      const existingDoc = existingDocs[i];
-      const termFreq = this.calculateTermFrequency(docInfo.tokens);
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkInfo = chunksTokenInfo[i];
+      const existingChunk = existingChunks[i];
+      const termFreq = this.calculateTermFrequency(chunkInfo.tokens);
 
-      if (existingDoc) {
-        const uniqueTokens = new Set(existingDoc.tokens);
+      if (existingChunk) {
+        const uniqueTokens = new Set(existingChunk.tokens);
         for (const token of uniqueTokens) {
           const entry = invertedEntries.get(token);
           if (entry) {
             entry.postings = entry.postings.filter(
-              p => p.docId !== docInfo.docId
+              p => p.docId !== chunkInfo.docId
             );
             entry.documentFrequency = entry.postings.length;
             modifiedTokens.add(token);
@@ -178,7 +179,7 @@ export class BM25Store extends WithLogging {
       for (const [token, freq] of termFreq.entries()) {
         const existing = invertedEntries.get(token);
         const newPosting: PostingEntry = {
-          docId: docInfo.docId,
+          docId: chunkInfo.docId,
           frequency: freq,
         };
 
@@ -208,9 +209,9 @@ export class BM25Store extends WithLogging {
       STORE_BM25_INVERTED_INDEX
     );
 
-    // Write document token info
-    for (const docInfo of docsTokenInfo) {
-      docTokensStore.put(docInfo);
+    // Write chunk token info
+    for (const chunkInfo of chunksTokenInfo) {
+      docTokensStore.put(chunkInfo);
     }
 
     // Write inverted index
@@ -226,7 +227,7 @@ export class BM25Store extends WithLogging {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
         this.clearMetaDataCache();
-        this.log(`Indexed ${documents.length} documents`);
+        this.log(`Indexed ${chunks.length} chunks`);
         resolve();
       };
       transaction.onerror = () => reject(transaction.error);
@@ -234,35 +235,35 @@ export class BM25Store extends WithLogging {
   }
 
   /**
-   * Deletes documents by their IDs
+   * Deletes chunks by their IDs
    * IDs come from MetadataStore as the source of truth
    */
-  async deleteDocuments(docIds: string[]): Promise<void> {
-    if (docIds.length === 0) {
+  async deleteChunks(chunkIds: string[]): Promise<void> {
+    if (chunkIds.length === 0) {
       return;
     }
 
-    this.log(`Deleting ${docIds.length} documents...`);
+    this.log(`Deleting ${chunkIds.length} chunks...`);
 
     // Phase 1: Read all data we need
-    const docsToRemove = await Promise.all(
-      docIds.map(id => this.getDocumentTokenInfo(id))
+    const chunksToRemove = await Promise.all(
+      chunkIds.map(id => this.getChunkTokenInfo(id))
     );
-    const validDocs = docsToRemove.filter(
-      (doc): doc is DocumentTokenInfo => doc !== undefined
+    const validChunks = chunksToRemove.filter(
+      (chunk): chunk is ChunkTokenInfo => chunk !== undefined
     );
 
-    if (validDocs.length === 0) {
-      this.warn('No documents found to remove');
+    if (validChunks.length === 0) {
+      this.warn('No chunks found to remove');
       return;
     }
 
-    this.log(`Found ${validDocs.length} documents to remove`);
+    this.log(`Found ${validChunks.length} chunks to remove`);
 
-    // Collect all tokens from documents to remove
+    // Collect all tokens from chunks to remove
     const allTokens = new Set<string>();
-    for (const doc of validDocs) {
-      doc.tokens.forEach(t => allTokens.add(t));
+    for (const chunk of validChunks) {
+      chunk.tokens.forEach(t => allTokens.add(t));
     }
 
     // Fetch all inverted index entries using bulk read
@@ -279,13 +280,13 @@ export class BM25Store extends WithLogging {
       STORE_BM25_INVERTED_INDEX
     );
 
-    // Process each document to remove
-    for (const doc of validDocs) {
-      const uniqueTokens = new Set(doc.tokens);
+    // Process each chunk to remove
+    for (const chunk of validChunks) {
+      const uniqueTokens = new Set(chunk.tokens);
       for (const token of uniqueTokens) {
         const entry = invertedEntries.get(token);
         if (entry) {
-          entry.postings = entry.postings.filter(p => p.docId !== doc.docId);
+          entry.postings = entry.postings.filter(p => p.docId !== chunk.docId);
           if (entry.postings.length === 0) {
             invertedIndexStore.delete(token);
           } else {
@@ -294,13 +295,13 @@ export class BM25Store extends WithLogging {
           }
         }
       }
-      docTokensStore.delete(doc.docId);
+      docTokensStore.delete(chunk.docId);
     }
 
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
         this.clearMetaDataCache();
-        this.log(`Deleted ${validDocs.length} documents`);
+        this.log(`Deleted ${validChunks.length} chunks`);
         resolve();
       };
       transaction.onerror = () => reject(transaction.error);
@@ -440,9 +441,9 @@ export class BM25Store extends WithLogging {
     return new Map(entries);
   }
 
-  private async getDocumentTokenInfo(
+  private async getChunkTokenInfo(
     docId: string
-  ): Promise<DocumentTokenInfo | undefined> {
+  ): Promise<ChunkTokenInfo | undefined> {
     const transaction = this.db.transaction(
       [STORE_BM25_DOC_TOKENS],
       'readonly'
@@ -456,7 +457,7 @@ export class BM25Store extends WithLogging {
     });
   }
 
-  private async getAllDocumentTokenInfos(): Promise<DocumentTokenInfo[]> {
+  private async getAllChunkTokenInfos(): Promise<ChunkTokenInfo[]> {
     const transaction = this.db.transaction(
       [STORE_BM25_DOC_TOKENS],
       'readonly'

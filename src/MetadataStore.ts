@@ -1,7 +1,7 @@
 /**
- * Metadata associated with a document chunk
+ * Metadata for a chunk
  */
-export interface DocumentMetadata {
+export interface ChunkMetadata {
   id: string; // Format: filePath#chunkIndex
   filePath: string;
   title: string;
@@ -43,7 +43,7 @@ export const INDEX_FILE_PATH = 'file-path';
 
 export class MetadataStore extends WithLogging {
   protected readonly componentName = 'MetadataStore';
-  private metadataCache: Map<string, DocumentMetadata> | null = null;
+  private metadataCache: Map<string, ChunkMetadata> | null = null;
 
   private constructor(
     private db: IDBDatabase,
@@ -107,7 +107,7 @@ export class MetadataStore extends WithLogging {
     return this.db;
   }
 
-  async addDocument(metadata: DocumentMetadata): Promise<void> {
+  async addChunk(metadata: ChunkMetadata): Promise<void> {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_METADATA], 'readwrite');
       const store = transaction.objectStore(STORE_METADATA);
@@ -117,31 +117,31 @@ export class MetadataStore extends WithLogging {
         this.invalidateCache();
         resolve();
       };
-      transaction.onerror = () => reject(new Error('Failed to add document'));
+      transaction.onerror = () => reject(new Error('Failed to add chunk'));
     });
   }
 
-  async addDocuments(documents: DocumentMetadata[]): Promise<void> {
+  async addChunks(chunks: ChunkMetadata[]): Promise<void> {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_METADATA], 'readwrite');
       const store = transaction.objectStore(STORE_METADATA);
 
-      documents.forEach(doc => {
-        store.put(doc);
+      chunks.forEach(chunk => {
+        store.put(chunk);
       });
 
       transaction.oncomplete = () => {
         this.invalidateCache();
         resolve();
       };
-      transaction.onerror = () => reject(new Error('Failed to add documents'));
+      transaction.onerror = () => reject(new Error('Failed to add chunks'));
     });
   }
 
-  async getDocumentsByFile(filePath: string): Promise<DocumentMetadata[]> {
+  async getChunksByFile(filePath: string): Promise<ChunkMetadata[]> {
     if (this.metadataCache) {
       return Array.from(this.metadataCache.values()).filter(
-        doc => doc.filePath === filePath
+        chunk => chunk.filePath === filePath
       );
     }
 
@@ -152,11 +152,11 @@ export class MetadataStore extends WithLogging {
       const request = index.getAll(filePath);
 
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(new Error('Failed to get documents'));
+      request.onerror = () => reject(new Error('Failed to get chunks'));
     });
   }
 
-  async deleteDocuments(ids: string[]): Promise<void> {
+  async deleteChunks(ids: string[]): Promise<void> {
     if (ids.length === 0) {
       return;
     }
@@ -171,8 +171,7 @@ export class MetadataStore extends WithLogging {
         this.invalidateCache();
         resolve();
       };
-      transaction.onerror = () =>
-        reject(new Error('Failed to delete documents'));
+      transaction.onerror = () => reject(new Error('Failed to delete chunks'));
     });
   }
 
@@ -190,16 +189,16 @@ export class MetadataStore extends WithLogging {
     });
   }
 
-  async getStats(): Promise<{ totalDocuments: number; totalFiles: number }> {
-    const documents = await this.getAllDocuments();
-    const uniqueFiles = new Set(documents.map(d => d.filePath));
+  async getStats(): Promise<{ totalChunks: number; totalFiles: number }> {
+    const chunks = await this.getAllChunks();
+    const uniqueFiles = new Set(chunks.map(c => c.filePath));
     return {
-      totalDocuments: documents.length,
+      totalChunks: chunks.length,
       totalFiles: uniqueFiles.size,
     };
   }
 
-  async getAllDocuments(): Promise<DocumentMetadata[]> {
+  async getAllChunks(): Promise<ChunkMetadata[]> {
     if (this.metadataCache) {
       return Array.from(this.metadataCache.values());
     }
@@ -209,29 +208,29 @@ export class MetadataStore extends WithLogging {
       const store = transaction.objectStore(STORE_METADATA);
       const request = store.getAll();
       request.onsuccess = () => {
-        const documents = request.result as DocumentMetadata[];
-        this.metadataCache = new Map(documents.map(d => [d.id, d]));
-        resolve(documents);
+        const chunks = request.result as ChunkMetadata[];
+        this.metadataCache = new Map(chunks.map(c => [c.id, c]));
+        resolve(chunks);
       };
       request.onerror = () => reject(request.error);
     });
   }
 
-  async getFileMetadataMap(): Promise<Map<string, DocumentMetadata>> {
-    const allDocs = await this.getAllDocuments();
-    const metadata = new Map<string, DocumentMetadata>();
-    allDocs.forEach(doc => {
-      const filePath = doc.filePath;
+  async getFileMetadataMap(): Promise<Map<string, ChunkMetadata>> {
+    const allChunks = await this.getAllChunks();
+    const metadata = new Map<string, ChunkMetadata>();
+    allChunks.forEach(chunk => {
+      const filePath = chunk.filePath;
       if (!metadata.has(filePath)) {
-        metadata.set(filePath, doc);
+        metadata.set(filePath, chunk);
       }
     });
     return metadata;
   }
 
   async hasFile(filePath: string): Promise<boolean> {
-    const docs = await this.getDocumentsByFile(filePath);
-    return docs.length > 0;
+    const chunks = await this.getChunksByFile(filePath);
+    return chunks.length > 0;
   }
 
   private invalidateCache(): void {
