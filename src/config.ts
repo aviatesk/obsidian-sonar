@@ -52,9 +52,9 @@ export interface SonarSettings {
 
   // Benchmark configuration
   // =======================
-  benchmarkQueriesPath: string; // Absolute path to queries.jsonl file
-  benchmarkQrelsPath: string; // Absolute path to qrels.tsv file
-  benchmarkOutputDir: string; // Absolute path to directory for TREC output files
+  benchmarkQueriesPath: string; // Path to queries.jsonl file (absolute or vault-relative)
+  benchmarkQrelsPath: string; // Path to qrels.tsv file (absolute or vault-relative)
+  benchmarkOutputDir: string; // Path to directory for TREC output files (absolute or vault-relative)
   benchmarkTopK: number; // Number of documents to return for benchmarks (default: 100)
 
   // Debug configuration

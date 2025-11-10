@@ -262,19 +262,14 @@ Setup benchmark configuration and run all search methods:
 VAULT=/path/to/the/vault
 DATASET=datasets/processed/miracl-ja-en_query-200
 
-# Edit data.json to set benchmark paths (use vault-relative or absolute paths)
-# Set the following fields:
-#   "benchmarkQueriesPath": "queries.jsonl"
-#   "benchmarkQrelsPath": "qrels.tsv"
-#   "benchmarkOutputDir": "/path/to/your/vault/runs"
-
 mkdir -p $VAULT/.obsidian/plugins/sonar/
 cp ../main.js ../manifest.json ../styles.css data.json $VAULT/.obsidian/plugins/sonar/
 
-# Copy queries and qrels to vault root
-cp $DATASET/queries.jsonl $VAULT
-cp $DATASET/qrels.tsv $VAULT
-
+# Edit data.json to set benchmark paths (use vault-relative or absolute paths)
+# Set the following fields:
+#   "benchmarkQueriesPath": "/absolute/path/to/bench/datasets/processed/dataset/queries.jsonl"
+#   "benchmarkQrelsPath": "/absolute/path/to/bench/datasets/processed/dataset/qrels.tsv"
+#   "benchmarkOutputDir": "/absolute/path/to/bench/runs"
 # Copy benchmark configuration
 cp data.json $VAULT/.obsidian/plugins/sonar/data.json
 

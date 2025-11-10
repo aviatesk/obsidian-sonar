@@ -23,9 +23,9 @@
   "retrievalMultiplier": 10,
   "statusBarMaxLength": 40,
   "debugMode": "log",
-  "benchmarkQueriesPath": "queries.jsonl",
-  "benchmarkQrelsPath": "qrels.tsv",
-  "benchmarkOutputDir": "/path/to/bench/runs/",
+  "benchmarkQueriesPath": "",
+  "benchmarkQrelsPath": "",
+  "benchmarkOutputDir": "",
   "benchmarkTopK": 100,
   "debugSamplesPath": ""
 }

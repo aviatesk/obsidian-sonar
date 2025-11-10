@@ -691,11 +691,13 @@ Hybrid search limits both embedding and BM25 results to \`top_k * retrieval_mult
     );
     this.renderMarkdownDesc(
       queriesPathSetting.descEl,
-      'Absolute path to `queries.jsonl` file for benchmarks.'
+      'Path to `queries.jsonl` file for benchmarks. Can be absolute or relative to vault root.'
     );
     queriesPathSetting.addText(text =>
       text
-        .setPlaceholder('/path/to/queries.jsonl')
+        .setPlaceholder(
+          'bench/queries.jsonl or /absolute/path/to/queries.jsonl'
+        )
         .setValue(this.configManager.get('benchmarkQueriesPath'))
         .onChange(async value => {
           await this.configManager.set('benchmarkQueriesPath', value);
@@ -707,11 +709,11 @@ Hybrid search limits both embedding and BM25 results to \`top_k * retrieval_mult
     );
     this.renderMarkdownDesc(
       qrelsPathSetting.descEl,
-      'Absolute path to `qrels.tsv` file for benchmarks.'
+      'Path to `qrels.tsv` file for benchmarks. Can be absolute or relative to vault root.'
     );
     qrelsPathSetting.addText(text =>
       text
-        .setPlaceholder('/path/to/qrels.tsv')
+        .setPlaceholder('bench/qrels.tsv or /absolute/path/to/qrels.tsv')
         .setValue(this.configManager.get('benchmarkQrelsPath'))
         .onChange(async value => {
           await this.configManager.set('benchmarkQrelsPath', value);
@@ -723,11 +725,11 @@ Hybrid search limits both embedding and BM25 results to \`top_k * retrieval_mult
     );
     this.renderMarkdownDesc(
       outputDirSetting.descEl,
-      'Absolute path to directory for TREC output files.'
+      'Path to directory for TREC output files. Can be absolute or relative to vault root.'
     );
     outputDirSetting.addText(text =>
       text
-        .setPlaceholder('/path/to/output')
+        .setPlaceholder('bench/output or /absolute/path/to/output')
         .setValue(this.configManager.get('benchmarkOutputDir'))
         .onChange(async value => {
           await this.configManager.set('benchmarkOutputDir', value);
