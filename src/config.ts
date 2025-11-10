@@ -46,6 +46,7 @@ export interface ObsidianSettings {
   aggL: number; // Number of top chunks for weighted_top_l_sum (default: 3)
   aggDecay: number; // Decay factor for weighted_top_l_sum (default: 0.95)
   aggRrfK: number; // RRF k parameter for rrf_per_doc (default: 60)
+  retrievalMultiplier: number; // Multiplier for hybrid search pre-fusion limit (default: 10, limit = top_k * multiplier)
 
   // Logging configuration
   // =====================
@@ -103,6 +104,7 @@ export const DEFAULT_SETTINGS: ObsidianSettings = {
   aggL: 3,
   aggDecay: 0.95,
   aggRrfK: 60,
+  retrievalMultiplier: 10,
 
   // Logging configuration
   // =====================

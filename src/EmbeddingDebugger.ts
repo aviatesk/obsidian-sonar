@@ -29,8 +29,8 @@ export class DebugRunner extends WithLogging {
       new Notice('Debug path not configured');
       return;
     }
-    const outputDir = `${inputDir}/samples`;
-    const files = await fs.readdir(inputDir);
+    const outputDir = `${inputDir}/sample_embeddings`;
+    const files = await fs.readdir(`${inputDir}/sample_texts`);
     const txtFiles = files.filter(f => f.endsWith('.txt')).sort();
     if (txtFiles.length === 0) {
       this.error('No .txt files found in debug directory');
@@ -55,7 +55,7 @@ export class DebugRunner extends WithLogging {
 
     for (let i = 0; i < txtFiles.length; i++) {
       const txtFile = txtFiles[i];
-      const filePath = `${inputDir}/${txtFile}`;
+      const filePath = `${inputDir}/sample_texts/${txtFile}`;
       const text = (await fs.readFile(filePath, 'utf-8')).trim();
 
       if (!text) {

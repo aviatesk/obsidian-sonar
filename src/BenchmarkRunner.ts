@@ -2,7 +2,7 @@ import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
 import { WithLogging } from './WithLogging';
 import type { ConfigManager } from './ConfigManager';
-import type { SearchManager } from './SearchManager';
+import type { SearchManager, SearchOptions } from './SearchManager';
 import type { IndexManager } from './IndexManager';
 import { join, dirname, isAbsolute } from 'path';
 import { promises as fs } from 'fs';
@@ -68,7 +68,11 @@ export class BenchmarkRunner extends WithLogging {
       this.log(`Loaded ${queries.length} queries`);
 
       // Step 3: Run all search methods
-      const searchMethods = [
+      const searchMethods: {
+        name: string;
+        runId: string;
+        weights: SearchOptions;
+      }[] = [
         {
           name: 'BM25',
           runId: 'sonar.bm25',
@@ -110,11 +114,16 @@ export class BenchmarkRunner extends WithLogging {
           `Running ${method.name} search on ${queries.length} queries...`
         );
 
+        const methodStartTime = Date.now();
         const results = await this.runSearch(queries, method.weights);
+        const methodTime = Date.now() - methodStartTime;
         const outputPath = `${outputDir}/${method.runId}.trec`;
 
         await this.writeTrecResults(results, outputPath, method.runId);
-        this.log(`${method.name} results written to ${outputPath}`);
+        this.log(
+          `${method.name} benchmark completed in ${(methodTime / 1000).toFixed(1)}s (${queries.length} queries, avg ${(methodTime / queries.length).toFixed(0)}ms/query)`
+        );
+        this.log(`${method.name} benchmark results written to ${outputPath}`);
       }
 
       const elapsedMs = Date.now() - startTime;
@@ -164,22 +173,16 @@ export class BenchmarkRunner extends WithLogging {
    */
   private async runSearch(
     queries: Query[],
-    weights: {
-      embeddingWeight: number;
-      bm25Weight: number;
-      titleWeight: number;
-      contentWeight: number;
-    }
+    weights: SearchOptions
   ): Promise<TrecResult[]> {
     const topK = this.configManager.get('benchmarkTopK');
     const results: TrecResult[] = [];
 
     for (const query of queries) {
-      const searchResults = await this.searchManager.searchBenchmark(
-        query.text,
+      const searchResults = await this.searchManager.search(query.text, {
         topK,
-        weights
-      );
+        ...weights,
+      });
 
       for (let i = 0; i < searchResults.length; i++) {
         const result = searchResults[i];

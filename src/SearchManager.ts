@@ -35,6 +35,14 @@ export interface SearchOptions {
   bm25Weight?: number;
 }
 
+export interface SearchOptionsWithTopK extends SearchOptions {
+  topK: number; // Number of results to return (for RRF limit calculation)
+}
+
+export interface FullSearchOptions extends SearchOptionsWithTopK {
+  retrievalLimit: number; // Number of chunks to compare (before file level aggregation)
+}
+
 /**
  * Reciprocal Rank Fusion constant
  */
@@ -70,14 +78,14 @@ export class SearchManager extends WithLogging {
    * @param options Search weights and filters
    * @returns All aggregated documents sorted by score (no limit)
    */
-  private async search(
+  async search(
     query: string,
-    options?: SearchOptions
+    options: SearchOptionsWithTopK
   ): Promise<SearchResult[]> {
-    const titleWeight = options?.titleWeight ?? 0.0;
-    const contentWeight = options?.contentWeight ?? 1.0;
-    const embeddingWeight = options?.embeddingWeight ?? 0.6;
-    const bm25Weight = options?.bm25Weight ?? 0.4;
+    const titleWeight = options.titleWeight ?? 0.0;
+    const contentWeight = options.contentWeight ?? 1.0;
+    const embeddingWeight = options.embeddingWeight ?? 0.6;
+    const bm25Weight = options.bm25Weight ?? 0.4;
 
     // Validate weights
     if (titleWeight === 0 && contentWeight === 0) {
@@ -132,34 +140,7 @@ export class SearchManager extends WithLogging {
       finalScores.set(filePath, finalScore);
     }
 
-    // Get documents and create SearchResults
     return this.createSearchResults(finalScores, options);
-  }
-
-  /**
-   * UI search entry point
-   * Uses searchResultsCount config to determine how many results to return
-   */
-  async searchUI(
-    query: string,
-    options?: SearchOptions
-  ): Promise<SearchResult[]> {
-    const searchResultsCount = this.configManager.get('searchResultsCount');
-    const results = await this.search(query, options);
-    return results.slice(0, searchResultsCount);
-  }
-
-  /**
-   * Benchmark search entry point
-   * Returns top-k documents for benchmark evaluation
-   */
-  async searchBenchmark(
-    query: string,
-    topK: number,
-    options?: SearchOptions
-  ): Promise<SearchResult[]> {
-    const results = await this.search(query, options);
-    return results.slice(0, topK);
   }
 
   /**
@@ -174,24 +155,28 @@ export class SearchManager extends WithLogging {
     type: 'title' | 'content',
     embeddingWeight: number,
     bm25Weight: number,
-    options?: SearchOptions
+    options: SearchOptionsWithTopK
   ): Promise<Map<string, number>> {
-    // Run searches in parallel (skip if weight is 0)
-    // Both embeddingSearch and bm25Search now return ALL aggregated documents
+    // Compute chunk-level limit before aggregation
+    const retrievalMultiplier = this.configManager.get('retrievalMultiplier');
+    const retrievalLimit = options.topK * retrievalMultiplier;
+
+    // Run searches with chunk-level limiting
+    const fullOptions = { ...options, retrievalLimit };
     const [embeddingResults, bm25Results] = await Promise.all([
       embeddingWeight > 0
         ? type === 'title'
-          ? this.embeddingSearch.searchTitle(query, options)
-          : this.embeddingSearch.searchContent(query, options)
+          ? this.embeddingSearch.searchTitle(query, fullOptions)
+          : this.embeddingSearch.searchContent(query, fullOptions)
         : Promise.resolve([]),
       bm25Weight > 0
         ? type === 'title'
-          ? this.bm25Search.searchTitle(query, options)
-          : this.bm25Search.searchContent(query, options)
+          ? this.bm25Search.searchTitle(query, fullOptions)
+          : this.bm25Search.searchContent(query, fullOptions)
         : Promise.resolve([]),
     ]);
 
-    // Pure BM25 search: return raw scores
+    // Pure BM25 search: just return results
     if (embeddingWeight === 0 && bm25Weight > 0) {
       const scores = new Map<string, number>();
       for (const result of bm25Results) {
@@ -200,7 +185,7 @@ export class SearchManager extends WithLogging {
       return scores;
     }
 
-    // Pure vector search: return raw scores
+    // Pure vector search: just return results
     if (bm25Weight === 0 && embeddingWeight > 0) {
       const scores = new Map<string, number>();
       for (const result of embeddingResults) {
@@ -278,12 +263,12 @@ export class SearchManager extends WithLogging {
    */
   private async createSearchResults(
     scoreMap: Map<string, number>,
-    options?: SearchOptions
+    options: SearchOptionsWithTopK
   ): Promise<SearchResult[]> {
     const documents = await this.metadataStore.getAllDocuments();
 
     let filteredDocuments = documents;
-    if (options?.excludeFilePath) {
+    if (options.excludeFilePath) {
       filteredDocuments = documents.filter(
         doc => doc.filePath !== options.excludeFilePath
       );
@@ -318,9 +303,7 @@ export class SearchManager extends WithLogging {
       });
     }
 
-    // Sort by score (already normalized to [0, 1] based on theoretical maximum)
     results.sort((a, b) => b.score - a.score);
-
-    return results;
+    return results.slice(0, options.topK);
   }
 }

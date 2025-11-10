@@ -625,6 +625,27 @@ Formula: \`score = sum(1/(k + rank))\`:
           await this.configManager.set('aggRrfK', value);
         })
     );
+
+    const retrievalMultiplierSetting = new Setting(
+      searchParamsContainer
+    ).setName('Retrieval multiplier');
+    this.renderMarkdownDesc(
+      retrievalMultiplierSetting.descEl,
+      `Multiplier for hybrid search pre-fusion limit (default: \`10\`).
+
+Hybrid search limits both embedding and BM25 results to \`top_k * retrieval_multiplier\` before RRF fusion:
+- Larger values (e.g., \`20\`): more recall, includes more documents but may add noise to RRF fusion.
+- Smaller values (e.g., \`5\`): more precision, focuses on high-quality results only.`
+    );
+    retrievalMultiplierSetting.addSlider(slider =>
+      slider
+        .setLimits(1, 50, 1)
+        .setValue(this.configManager.get('retrievalMultiplier'))
+        .setDynamicTooltip()
+        .onChange(async value => {
+          await this.configManager.set('retrievalMultiplier', value);
+        })
+    );
   }
 
   private createLoggingConfigSection(containerEl: HTMLElement): void {

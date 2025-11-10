@@ -66,7 +66,8 @@ export class SemanticNoteFinder extends Modal {
     });
 
     try {
-      const results = await this.searchManager.searchUI(query, {
+      const results = await this.searchManager.search(query, {
+        topK: this.configManager.get('searchResultsCount'),
         titleWeight: 0.25,
         contentWeight: 0.75,
       });

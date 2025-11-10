@@ -1,6 +1,6 @@
 import { BM25Store } from './BM25Store';
 import { MetadataStore } from './MetadataStore';
-import type { SearchResult, SearchOptions } from './SearchManager';
+import type { SearchResult, FullSearchOptions } from './SearchManager';
 import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
 import { aggregateChunkScores } from './ChunkAggregation';
@@ -29,7 +29,7 @@ export class BM25Search extends WithLogging {
    */
   async searchTitle(
     query: string,
-    options?: SearchOptions
+    options: FullSearchOptions
   ): Promise<SearchResult[]> {
     const bm25Results = await this.bm25Store.search(
       query,
@@ -63,7 +63,7 @@ export class BM25Search extends WithLogging {
    */
   async searchContent(
     query: string,
-    options?: SearchOptions
+    options: FullSearchOptions
   ): Promise<SearchResult[]> {
     const bm25Results = await this.bm25Store.search(
       query,
@@ -74,20 +74,26 @@ export class BM25Search extends WithLogging {
       return [];
     }
 
-    // Filter only content chunks and aggregate by filePath
+    // Filter only content chunks
+    const contentChunks = bm25Results.filter(
+      result => !result.docId.endsWith('#title')
+    );
+
+    // Apply chunk-level limit before aggregation
+    const retrievalLimit = options.retrievalLimit;
+    const chunksToAggregate = contentChunks.slice(0, retrievalLimit);
+
+    // Aggregate by filePath
     const fileScores = new Map<string, number[]>();
-    for (const result of bm25Results) {
-      const chunkId = result.docId;
-      if (!chunkId.endsWith('#title')) {
-        const filePath = this.extractFilePathFromChunkId(chunkId);
-        if (options?.excludeFilePath && filePath === options.excludeFilePath) {
-          continue;
-        }
-        if (!fileScores.has(filePath)) {
-          fileScores.set(filePath, []);
-        }
-        fileScores.get(filePath)!.push(result.score);
+    for (const result of chunksToAggregate) {
+      const filePath = this.extractFilePathFromChunkId(result.docId);
+      if (options?.excludeFilePath && filePath === options.excludeFilePath) {
+        continue;
       }
+      if (!fileScores.has(filePath)) {
+        fileScores.set(filePath, []);
+      }
+      fileScores.get(filePath)!.push(result.score);
     }
 
     // Aggregate chunk scores using configured method

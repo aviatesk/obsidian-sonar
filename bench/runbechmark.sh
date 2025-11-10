@@ -3,7 +3,7 @@ set -e
 
 # Default configuration
 DATASET="datasets/processed/miracl_ja_dev_miracl_en_dev_subset"
-MODEL="multilingual-e5-small"
+MODEL="intfloat/multilingual-e5-small"
 OUTPUT_DIR=""
 BACKENDS="elasticsearch,weaviate"
 METHODS="bm25,vector,hybrid"
@@ -109,7 +109,7 @@ echo ""
 
 # Start Docker services
 echo "=========================================="
-echo "Step 1: Starting Docker services"
+echo "Starting Docker services"
 echo "=========================================="
 docker compose up -d
 
@@ -219,15 +219,13 @@ run_backend() {
     fi
 }
 
-# Run benchmarks for each backend
 IFS=',' read -ra BACKEND_ARRAY <<< "$BACKENDS"
 for backend in "${BACKEND_ARRAY[@]}"; do
     run_backend "$backend"
 done
 
-# Evaluate all runs
 echo "=========================================="
-echo "Step 4: Evaluating results"
+echo "Evaluating results"
 echo "=========================================="
 uv run scripts/evaluate.py \
     --runs "$OUTPUT_DIR"/*.trec \

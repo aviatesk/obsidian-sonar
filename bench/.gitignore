@@ -3,7 +3,7 @@ datasets/
 vaults/
 
 # Benchmark outputs
-debug/samples/
-debug/*.txt
+debug/sample_embeddings/
+debug/sample_texts/
 embeddings/
 runs/

@@ -28,7 +28,7 @@ def compare_embeddings(python_file: Path, js_file: Path):
     print("=" * 60)
 
     # Truncate long text for display
-    text = python_data['text']
+    text = python_data["text"]
     max_len = 100
     truncated_text = text if len(text) <= max_len else f"{text[:max_len]}..."
     print(f"\nText: {truncated_text}")
@@ -97,7 +97,7 @@ def main():
         default=None,
         help=(
             "Input directory containing embedding files. "
-            "If not provided, uses bench/debug/results/"
+            "If not provided, uses bench/debug/sample_embeddings/"
         ),
     )
 
@@ -109,7 +109,7 @@ def main():
     if args.input_dir:
         input_dir = Path(args.input_dir)
     else:
-        input_dir = script_dir / "samples"
+        input_dir = script_dir / "sample_embeddings"
 
     # Find all Python embedding files
     python_files = sorted(input_dir.glob("python_embedding_*.json"))

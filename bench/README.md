@@ -308,7 +308,7 @@ Options:
 ./runbechmark.sh --dataset datasets/processed/scidocs_subset
 
 # Use a different model for embeddings (need to specify vector dimention depending on model to be used)
-./runbechmark.sh --model multilingual-e5-small --dataset datasets/processed/scidocs_subset --vector-dims 768
+./runbechmark.sh --model intfloat/multilingual-e5-small --dataset datasets/processed/scidocs_subset --vector-dims 768
 ```
 
 Use `./runbechmark.sh --help` for full options.

@@ -26,13 +26,13 @@ def main():
         "--input-dir",
         type=str,
         default=None,
-        help="Input directory containing *.txt files (default: bench/debug/)",
+        help="Input directory containing *.txt files (default: bench/debug/sample_texts)",
     )
     parser.add_argument(
         "--output-dir",
         type=str,
         default=None,
-        help="Output directory (default: bench/debug/samples/)",
+        help="Output directory (default: bench/debug/sample_embeddings/)",
     )
 
     args = parser.parse_args()
@@ -43,12 +43,12 @@ def main():
     if args.input_dir:
         input_dir = Path(args.input_dir)
     else:
-        input_dir = script_dir
+        input_dir = script_dir / "sample_texts"
 
     if args.output_dir:
         output_dir = Path(args.output_dir)
     else:
-        output_dir = script_dir / "samples"
+        output_dir = script_dir / "sample_embeddings"
 
     # Find all .txt files
     txt_files = sorted(input_dir.glob("*.txt"))

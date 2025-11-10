@@ -272,8 +272,7 @@ def main():
         type=str,
         default=None,
         help=(
-            "Backend host (default: localhost:9200 for ES, "
-            "localhost:8080 for Weaviate)"
+            "Backend host (default: localhost:9200 for ES, localhost:8080 for Weaviate)"
         ),
     )
     parser.add_argument(

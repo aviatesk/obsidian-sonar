@@ -93,8 +93,7 @@ def load_corpus(
 
     if remaining_required:
         tqdm.write(
-            f"  Warning: {len(remaining_required)} required docs "
-            "not found in corpus"
+            f"  Warning: {len(remaining_required)} required docs not found in corpus"
         )
 
     required_found = len(required_doc_ids) - len(remaining_required)
@@ -293,8 +292,7 @@ def bm25_retrieve(
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "Generate query-driven candidate pool subset "
-            "for efficient benchmarking"
+            "Generate query-driven candidate pool subset for efficient benchmarking"
         )
     )
     parser.add_argument(

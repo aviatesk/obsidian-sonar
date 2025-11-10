@@ -2,7 +2,7 @@ import { EmbeddingStore } from './EmbeddingStore';
 import { MetadataStore, type DocumentMetadata } from './MetadataStore';
 import type { Embedder } from './Embedder';
 import { ConfigManager } from './ConfigManager';
-import type { SearchResult, SearchOptions } from './SearchManager';
+import type { SearchResult, FullSearchOptions } from './SearchManager';
 import { WithLogging } from './WithLogging';
 import { aggregateChunkScores } from './ChunkAggregation';
 
@@ -104,7 +104,7 @@ export class EmbeddingSearch extends WithLogging {
    */
   async searchTitle(
     query: string,
-    options?: SearchOptions
+    options: FullSearchOptions
   ): Promise<SearchResult[]> {
     return this.searchByType(query, 'title', options);
   }
@@ -115,7 +115,7 @@ export class EmbeddingSearch extends WithLogging {
    */
   async searchContent(
     query: string,
-    options?: SearchOptions
+    options: FullSearchOptions
   ): Promise<SearchResult[]> {
     return this.searchByType(query, 'content', options);
   }
@@ -127,7 +127,7 @@ export class EmbeddingSearch extends WithLogging {
   private async searchByType(
     query: string,
     type: 'title' | 'content',
-    options?: SearchOptions
+    options: FullSearchOptions & { queryId?: string }
   ): Promise<SearchResult[]> {
     const queryEmbeddings = await this.embedder.getEmbeddings([query], 'query');
     const queryEmbedding = queryEmbeddings[0];
@@ -151,9 +151,13 @@ export class EmbeddingSearch extends WithLogging {
 
     results.sort((a, b) => b.score - a.score);
 
+    // Apply chunk-level limit before aggregation
+    const retrievalLimit = options.retrievalLimit ?? results.length;
+    const chunksToAggregate = results.slice(0, retrievalLimit);
+
     if (type === 'title') {
       // For title search, return all results (one per file, no aggregation needed)
-      return results.map(result => ({
+      return chunksToAggregate.map(result => ({
         filePath: result.document.metadata.filePath,
         title:
           result.document.metadata.title || result.document.metadata.filePath,
@@ -167,9 +171,9 @@ export class EmbeddingSearch extends WithLogging {
         fileSize: result.document.metadata.size,
       }));
     } else {
-      // For content search, aggregate all chunks by file
+      // For content search, aggregate chunks by file (after chunk-level limiting)
       const groupedByFile = new Map<string, typeof results>();
-      for (const result of results) {
+      for (const result of chunksToAggregate) {
         const filePath = result.document.metadata.filePath;
         if (!groupedByFile.has(filePath)) {
           groupedByFile.set(filePath, []);

@@ -318,7 +318,8 @@ export class RelatedNotesView extends ItemView {
 
       if (query) {
         const tokenCount = await this.embedder.countTokens(query);
-        const searchResults = await this.searchManager.searchUI(query, {
+        const searchResults = await this.searchManager.search(query, {
+          topK: this.configManager.get('searchResultsCount'),
           excludeFilePath: activeFile.path,
         });
         this.updateStore({

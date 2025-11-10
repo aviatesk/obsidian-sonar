@@ -189,8 +189,7 @@ def main():
         type=str,
         default="dev",
         help=(
-            "MIRACL splits to download (comma-separated: dev,train,test) "
-            "(default: dev)"
+            "MIRACL splits to download (comma-separated: dev,train,test) (default: dev)"
         ),
     )
     parser.add_argument(
