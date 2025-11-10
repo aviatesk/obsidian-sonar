@@ -50,12 +50,17 @@ export class SettingTab extends PluginSettingTab {
     actionsDetails.createEl('summary', { text: 'Actions' });
     const actionsContainer = actionsDetails.createDiv();
 
+    let indexPath = `\`${this.configManager.get('indexPath')}\``;
+    if (indexPath == '``') {
+      indexPath = 'root (all files in this vault)';
+    }
+
     const syncSetting = new Setting(actionsContainer).setName(
       'Sync index with vault'
     );
     this.renderMarkdownDesc(
       syncSetting.descEl,
-      'Add missing files and remove deleted ones.'
+      `Add missing files and remove deleted ones in: ${indexPath}`
     );
     syncSetting.addButton(button =>
       button.setButtonText('Sync').onClick(async () => {
@@ -68,10 +73,6 @@ export class SettingTab extends PluginSettingTab {
       })
     );
 
-    let indexPath = `\`${this.configManager.get('indexPath')}\``;
-    if (indexPath == '``') {
-      indexPath = `${indexPath} (all files in this vault)`;
-    }
     const rebuildSetting = new Setting(actionsContainer).setName(
       'Rebuild entire index'
     );
@@ -88,7 +89,9 @@ export class SettingTab extends PluginSettingTab {
             new Notice('Index manager not initialized');
             return;
           }
-          const confirmed = await this.confirmRebuildIndex();
+          const confirmed = await this.configManager.confirmRebuildIndex(
+            this.app
+          );
           if (!confirmed) {
             return;
           }
@@ -111,9 +114,7 @@ export class SettingTab extends PluginSettingTab {
     );
     this.renderMarkdownDesc(
       clearCurrentSetting.descEl,
-      `Clear indexed data for current configuration:
-- \`${this.configManager.get('embedderType')}\`
-- \`${this.configManager.get('embeddingModel')}\``
+      'Clear indexed data for current configuration'
     );
     clearCurrentSetting.addButton(button =>
       button
@@ -124,7 +125,9 @@ export class SettingTab extends PluginSettingTab {
             new Notice('Index manager not initialized');
             return;
           }
-          const confirmed = await this.confirmClearCurrentIndex();
+          const confirmed = await this.configManager.confirmClearCurrentIndex(
+            this.app
+          );
           if (!confirmed) {
             return;
           }
@@ -775,24 +778,6 @@ Hybrid search limits both embedding and BM25 results to \`top_k * retrieval_mult
         .onChange(async value => {
           await this.configManager.set('debugSamplesPath', value);
         })
-    );
-  }
-
-  async confirmRebuildIndex(): Promise<boolean> {
-    return confirmAction(
-      this.app,
-      'Rebuild index',
-      `Rebuild entire search index?\n\n${this.configManager.getCurrentConfigInfo()}\n\nThis will clear all indexed data and reindex all files. This cannot be undone.`,
-      'Rebuild'
-    );
-  }
-
-  async confirmClearCurrentIndex(): Promise<boolean> {
-    return confirmAction(
-      this.app,
-      'Clear current index',
-      `Clear current search index?\n\n${this.configManager.getCurrentConfigInfo()}\n\nThis will remove all indexed data for the current configuration. This cannot be undone.`,
-      'Clear'
     );
   }
 

@@ -15,7 +15,6 @@ import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
 import { MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
-import { confirmAction } from './src/Utils';
 import type { Embedder } from './src/Embedder';
 import { TransformersEmbedder } from './src/TransformersEmbedder';
 import { OllamaEmbedder } from './src/OllamaEmbedder';
@@ -235,12 +234,8 @@ export default class SonarPlugin extends Plugin {
       name: 'Clear current search index',
       callback: async () => {
         if (!this.checkInitialized()) return;
-        const confirmMessage = `Clear current search index?\n\n${this.configManager.getCurrentConfigInfo()}\n\nThis will remove all indexed data for the current configuration. This cannot be undone.`;
-        const confirmed = await confirmAction(
-          this.app,
-          'Clear current index',
-          confirmMessage,
-          'Clear'
+        const confirmed = await this.configManager.confirmClearCurrentIndex(
+          this.app
         );
         if (!confirmed) return;
         await this.indexManager!.clearCurrentIndex();
@@ -261,12 +256,8 @@ export default class SonarPlugin extends Plugin {
       name: 'Rebuild entire search index',
       callback: async () => {
         if (!this.checkInitialized()) return;
-        const confirmMessage = `Rebuild entire search index?\n\n${this.configManager.getCurrentConfigInfo()}\n\nThis will clear all indexed data and reindex all files. This cannot be undone.`;
-        const confirmed = await confirmAction(
-          this.app,
-          'Rebuild index',
-          confirmMessage,
-          'Rebuild'
+        const confirmed = await this.configManager.confirmRebuildIndex(
+          this.app
         );
         if (!confirmed) return;
         await this.indexManager!.rebuildIndex((current, total, filePath) => {
@@ -423,13 +414,10 @@ export default class SonarPlugin extends Plugin {
       `Found ${databases.length} database(s) for vault ${vaultName}: ${databases.join(', ')}`
     );
 
-    const confirmMessage = `Found ${databases.length} database(s) for vault "${vaultName}":\n\n${databases.map(db => `  - \`${db}\``).join('\n')}\n\nDelete all? This cannot be undone.`;
-
-    const confirmed = await confirmAction(
+    const confirmed = await this.configManager.confirmDeleteAllVaultDatabases(
       this.app,
-      'Delete all vault databases',
-      confirmMessage,
-      'Delete All'
+      vaultName,
+      databases
     );
     if (!confirmed) {
       return;

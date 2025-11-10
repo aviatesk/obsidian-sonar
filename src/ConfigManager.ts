@@ -1,6 +1,8 @@
 import { EventEmitter } from 'events';
+import type { App } from 'obsidian';
 import type { SonarSettings } from './config';
 import { Logger } from './Logger';
+import { confirmAction } from './Utils';
 
 export type ConfigChangeListener = (
   key: keyof SonarSettings,
@@ -60,6 +62,47 @@ export class ConfigManager extends EventEmitter {
     const embedderType = this.get('embedderType');
     const embeddingModel = this.get('embeddingModel');
     return `- Embedding backend: \`${embedderType}\`\n- Embedding model: \`${embeddingModel}\``;
+  }
+
+  /**
+   * Show confirmation dialog for clearing current index
+   */
+  async confirmClearCurrentIndex(app: App): Promise<boolean> {
+    return confirmAction(
+      app,
+      'Clear current index',
+      `Clear current search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear the index for the current configuration. This cannot be undone.`,
+      'Clear'
+    );
+  }
+
+  /**
+   * Show confirmation dialog for rebuilding index
+   */
+  async confirmRebuildIndex(app: App): Promise<boolean> {
+    return confirmAction(
+      app,
+      'Rebuild index',
+      `Rebuild entire search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear and rebuild the index for the current configuration. This cannot be undone.`,
+      'Rebuild'
+    );
+  }
+
+  /**
+   * Show confirmation dialog for deleting all vault databases
+   */
+  async confirmDeleteAllVaultDatabases(
+    app: App,
+    vaultName: string,
+    databases: string[]
+  ): Promise<boolean> {
+    const message = `Delete all search databases for this vault?\n\nFound ${databases.length} database(s) for vault "${vaultName}":\n\n${databases.map(db => `  - \`${db}\``).join('\n')}\n\nThis will delete all databases for this vault. This cannot be undone.`;
+    return confirmAction(
+      app,
+      'Delete all vault databases',
+      message,
+      'Delete All'
+    );
   }
 
   /**
