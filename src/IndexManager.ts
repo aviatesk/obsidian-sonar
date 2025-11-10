@@ -455,31 +455,7 @@ export class IndexManager extends WithLogging {
       });
     }
 
-    // Step 2: Index all BM25 documents upfront (before embedding generation)
-    this.log('Preparing BM25 documents...');
-    const allBM25Documents: Array<{ docId: string; content: string }> = [];
-    for (const { file, chunks } of fileChunkDataList) {
-      allBM25Documents.push({
-        docId: `${file.path}#title`,
-        content: file.basename,
-      });
-      for (let i = 0; i < chunks.length; i++) {
-        allBM25Documents.push({
-          docId: `${file.path}#${i}`,
-          content: chunks[i].content,
-        });
-      }
-    }
-
-    if (allBM25Documents.length > 0) {
-      this.log(`Indexing ${allBM25Documents.length} BM25 documents...`);
-      const bm25Start = Date.now();
-      await this.bm25Store.indexDocumentBatch(allBM25Documents);
-      timings.bm25Indexing = Date.now() - bm25Start;
-      this.log(`Indexed ${allBM25Documents.length} BM25 documents`);
-    }
-
-    // Step 3: Process embeddings in batches
+    // Step 2: Process embeddings in batches
     // Prepare all texts (titles + chunks) with metadata
     interface TextItem {
       text: string;
@@ -664,6 +640,37 @@ export class IndexManager extends WithLogging {
       }
     }
 
+    // Step 3: Index BM25 documents (excluding NaN files)
+    this.log('Preparing BM25 documents...');
+    this.updateStatusBar('Finalizing BM25 index...');
+    const allBM25Documents: Array<{ docId: string; content: string }> = [];
+    for (let fileIndex = 0; fileIndex < fileChunkDataList.length; fileIndex++) {
+      // Skip files with NaN embeddings
+      if (filesWithNaN.has(fileIndex)) {
+        continue;
+      }
+
+      const { file, chunks } = fileChunkDataList[fileIndex];
+      allBM25Documents.push({
+        docId: `${file.path}#title`,
+        content: file.basename,
+      });
+      for (let i = 0; i < chunks.length; i++) {
+        allBM25Documents.push({
+          docId: `${file.path}#${i}`,
+          content: chunks[i].content,
+        });
+      }
+    }
+
+    if (allBM25Documents.length > 0) {
+      this.log(`Indexing ${allBM25Documents.length} BM25 documents...`);
+      const bm25Start = Date.now();
+      await this.bm25Store.indexDocumentBatch(allBM25Documents);
+      timings.bm25Indexing = Date.now() - bm25Start;
+      this.log(`Indexed ${allBM25Documents.length} BM25 documents`);
+    }
+
     // Debug assertion: all files should have been indexed
     if (fileEmbeddingsMap.size > 0) {
       const remainingFiles = Array.from(fileEmbeddingsMap.keys())
@@ -711,7 +718,6 @@ export class IndexManager extends WithLogging {
   ): {
     metadata: DocumentMetadata[];
     embeddingData: Array<{ id: string; embedding: number[] }>;
-    bm25Documents: Array<{ docId: string; content: string }>;
   } {
     const titleEmbedding = embeddings.find(e => e.type === 'title')?.embedding;
     if (!titleEmbedding) {
@@ -737,9 +743,6 @@ export class IndexManager extends WithLogging {
         embeddingData: [
           { id: `${file.path}#title`, embedding: titleEmbedding },
         ],
-        bm25Documents: [
-          { docId: `${file.path}#title`, content: file.basename },
-        ],
       };
     }
 
@@ -747,7 +750,6 @@ export class IndexManager extends WithLogging {
     const chunkContents = chunks.map(c => c.content);
     const metadata: DocumentMetadata[] = [];
     const embeddingData: Array<{ id: string; embedding: number[] }> = [];
-    const bm25Documents: Array<{ docId: string; content: string }> = [];
 
     // Add metadata for each chunk
     for (let i = 0; i < chunks.length; i++) {
@@ -763,18 +765,10 @@ export class IndexManager extends WithLogging {
       });
     }
 
-    // Add title to BM25 and embeddings
-    bm25Documents.push({ docId: `${file.path}#title`, content: file.basename });
+    // Add title to embeddings
     embeddingData.push({ id: `${file.path}#title`, embedding: titleEmbedding });
 
-    // Add chunks to BM25 and embeddings
-    for (let i = 0; i < chunks.length; i++) {
-      bm25Documents.push({
-        docId: `${file.path}#${i}`,
-        content: chunkContents[i],
-      });
-    }
-
+    // Add chunk embeddings
     for (const emb of embeddings) {
       if (emb.type === 'chunk' && emb.chunkIndex !== undefined) {
         embeddingData.push({
@@ -784,7 +778,7 @@ export class IndexManager extends WithLogging {
       }
     }
 
-    return { metadata, embeddingData, bm25Documents };
+    return { metadata, embeddingData };
   }
 
   private getOperationAction(type: FileOperation['type']): string {
