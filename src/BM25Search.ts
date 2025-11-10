@@ -80,8 +80,7 @@ export class BM25Search extends WithLogging {
     );
 
     // Apply chunk-level limit before aggregation
-    const retrievalLimit = options.retrievalLimit;
-    const chunksToAggregate = contentChunks.slice(0, retrievalLimit);
+    const chunksToAggregate = contentChunks.slice(0, options.retrievalLimit);
 
     // Aggregate by filePath
     const fileScores = new Map<string, number[]>();

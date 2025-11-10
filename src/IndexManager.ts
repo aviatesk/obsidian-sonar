@@ -18,7 +18,12 @@ import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks } from './chunker';
 import type { Embedder } from './Embedder';
 import { BM25Store } from './BM25Store';
-import { formatBytes, formatDuration } from './Utils';
+import {
+  formatBytes,
+  formatDuration,
+  hasNaNEmbedding,
+  countNaNValues,
+} from './Utils';
 import { WithLogging } from './WithLogging';
 
 /**
@@ -144,7 +149,8 @@ export class IndexManager extends WithLogging {
     modifiedCount: number;
     deletedCount: number;
     skippedCount: number;
-    errorCount: number;
+    errored: number;
+    skipped: number;
   }> {
     const dbFileMap = await this.metadataStore.getFileMetadataMap();
     const vaultFiles = getFilesToIndex(this.vault, this.configManager);
@@ -187,7 +193,7 @@ export class IndexManager extends WithLogging {
       `Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
     );
 
-    const errorCount = await this.processBatchOperations(
+    const { errored, skipped } = await this.processBatchOperations(
       operations,
       progressCallback
     );
@@ -197,7 +203,8 @@ export class IndexManager extends WithLogging {
       modifiedCount,
       deletedCount,
       skippedCount,
-      errorCount,
+      errored,
+      skipped,
     };
   }
 
@@ -299,34 +306,28 @@ export class IndexManager extends WithLogging {
     this.debouncedProcess();
   }
 
-  private async processPendingOperations(): Promise<number> {
+  private async processPendingOperations(): Promise<void> {
     if (this.pendingOperations.size === 0) {
-      return 0;
+      return;
     }
 
-    // Prevent concurrent processing
     if (this.isProcessing) {
-      return 0;
+      return; // Prevent concurrent processing
     }
 
     this.isProcessing = true;
     const operations = Array.from(this.pendingOperations.values());
     this.pendingOperations.clear();
 
-    if (operations.length > 0) {
-      this.log(`Processing ${operations.length} file operation(s)`);
-    }
+    const { errored } = await this.processBatchOperations(operations);
 
-    const errorCount = await this.processBatchOperations(operations);
-
-    if (errorCount > 0) {
-      new Notice(`Sonar index failed to update ${errorCount} files`);
+    if (errored > 0) {
+      new Notice(`Sonar index failed to update ${errored} files`);
     }
 
     this.isProcessing = false;
 
     await this.updateStatusBarWithFileCount();
-    return errorCount;
   }
 
   /**
@@ -340,9 +341,9 @@ export class IndexManager extends WithLogging {
       total: number,
       filePath: string
     ) => void | Promise<void>
-  ): Promise<number> {
+  ): Promise<{ errored: number; skipped: number }> {
     if (operations.length === 0) {
-      return 0;
+      return { errored: 0, skipped: 0 };
     }
 
     // Performance timing
@@ -408,7 +409,7 @@ export class IndexManager extends WithLogging {
     );
 
     if (indexOperations.length === 0) {
-      return 0;
+      return { errored: 0, skipped: 0 };
     }
 
     // Step 1: Prepare all chunks for all files
@@ -520,6 +521,9 @@ export class IndexManager extends WithLogging {
         embedding: number[];
       }>
     >();
+    // Track files with NaN embeddings across all batches
+    const filesWithNaN = new Set<number>();
+
     for (let i = 0; i < allTextItems.length; i += batchSize) {
       const batchItems = allTextItems.slice(
         i,
@@ -533,10 +537,31 @@ export class IndexManager extends WithLogging {
       timings.embeddingGeneration += Date.now() - embeddingStart;
       timings.workerCalls++;
 
-      // Associate embeddings with files
+      // Check for NaN embeddings in this batch
+      const batchFilesWithNaN = new Set<number>();
+      for (let j = 0; j < batchEmbeddings.length; j++) {
+        const embedding = batchEmbeddings[j];
+        if (hasNaNEmbedding(embedding)) {
+          const item = batchItems[j];
+          const { file } = fileChunkDataList[item.fileIndex];
+          const nanCount = countNaNValues(embedding);
+          this.warn(
+            `NaN embedding detected for ${file.path} (${item.type}${item.type === 'chunk' ? ` #${item.chunkIndex}` : ''}): ${nanCount}/${embedding.length} NaN values`
+          );
+          batchFilesWithNaN.add(item.fileIndex);
+          filesWithNaN.add(item.fileIndex);
+        }
+      }
+
+      // Associate embeddings with files (skip files with NaN from any batch)
       for (let j = 0; j < batchItems.length; j++) {
         const item = batchItems[j];
         const embedding = batchEmbeddings[j];
+
+        // Skip files that have any NaN embeddings (from this or previous batches)
+        if (filesWithNaN.has(item.fileIndex)) {
+          continue;
+        }
 
         if (!fileEmbeddingsMap.has(item.fileIndex)) {
           fileEmbeddingsMap.set(item.fileIndex, []);
@@ -546,6 +571,11 @@ export class IndexManager extends WithLogging {
           chunkIndex: item.chunkIndex,
           embedding,
         });
+      }
+
+      // Remove files with NaN from the map (in case they were partially added before)
+      for (const fileIndex of batchFilesWithNaN) {
+        fileEmbeddingsMap.delete(fileIndex);
       }
 
       // Check if we can index any complete files
@@ -620,6 +650,20 @@ export class IndexManager extends WithLogging {
       this.log(`Processed: ${progress}/${allTextItems.length} texts`);
     }
 
+    // Count total files with NaN embeddings
+    errorCount += filesWithNaN.size;
+    const skippedFiles = Array.from(filesWithNaN).map(
+      idx => fileChunkDataList[idx].file.path
+    );
+
+    // Log skipped files
+    if (skippedFiles.length > 0) {
+      this.warn(`Skipped ${skippedFiles.length} files with NaN embeddings:`);
+      for (const filePath of skippedFiles) {
+        this.warn(`  - ${filePath}`);
+      }
+    }
+
     // Debug assertion: all files should have been indexed
     if (fileEmbeddingsMap.size > 0) {
       const remainingFiles = Array.from(fileEmbeddingsMap.keys())
@@ -652,7 +696,7 @@ export class IndexManager extends WithLogging {
     this.log('====================================');
 
     this.log('Batch indexing complete');
-    return errorCount;
+    return { errored: errorCount, skipped: skippedFiles.length };
   }
 
   private prepareFileIndexData(
@@ -889,6 +933,21 @@ export class IndexManager extends WithLogging {
     new Notice(`Indexed: ${file.path}`);
   }
 
+  private buildIndexingCompleteMessage(
+    baseMessage: string,
+    errored: number,
+    skipped: number
+  ): string {
+    let message = baseMessage;
+    if (errored > 0) {
+      message += `, ${errored} errors`;
+    }
+    if (skipped > 0) {
+      message += ` (${skipped} files skipped due to NaN embeddings)`;
+    }
+    return message;
+  }
+
   async rebuildIndex(
     progressCallback?: (
       current: number,
@@ -901,23 +960,37 @@ export class IndexManager extends WithLogging {
     await this.clearCurrentIndex();
     const stats = await this.performSync(progressCallback);
     const duration = formatDuration(Date.now() - startTime);
-    const message = `Rebuild complete: ${stats.newCount} files indexed in ${duration}${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
+    const message = this.buildIndexingCompleteMessage(
+      `Rebuild complete: ${stats.newCount} files indexed in ${duration}`,
+      stats.errored,
+      stats.skipped
+    );
     new Notice(message, 0);
-    this.log(`Rebuilt index (${stats.newCount} files)`);
+    this.log(message);
     await this.updateStatusBarWithFileCount();
   }
 
-  async syncIndex(onload: boolean = false): Promise<void> {
+  async syncIndex(onload: boolean = false): Promise<{
+    newCount: number;
+    modifiedCount: number;
+    deletedCount: number;
+    skippedCount: number;
+    errored: number;
+    skipped: number;
+  }> {
     this.log('Syncing index...');
     const startTime = Date.now();
     const stats = await this.performSync();
     const duration = formatDuration(Date.now() - startTime);
-    const message = `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted in ${duration}${stats.errorCount > 0 ? `, ${stats.errorCount} errors` : ''}`;
-    new Notice(message, onload ? 10000 : 0);
-    this.log(
-      `Synced index (${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted)`
+    const message = this.buildIndexingCompleteMessage(
+      `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted in ${duration}`,
+      stats.errored,
+      stats.skipped
     );
+    new Notice(message, onload ? 10000 : 0);
+    this.log(message);
     await this.updateStatusBarWithFileCount();
+    return stats;
   }
 
   private unregisterEventHandlers(): void {

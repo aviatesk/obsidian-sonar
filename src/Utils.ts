@@ -208,3 +208,17 @@ export function confirmAction(
     modal.open();
   });
 }
+
+/**
+ * Check if an embedding contains NaN values
+ */
+export function hasNaNEmbedding(embedding: number[]): boolean {
+  return embedding.some(x => Number.isNaN(x));
+}
+
+/**
+ * Count NaN values in an embedding
+ */
+export function countNaNValues(embedding: number[]): number {
+  return embedding.filter(x => Number.isNaN(x)).length;
+}

@@ -5,6 +5,7 @@ import { ConfigManager } from './ConfigManager';
 import type { SearchResult, FullSearchOptions } from './SearchManager';
 import { WithLogging } from './WithLogging';
 import { aggregateChunkScores } from './ChunkAggregation';
+import { hasNaNEmbedding, countNaNValues } from './Utils';
 
 interface CombinedDocument {
   id: string;
@@ -134,6 +135,25 @@ export class EmbeddingSearch extends WithLogging {
 
     const documents = await this.getCombinedDocuments(type);
 
+    // Check for NaN embeddings in stored documents
+    const docsWithNaN = documents.filter(doc => hasNaNEmbedding(doc.embedding));
+    if (docsWithNaN.length > 0) {
+      const errorMsg = `Found ${docsWithNaN.length} document(s) with NaN embeddings in database. Rebuild index to fix this issue.`;
+      const docList = docsWithNaN
+        .slice(0, 5)
+        .map(
+          doc =>
+            `${doc.id} (${countNaNValues(doc.embedding)}/${doc.embedding.length} NaN)`
+        )
+        .join(', ');
+      const fullMsg =
+        docsWithNaN.length <= 5
+          ? `${errorMsg} Documents: ${docList}`
+          : `${errorMsg} First 5: ${docList}`;
+      this.error(fullMsg);
+      throw new Error(fullMsg);
+    }
+
     let filteredDocuments = documents;
     if (options?.excludeFilePath) {
       filteredDocuments = documents.filter(
@@ -152,8 +172,7 @@ export class EmbeddingSearch extends WithLogging {
     results.sort((a, b) => b.score - a.score);
 
     // Apply chunk-level limit before aggregation
-    const retrievalLimit = options.retrievalLimit ?? results.length;
-    const chunksToAggregate = results.slice(0, retrievalLimit);
+    const chunksToAggregate = results.slice(0, options.retrievalLimit);
 
     if (type === 'title') {
       // For title search, return all results (one per file, no aggregation needed)
