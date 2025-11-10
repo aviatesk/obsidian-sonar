@@ -1,5 +1,5 @@
 export type LogLevel = 'error' | 'warn' | 'log';
-export type EmbedderType = 'transformers' | 'ollama';
+export type EmbedderBackend = 'transformers' | 'ollama';
 export type AggregationMethod =
   | 'max_p'
   | 'top_m_sum'
@@ -32,7 +32,7 @@ export interface SonarSettings {
 
   // Embedder configuration
   // ======================
-  embedderType: EmbedderType; // Embedder type: 'transformers' or 'ollama'
+  embedderBackend: EmbedderBackend; // Embedder type: 'transformers' or 'ollama'
   embeddingModel: string; // HuggingFace model ID (e.g., 'Xenova/bge-m3') or Ollama model name
 
   // Search parameters
@@ -87,7 +87,7 @@ export const DEFAULT_SETTINGS: SonarSettings = {
 
   // Embedder configuration
   // ======================
-  embedderType: 'transformers',
+  embedderBackend: 'transformers',
   embeddingModel: 'Xenova/bge-m3',
 
   // Search parameters

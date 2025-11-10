@@ -12,7 +12,7 @@
   "maxChunkSize": 512,
   "chunkOverlap": 128,
   "maxQueryTokens": 128,
-  "embedderType": "transformers",
+  "embedderBackend": "transformers",
   "embeddingModel": "Xenova/multilingual-e5-small",
   "bm25AggMethod": "max_p",
   "vectorAggMethod": "max_p",

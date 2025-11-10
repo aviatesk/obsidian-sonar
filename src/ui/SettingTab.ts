@@ -9,8 +9,7 @@ import {
 import { ConfigManager } from '../ConfigManager';
 import type SonarPlugin from '../../main';
 import { getIndexableFilesCount } from 'src/fileFilters';
-import type { EmbedderType, AggregationMethod } from '../config';
-import { confirmAction } from '../Utils';
+import type { EmbedderBackend, AggregationMethod } from '../config';
 
 export class SettingTab extends PluginSettingTab {
   plugin: SonarPlugin;
@@ -421,20 +420,26 @@ This is the final number after chunk aggregation:
     embedderDetails.createEl('summary', { text: 'Embedder configuration' });
     const embedderContainer = embedderDetails.createDiv();
 
-    const embedderTypeSetting = new Setting(embedderContainer).setName(
-      'Embedder type'
+    const embedderBackendSetting = new Setting(embedderContainer).setName(
+      'Embedder backend'
     );
     this.renderMarkdownDesc(
-      embedderTypeSetting.descEl,
-      'Choose embedding backend (Transformers.js or Ollama).'
+      embedderBackendSetting.descEl,
+      `Choose embedding backend:
+- [Transformers.js](https://huggingface.co/docs/transformers.js/en/index) (default): Bundled with Sonar and works without external dependencies. However, Transformers.js behavior when using browser GPU resources remains unstable, and issues such as incorrect embeddings being generated have been reported when using some high-precision models.
+- [Ollama](https://ollama.com/): May provide more stable embeddings, especially with high-precision models. Requires Ollama to be installed on your system and the Ollama server to be running. This option offloads embedding computation to a local Ollama instance, which can be more reliable but adds an external dependency.
+`
     );
-    embedderTypeSetting.addDropdown(dropdown =>
+    embedderBackendSetting.addDropdown(dropdown =>
       dropdown
         .addOption('transformers', 'Transformers.js')
         .addOption('ollama', 'Ollama')
-        .setValue(this.configManager.get('embedderType'))
+        .setValue(this.configManager.get('embedderBackend'))
         .onChange(async value => {
-          await this.configManager.set('embedderType', value as EmbedderType);
+          await this.configManager.set(
+            'embedderBackend',
+            value as EmbedderBackend
+          );
         })
     );
 

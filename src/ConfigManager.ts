@@ -59,9 +59,9 @@ export class ConfigManager extends EventEmitter {
    * Get formatted string of current embedder configuration
    */
   getCurrentConfigInfo(): string {
-    const embedderType = this.get('embedderType');
+    const embedderBackend = this.get('embedderBackend');
     const embeddingModel = this.get('embeddingModel');
-    return `- Embedding backend: \`${embedderType}\`\n- Embedding model: \`${embeddingModel}\``;
+    return `- Embedding backend: \`${embedderBackend}\`\n- Embedding model: \`${embeddingModel}\``;
   }
 
   /**

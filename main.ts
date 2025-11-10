@@ -80,11 +80,11 @@ export default class SonarPlugin extends Plugin {
       this.warn(`WebGL not detected - ${result.webgl.reason}`);
     }
 
-    const embedderType = this.configManager.get('embedderType');
+    const embedderBackend = this.configManager.get('embedderBackend');
     const embeddingModel = this.configManager.get('embeddingModel');
 
     // Initialize embedder based on type
-    if (embedderType === 'ollama') {
+    if (embedderBackend === 'ollama') {
       const { TransformersWorker } = await import('./src/TransformersWorker');
       const worker = new TransformersWorker(this.configManager);
       const tokenizerModel = 'Xenova/multilingual-e5-small';
@@ -116,7 +116,7 @@ export default class SonarPlugin extends Plugin {
     try {
       this.metadataStore = await MetadataStore.initialize(
         this.app.vault.getName(),
-        embedderType,
+        embedderBackend,
         embeddingModel,
         this.configManager
       );
@@ -425,10 +425,14 @@ export default class SonarPlugin extends Plugin {
 
     // Close current database connections if they're in the list to be deleted
     if (this.metadataStore) {
-      const embedderType = this.configManager.get('embedderType');
+      const embedderBackend = this.configManager.get('embedderBackend');
       const embeddingModel = this.configManager.get('embeddingModel');
       const { getDBName } = await import('./src/MetadataStore');
-      const currentDbName = getDBName(vaultName, embedderType, embeddingModel);
+      const currentDbName = getDBName(
+        vaultName,
+        embedderBackend,
+        embeddingModel
+      );
 
       if (databases.includes(currentDbName)) {
         this.log(`Closing current database before deletion: ${currentDbName}`);
