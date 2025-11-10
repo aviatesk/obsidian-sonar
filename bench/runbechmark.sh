@@ -9,6 +9,15 @@ BACKENDS="elasticsearch,weaviate"
 METHODS="bm25,vector,hybrid"
 VECTOR_DIMS="384"
 
+# Search configuration (passed to search.py)
+INDEX_NAME=""
+HOST=""
+TOP_K=""
+RETRIEVAL_MULTIPLIER=""
+AGG_METHOD=""
+AGG_M=""
+RRF_K=""
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -36,22 +45,61 @@ while [[ $# -gt 0 ]]; do
             VECTOR_DIMS="$2"
             shift 2
             ;;
+        --index-name)
+            INDEX_NAME="$2"
+            shift 2
+            ;;
+        --host)
+            HOST="$2"
+            shift 2
+            ;;
+        --top-k)
+            TOP_K="$2"
+            shift 2
+            ;;
+        --retrieval-multiplier)
+            RETRIEVAL_MULTIPLIER="$2"
+            shift 2
+            ;;
+        --agg-method)
+            AGG_METHOD="$2"
+            shift 2
+            ;;
+        --agg-m)
+            AGG_M="$2"
+            shift 2
+            ;;
+        --rrf-k)
+            RRF_K="$2"
+            shift 2
+            ;;
         --help)
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"
-            echo "  --dataset PATH        Dataset directory (default: datasets/processed/miracl_ja_dev_miracl_en_dev_subset)"
-            echo "  --model NAME          Model name for embeddings path (default: multilingual-e5-small)"
-            echo "  --backends LIST       Comma-separated list: elasticsearch,weaviate (default: both)"
-            echo "  --methods LIST        Comma-separated list: bm25,vector,hybrid (default: all)"
-            echo "  --output-dir PATH     Output directory for results (default: runs/<dataset-name>/<model-name>)"
-            echo "  --vector-dims NUM     Vector dimension (default: 384)"
-            echo "  --help                Show this help message"
+            echo "  --dataset PATH                 Dataset directory (default: datasets/processed/miracl-ja-en_query-200)"
+            echo "  --model NAME                   Model name for embeddings path (default: multilingual-e5-small)"
+            echo "  --backends LIST                Comma-separated list: elasticsearch,weaviate (default: both)"
+            echo "  --methods LIST                 Comma-separated list: bm25,vector,hybrid (default: all)"
+            echo "  --output-dir PATH              Output directory for results (default: runs/<dataset-name>/<model-name>)"
+            echo "  --vector-dims NUM              Vector dimension (default: 384)"
             echo ""
-            echo "Example:"
+            echo "Search options (passed to search.py):"
+            echo "  --index-name NAME              Index/class name (default: benchmark for ES, Document for Weaviate)"
+            echo "  --host HOST                    Backend host (default: localhost:9200 for ES, localhost:8080 for Weaviate)"
+            echo "  --top-k NUM                    Number of documents to return (default: 100)"
+            echo "  --retrieval-multiplier NUM     Multiplier for hybrid search pre-fusion limit (default: 10)"
+            echo "  --agg-method METHOD            Document aggregation method: max_p,top_m_sum,top_m_avg,rrf_per_doc (default: top_m_sum)"
+            echo "  --agg-m NUM                    Number of top chunks per document for top_m_* methods (default: 3)"
+            echo "  --rrf-k NUM                    RRF k parameter for hybrid search (default: 60)"
+            echo ""
+            echo "  --help                         Show this help message"
+            echo ""
+            echo "Examples:"
             echo "  $0 --backends elasticsearch --methods bm25,vector"
             echo "  $0 --output-dir runs/experiment1 --methods hybrid"
             echo "  $0 --model multilingual-e5-small --dataset datasets/processed/scidocs_subset"
+            echo "  $0 --agg-method top_m_sum --agg-m 5 --top-k 50"
             exit 0
             ;;
         *)
@@ -135,6 +183,19 @@ fi
 
 echo ""
 
+# Function to build search options
+build_search_options() {
+    local opts=""
+    [ -n "$INDEX_NAME" ] && opts="$opts --index-name $INDEX_NAME"
+    [ -n "$HOST" ] && opts="$opts --host $HOST"
+    [ -n "$TOP_K" ] && opts="$opts --top-k $TOP_K"
+    [ -n "$RETRIEVAL_MULTIPLIER" ] && opts="$opts --retrieval-multiplier $RETRIEVAL_MULTIPLIER"
+    [ -n "$AGG_METHOD" ] && opts="$opts --agg-method $AGG_METHOD"
+    [ -n "$AGG_M" ] && opts="$opts --agg-m $AGG_M"
+    [ -n "$RRF_K" ] && opts="$opts --rrf-k $RRF_K"
+    echo "$opts"
+}
+
 # Function to index and search for a backend
 run_backend() {
     local backend=$1
@@ -186,13 +247,15 @@ run_backend() {
     fi
 
     # Search
+    local search_opts=$(build_search_options)
     if [[ "$METHODS" == *"bm25"* ]]; then
         echo "Step 3a: Searching with BM25..."
         uv run scripts/search.py \
             --backend "$backend" \
             --queries "$QUERIES" \
             --output "$OUTPUT_DIR/${backend}.bm25.trec" \
-            --method bm25
+            --method bm25 \
+            $search_opts
         echo ""
     fi
 
@@ -203,7 +266,8 @@ run_backend() {
             --queries "$QUERIES" \
             --output "$OUTPUT_DIR/${backend}.vector.trec" \
             --method vector \
-            --embeddings "$QUERY_EMBEDDINGS"
+            --embeddings "$QUERY_EMBEDDINGS" \
+            $search_opts
         echo ""
     fi
 
@@ -214,7 +278,8 @@ run_backend() {
             --queries "$QUERIES" \
             --output "$OUTPUT_DIR/${backend}.hybrid.trec" \
             --method hybrid \
-            --embeddings "$QUERY_EMBEDDINGS"
+            --embeddings "$QUERY_EMBEDDINGS" \
+            $search_opts
         echo ""
     fi
 }

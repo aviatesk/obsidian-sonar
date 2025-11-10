@@ -424,7 +424,7 @@ aggregation:
 - `--chunk-top-k`: Number of chunks to retrieve (default: 100)
 - `--agg-method`: Aggregation method (default: `top_m_sum`)
   - `max_p`: Maximum score across chunks (MaxP)
-  - `top_m_sum`: Sum of top m chunk scores (recommended)
+  - `top_m_sum`: Sum of top m chunk scores
   - `top_m_avg`: Average of top m chunk scores
   - `rrf_per_doc`: RRF fusion within document chunks
 - `--agg-m`: Number of top chunks per document for `top_m_*` methods
