@@ -42,6 +42,26 @@ export default class SonarPlugin extends Plugin {
     this.configManager.getLogger().warn(`[Sonar.Plugin] ${msg}`);
   }
 
+  private async initializeEmbedder(
+    embedder: Embedder,
+    backendName: string,
+    modelDescription: string
+  ): Promise<boolean> {
+    try {
+      await embedder.initialize();
+      this.log(`${backendName} embedder initialized: ${modelDescription}`);
+      return true;
+    } catch (error) {
+      this.error(`Failed to initialize ${backendName} embedder: ${error}`);
+      new Notice(
+        `Failed to initialize ${backendName} embedder. Check console for details.`
+      );
+      embedder.cleanup();
+      this.embedder = null;
+      return false;
+    }
+  }
+
   async onload() {
     this.configManager = await ConfigManager.initialize(
       () => this.loadData(),
@@ -87,38 +107,39 @@ export default class SonarPlugin extends Plugin {
       const serverPath = this.configManager.get('llamacppServerPath');
       const modelRepo = this.configManager.get('llamacppModelRepo');
       const modelFile = this.configManager.get('llamacppModelFile');
-      this.embedder = new LlamaCppEmbedder(
+      const embedder = (this.embedder = new LlamaCppEmbedder(
         serverPath,
         modelRepo,
         modelFile,
         this.configManager
+      ));
+      embedder.setStatusCallback(status =>
+        this.statusBarItem.setText(`Sonar: ${status}`)
       );
-      try {
-        if (this.embedder.initialize) {
-          await this.embedder.initialize();
-        }
-        this.log(`llama.cpp embedder initialized: ${modelRepo}/${modelFile}`);
-      } catch (error) {
-        this.error(`Failed to initialize llama.cpp embedder: ${error}`);
-        new Notice(
-          'Failed to initialize llama.cpp embedder. Check console for details.'
-        );
-        this.embedder.cleanup();
-        this.embedder = null;
-        return;
-      }
+      const success = await this.initializeEmbedder(
+        embedder,
+        'llama.cpp',
+        `${modelRepo}/${modelFile}`
+      );
+      if (!success) return;
     } else {
       // Uses Blob URL Worker with inlined code to make Transformers.js think this Electron environment is a browser environment
-      this.embedder = new TransformersEmbedder(
+      const embedder = (this.embedder = new TransformersEmbedder(
         embeddingModel,
         this.configManager,
         // TODO Make GPU use configurable
         'webgpu',
         'fp32'
+      ));
+      embedder.setStatusCallback(status =>
+        this.statusBarItem.setText(`Sonar: ${status}`)
       );
-      this.log(
-        `Transformers.js embedder initialized: ${embeddingModel} (${this.embedder.getDevice()})`
+      const success = await this.initializeEmbedder(
+        embedder,
+        'Transformers.js',
+        embeddingModel
       );
+      if (!success) return;
     }
 
     try {

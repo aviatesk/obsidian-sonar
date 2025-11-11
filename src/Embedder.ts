@@ -1,14 +1,118 @@
+import type { ConfigManager } from './ConfigManager';
+import { WithLogging } from './WithLogging';
+
 /**
- * Unified interface for embedding generation
+ * Base class for embedder implementations with common initialization logic
+ * Implements progressive delay waiting pattern (1s, 5s, 10s, 30s, 60s, ...)
  * Supports both Transformers.js and llama.cpp backends
  */
-export interface Embedder {
-  /**
-   * Initialize the embedder (optional, for backends that need async setup)
-   */
-  initialize?(): Promise<void>;
+export abstract class Embedder extends WithLogging {
+  private statusCallback?: (status: string) => void;
 
-  getEmbeddings(
+  constructor(protected configManager: ConfigManager) {
+    super();
+  }
+
+  /**
+   * Set callback for status updates (e.g., for status bar display)
+   */
+  setStatusCallback(callback: (status: string) => void): void {
+    this.statusCallback = callback;
+  }
+
+  /**
+   * Update status via callback if set
+   */
+  protected updateStatus(status: string): void {
+    if (this.statusCallback) {
+      this.statusCallback(status);
+    }
+  }
+
+  /**
+   * Template method pattern: common initialization logic
+   * Subclasses implement startInitialization() and checkReady()
+   */
+  async initialize(): Promise<void> {
+    try {
+      if (this.shouldUpdateStatusDuringWait()) {
+        this.updateStatus('Loading model...');
+      }
+
+      // Start backend-specific initialization
+      await this.startInitialization();
+
+      // Wait with progressive delays
+      const maxTimeMs = 600000; // 10 minutes
+      const delaySequence = [1000, 5000, 10000, 30000, 60000]; // 1s, 5s, 10s, 30s, 60s
+      let elapsedMs = 0;
+      let attemptIndex = 0;
+
+      while (elapsedMs < maxTimeMs) {
+        if (await this.checkReady()) {
+          await this.onInitializationComplete();
+          this.updateStatus('Ready');
+          return;
+        }
+
+        // Update status for long-running downloads
+        if (attemptIndex === 3) {
+          this.log(
+            `Still waiting... (Model download may take several minutes on first run)`
+          );
+          if (this.shouldUpdateStatusDuringWait()) {
+            this.updateStatus('Still loading...');
+          }
+        }
+
+        // Get delay: use sequence values, then repeat last value (60s)
+        const delayIndex = Math.min(attemptIndex, delaySequence.length - 1);
+        const delayMs = delaySequence[delayIndex];
+
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        elapsedMs += delayMs;
+        attemptIndex++;
+      }
+
+      throw new Error(`Initialization timeout after ${maxTimeMs / 1000}s`);
+    } catch (error) {
+      this.error(
+        `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`
+      );
+      this.updateStatus('Failed to initialize');
+      throw error;
+    }
+  }
+
+  /**
+   * Start backend-specific initialization (non-blocking)
+   * For llama.cpp: start server process
+   * For Transformers: start worker RPC call
+   */
+  protected abstract startInitialization(): Promise<void>;
+
+  /**
+   * Check if initialization is complete
+   * For llama.cpp: health check
+   * For Transformers: check worker progress state
+   */
+  protected abstract checkReady(): Promise<boolean>;
+
+  /**
+   * Called when initialization completes successfully
+   * Subclasses can override for additional setup
+   */
+  protected abstract onInitializationComplete(): Promise<void>;
+
+  /**
+   * Whether to update status during wait loop
+   * Override to false if backend provides its own detailed progress
+   */
+  protected shouldUpdateStatusDuringWait(): boolean {
+    return true;
+  }
+
+  abstract getEmbeddings(
     texts: string[],
     type?: 'query' | 'passage'
   ): Promise<number[][]>;
@@ -31,7 +135,7 @@ export interface Embedder {
    * // Avoid: Processing entire large file at once
    * const tokens = await embedder.countTokens(largeFileContent); // May hang!
    */
-  countTokens(text: string): Promise<number>;
+  abstract countTokens(text: string): Promise<number>;
 
   /**
    * Returns token IDs for the given text, excluding special tokens.
@@ -40,10 +144,10 @@ export interface Embedder {
    *
    * @returns Array of token IDs (as numbers)
    */
-  getTokenIds(text: string): Promise<number[]>;
+  abstract getTokenIds(text: string): Promise<number[]>;
 
-  getDevice(): string;
-  cleanup(): void;
+  abstract getDevice(): string;
+  abstract cleanup(): void;
 }
 
 export function formatTokenCountShort(count: number): string {

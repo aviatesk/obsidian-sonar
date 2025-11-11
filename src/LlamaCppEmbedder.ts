@@ -2,15 +2,14 @@ import type { ChildProcess } from 'child_process';
 import { spawn } from 'child_process';
 import { createServer } from 'net';
 import type { ConfigManager } from './ConfigManager';
-import type { Embedder } from './Embedder';
+import { Embedder } from './Embedder';
 import { LlamaCppClient } from './LlamaCppClient';
-import { WithLogging } from './WithLogging';
 
 /**
  * Embedding generation using llama.cpp
  * Manages llama.cpp server process and uses its API for embeddings and tokenization
  */
-export class LlamaCppEmbedder extends WithLogging implements Embedder {
+export class LlamaCppEmbedder extends Embedder {
   protected readonly componentName = 'LlamaCppEmbedder';
 
   private client: LlamaCppClient | null = null;
@@ -23,22 +22,30 @@ export class LlamaCppEmbedder extends WithLogging implements Embedder {
     private serverPath: string,
     private modelRepo: string,
     private modelFile: string,
-    protected configManager: ConfigManager
+    configManager: ConfigManager
   ) {
-    super();
+    super(configManager);
   }
 
-  async initialize(): Promise<void> {
+  protected async startInitialization(): Promise<void> {
     this.log(`Initializing with model: ${this.modelRepo}/${this.modelFile}`);
 
     this.port = await this.findAvailablePort();
     this.log(`Selected port: ${this.port}`);
 
     await this.startServer();
-
     this.client = new LlamaCppClient(this.port);
-    await this.waitForServer();
+  }
 
+  protected async checkReady(): Promise<boolean> {
+    if (!this.client) {
+      return false;
+    }
+    return await this.client.healthCheck();
+  }
+
+  protected async onInitializationComplete(): Promise<void> {
+    this.startHealthCheck();
     this.log(`Initialized on port ${this.port}`);
   }
 
@@ -115,37 +122,6 @@ export class LlamaCppEmbedder extends WithLogging implements Embedder {
     if (this.serverProcess && !this.serverProcess.killed) {
       this.serverProcess.kill('SIGTERM');
     }
-  }
-
-  private async waitForServer(maxAttempts = 180, delayMs = 2000): Promise<void> {
-    if (!this.client) {
-      throw new Error('Client not initialized');
-    }
-
-    this.log(`Waiting for server to be ready...`);
-
-    for (let i = 0; i < maxAttempts; i++) {
-      const isHealthy = await this.client.healthCheck();
-      if (isHealthy) {
-        this.log(`Server ready`);
-        // Start periodic health check after successful initialization
-        this.startHealthCheck();
-        return;
-      }
-
-      // Log progress hint for first-time model download
-      if (i === 10) {
-        this.log(
-          `Still waiting... (Model download may take several minutes on first run)`
-        );
-      }
-
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-    }
-
-    throw new Error(
-      `Server failed to start after ${(maxAttempts * delayMs) / 1000}s`
-    );
   }
 
   private startHealthCheck(): void {
