@@ -84,8 +84,16 @@ quantized GGUF models. The default model is configured to
 
 2. Configure in Sonar settings:
    - **Embedder backend**: Select `llama.cpp`
-   - **Server path**: Path to `llama-server` binary (e.g., `llama-server` if
-     installed via Homebrew, or `/path/to/llama-server` for custom builds)
+   - **Server path**: Path to `llama-server` binary
+     - You can use just the command name `llama-server` if installed via
+       Homebrew or other package managers (the plugin will resolve the full path
+       automatically)
+     - If path resolution doesn't work, use the absolute path instead:
+       - macOS (Homebrew): `/opt/homebrew/bin/llama-server` (Apple Silicon) or
+         `/usr/local/bin/llama-server` (Intel)
+       - Linux: `/usr/local/bin/llama-server` or `/usr/bin/llama-server`
+       - Custom build: `/path/to/llama.cpp/llama-server`
+     - To find the absolute path, run `which llama-server` in your terminal
    - **Model repository**: HuggingFace repository (default:
      `ggml-org/bge-m3-Q8_0-GGUF`)
    - **Model file**: GGUF filename (default: `bge-m3-q8_0.gguf`)

@@ -2,6 +2,7 @@ import type { ChildProcess } from 'child_process';
 import { spawn } from 'child_process';
 import { createServer } from 'net';
 import { Notice } from 'obsidian';
+import * as path from 'path';
 import type { ConfigManager } from './ConfigManager';
 import { Embedder } from './Embedder';
 import { LlamaCppClient } from './LlamaCppClient';
@@ -93,6 +94,9 @@ export class LlamaCppEmbedder extends Embedder {
 
     this.log(`Starting llama.cpp server...`);
 
+    // Resolve server path using 'which' if it's not an absolute path
+    const resolvedServerPath = await this.resolveServerPath(this.serverPath);
+
     const modelPath = getModelCachePath(this.modelRepo, this.modelFile);
     const args = [
       '--model',
@@ -104,25 +108,25 @@ export class LlamaCppEmbedder extends Embedder {
     ];
 
     return new Promise((resolve, reject) => {
-      this.serverProcess = spawn(this.serverPath, args, {
+      this.serverProcess = spawn(resolvedServerPath, args, {
         stdio: 'pipe',
         detached: false, // Ensure child dies when parent dies
       });
 
       let errorHandled = false;
-
       this.serverProcess.on('error', error => {
         errorHandled = true;
         this.error(`Failed to start server: ${error.message}`);
         if ('code' in error && error.code === 'ENOENT') {
           const noticeMsg =
             `llama-server not found at path: ${this.serverPath}\n\n` +
+            `Resolved path: ${resolvedServerPath}\n\n` +
             `Please install llama.cpp first.\n` +
-            `See README for installation instructions`;
+            `See README for installation instructions.`;
           new Notice(noticeMsg, 0);
           reject(
             new Error(
-              `llama-server executable not found at: ${this.serverPath}`
+              `llama-server executable not found at: ${resolvedServerPath}`
             )
           );
         } else {
@@ -166,6 +170,61 @@ export class LlamaCppEmbedder extends Embedder {
           resolve();
         }
       }, 100);
+    });
+  }
+
+  private async resolveServerPath(serverPath: string): Promise<string> {
+    // If already absolute path, return as-is
+    if (path.isAbsolute(serverPath)) {
+      return serverPath;
+    }
+
+    // Use login+interactive shell to run 'command -v' to resolve command name to full path
+    // This ensures the command runs with the user's full shell environment and PATH
+    // The -l flag makes it a login shell, -i makes it interactive (sources ~/.zshrc, etc.)
+    // We use 'command -v' instead of 'which' as it's more reliable and POSIX standard
+    return new Promise(resolve => {
+      const shell = process.env.SHELL || '/bin/zsh';
+      const which = spawn(shell, [
+        '-l',
+        '-i',
+        '-c',
+        `command -v ${serverPath}`,
+      ]);
+      let output = '';
+      let errorOutput = '';
+
+      which.stdout?.on('data', data => {
+        output += data.toString();
+      });
+
+      which.stderr?.on('data', data => {
+        errorOutput += data.toString();
+      });
+
+      which.on('close', code => {
+        if (code === 0 && output.trim()) {
+          this.log(
+            `Resolved '${serverPath}' to '${output.trim()}' via login shell`
+          );
+          resolve(output.trim());
+        } else {
+          // command -v failed, log the error and return original path
+          if (errorOutput) {
+            this.log(`Failed to resolve '${serverPath}': ${errorOutput}`);
+          }
+          this.log(
+            `Could not resolve '${serverPath}' via shell, using as-is (exit code: ${code})`
+          );
+          resolve(serverPath);
+        }
+      });
+
+      which.on('error', err => {
+        // spawn itself failed
+        this.warn(`Failed to spawn shell for path resolution: ${err.message}`);
+        resolve(serverPath);
+      });
     });
   }
 
