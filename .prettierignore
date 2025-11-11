@@ -6,5 +6,5 @@ src/generated/**/*
 data.json
 data.*.json
 
-bench/
+bench/**/*
 !bench/README.md

@@ -7,8 +7,7 @@
   - macOS: `brew install --cask docker`
   - Or download from <https://www.docker.com/products/docker-desktop/>
 
-> [!NOTE]
-> All commands below should be run from this directory (`/bench`).
+> [!NOTE] All commands below should be run from this directory (`/bench`).
 
 ## Step 1: Install Python dependencies
 
@@ -55,12 +54,11 @@ uv run scripts/generate_subset.py \
 
 This creates:
 
-- `datasets/processed/miracl-ja-en_query-200/corpus.jsonl` -
-  Document corpus (~18,000 documents)
-- `datasets/processed/miracl-ja-en_query-200/queries.jsonl` - Test
-  queries (200 queries)
-- `datasets/processed/miracl-ja-en_query-200/qrels.tsv` - Relevance
-  judgments
+- `datasets/processed/miracl-ja-en_query-200/corpus.jsonl` - Document corpus
+  (~18,000 documents)
+- `datasets/processed/miracl-ja-en_query-200/queries.jsonl` - Test queries (200
+  queries)
+- `datasets/processed/miracl-ja-en_query-200/qrels.tsv` - Relevance judgments
 
 For multiple datasets, queries are sampled with equal distribution (1:1) by
 default. To customize the ratio, use `--query-ratio`:
@@ -164,7 +162,8 @@ Any sentence-transformers compatible model from Hugging Face can be used.
 Examples:
 
 - `intfloat/multilingual-e5-small` (384 dims, ~470MB, default)
-- `intfloat/multilingual-e5-base` (768 dims, ~1.1GB, currently has accuracy issues when used with Transformers.js)
+- `intfloat/multilingual-e5-base` (768 dims, ~1.1GB, currently has accuracy
+  issues when used with Transformers.js)
 - `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 dims)
 
 ## Step 4.5: Generate Obsidian vault (Sonar only)
@@ -382,8 +381,7 @@ uv run scripts/search.py \
 
 ## Step 6: Evaluate results
 
-If you used `./runbechmark.sh`, evaluation is already complete. Otherwise,
-run:
+If you used `./runbechmark.sh`, evaluation is already complete. Otherwise, run:
 
 ```bash
 uv run scripts/evaluate.py \

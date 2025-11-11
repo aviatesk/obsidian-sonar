@@ -68,7 +68,7 @@ quantized GGUF models. The default model is configured to
 
 - Requires external llama.cpp installation
 
-**Installation:**
+#### Installation
 
 1. Install llama.cpp:
 
@@ -84,13 +84,28 @@ quantized GGUF models. The default model is configured to
 
 2. Configure in Sonar settings:
    - **Embedder backend**: Select `llama.cpp`
-   - **Server path**: Path to `llama-server` binary (e.g., `llama-server` or
-     `/path/to/llama-server`)
-   - **Model repository**: HuggingFace repository (e.g., `BAAI/bge-m3-gguf`)
-   - **Model file**: GGUF filename (e.g., `bge-m3-q8_0.gguf`)
+   - **Server path**: Path to `llama-server` binary (e.g., `llama-server` if
+     installed via Homebrew, or `/path/to/llama-server` for custom builds)
+   - **Model repository**: HuggingFace repository (default:
+     `ggml-org/bge-m3-Q8_0-GGUF`)
+   - **Model file**: GGUF filename (default: `bge-m3-q8_0.gguf`)
+
+#### Model and server management
 
 The plugin automatically manages the llama.cpp server process (starts, stops,
-health checks) and downloads models from HuggingFace on first use.
+health checks) and downloads models from HuggingFace on first use. Models are
+cached in the default location, i.e. `~/Library/Caches/llama.cpp/` (macOS) or
+`~/.cache/llama.cpp/` (Linux).
+
+Most embedding models on HuggingFace are public and require no authentication.
+For gated models (e.g., Llama 2/3), create a HuggingFace access token at
+https://huggingface.co/settings/tokens and save it to `~/.huggingface/token`:
+
+```bash
+mkdir -p ~/.huggingface
+echo 'YOUR_TOKEN_HERE' > ~/.huggingface/token
+chmod 600 ~/.huggingface/token
+```
 
 ## Development
 
