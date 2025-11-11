@@ -177,7 +177,12 @@ export default class SonarPlugin extends Plugin {
     this.setupConfigListeners();
 
     // Defer heavy initialization to avoid blocking plugin load
-    this.app.workspace.onLayoutReady(() => this.initializeAsync());
+    this.app.workspace.onLayoutReady(() => {
+      if (this.configManager.get('autoOpenRelatedNotes')) {
+        this.activateRelatedNotesView();
+      }
+      this.initializeAsync();
+    });
   }
 
   private async initializeAsync(): Promise<void> {
@@ -320,10 +325,6 @@ export default class SonarPlugin extends Plugin {
     );
 
     this.debugRunner = new DebugRunner(this.configManager, this.embedder);
-
-    if (this.configManager.get('autoOpenRelatedNotes')) {
-      this.activateRelatedNotesView();
-    }
 
     try {
       await this.indexManager.onLayoutReady();
