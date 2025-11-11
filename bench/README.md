@@ -89,12 +89,7 @@ NaN embeddings cause JavaScript `Array.sort((a, b) => b.score - a.score)` to bre
 
 ## Results
 
-## Experimental results
-
-This section documents benchmark results comparing different backends and search
-methods.
-
-### Results: MIRACL (Japanese + English)
+### Result for MIRACL
 
 > - Queries: 200
 > - Documents: 24754 (JA:EN = 1:1)
@@ -112,7 +107,7 @@ methods.
 | Weaviate      | Vector | 0.9358  | 0.9759    | 0.9975     | 0.9432 | 0.9124 |
 | Weaviate      | Hybrid | 0.8745  | 0.9316    | 1.0000     | 0.8816 | 0.8464 |
 
-### Results: SCIDOCS
+### Result for SCIDOCS
 
 > - Queries: 100
 > - Documents: 12426

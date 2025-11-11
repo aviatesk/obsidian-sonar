@@ -15,7 +15,7 @@
   "embedderBackend": "transformers",
   "embeddingModel": "Xenova/multilingual-e5-small",
   "bm25AggMethod": "max_p",
-  "vectorAggMethod": "weighted_top_l_sum",
+  "vectorAggMethod": "max_p",
   "aggM": 3,
   "aggL": 3,
   "aggDecay": 0.95,
