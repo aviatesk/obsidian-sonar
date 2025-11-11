@@ -29,6 +29,8 @@ export default class SonarPlugin extends Plugin {
   metadataStore: MetadataStore | null = null;
   embedder: Embedder | null = null;
   debugRunner: DebugRunner | null = null;
+  private reinitializing = false;
+  private configListeners: Array<() => void> = [];
 
   private log(msg: string): void {
     this.configManager.getLogger().log(`[Sonar.Plugin] ${msg}`);
@@ -40,6 +42,15 @@ export default class SonarPlugin extends Plugin {
 
   private warn(msg: string): void {
     this.configManager.getLogger().warn(`[Sonar.Plugin] ${msg}`);
+  }
+
+  private formatStatusBarText(status: string): string {
+    if (!this.configManager.get('showBackendInStatusBar')) {
+      return `Sonar: ${status}`;
+    }
+    const backend = this.configManager.get('embedderBackend');
+    const shortName = backend === 'llamacpp' ? 'llama' : 'tfjs';
+    return `Sonar [${shortName}]: ${status}`;
   }
 
   private async initializeEmbedder(
@@ -62,6 +73,81 @@ export default class SonarPlugin extends Plugin {
     }
   }
 
+  private setupConfigListeners(): void {
+    const handleBackendChange = async (
+      _key: keyof typeof DEFAULT_SETTINGS,
+      _value: any
+    ) => {
+      if (this.reinitializing) {
+        return;
+      }
+      await this.reinitializeBackend();
+    };
+
+    this.configListeners.push(
+      this.configManager.subscribe('embedderBackend', handleBackendChange)
+    );
+    this.configListeners.push(
+      this.configManager.subscribe('embeddingModel', handleBackendChange)
+    );
+    this.configListeners.push(
+      this.configManager.subscribe('llamacppServerPath', handleBackendChange)
+    );
+    this.configListeners.push(
+      this.configManager.subscribe('llamacppModelRepo', handleBackendChange)
+    );
+    this.configListeners.push(
+      this.configManager.subscribe('llamacppModelFile', handleBackendChange)
+    );
+  }
+
+  private async reinitializeBackend(): Promise<void> {
+    if (this.reinitializing) {
+      this.warn('Backend reinitialization already in progress');
+      return;
+    }
+
+    this.reinitializing = true;
+    this.statusBarItem.setText(
+      this.formatStatusBarText('Switching backend...')
+    );
+
+    try {
+      this.log('Reinitializing backend...');
+
+      if (this.indexManager) {
+        this.indexManager.cleanup();
+        this.indexManager = null;
+      }
+      this.searchManager = null;
+
+      if (this.embedder) {
+        this.log('Cleaning up old embedder...');
+        this.embedder.cleanup();
+        this.embedder = null;
+      }
+
+      if (this.metadataStore) {
+        this.log('Closing old database...');
+        await this.metadataStore.close();
+        this.metadataStore = null;
+      }
+
+      await this.initializeAsync();
+
+      this.log('Backend reinitialized successfully');
+      new Notice('Embedder backend switched successfully');
+    } catch (error) {
+      this.error(`Failed to reinitialize backend: ${error}`);
+      new Notice('Failed to switch embedder backend - check console');
+      this.statusBarItem.setText(
+        this.formatStatusBarText('Failed to switch backend')
+      );
+    } finally {
+      this.reinitializing = false;
+    }
+  }
+
   async onload() {
     this.configManager = await ConfigManager.initialize(
       () => this.loadData(),
@@ -71,12 +157,14 @@ export default class SonarPlugin extends Plugin {
 
     // UI elements - needed immediately
     this.statusBarItem = this.addStatusBarItem();
-    this.statusBarItem.setText('Sonar: Initializing...');
+    this.statusBarItem.setText(this.formatStatusBarText('Initializing...'));
 
     // Register commands immediately (lightweight)
     this.registerCommands();
     const settingTab = new SettingTab(this.app, this);
     this.addSettingTab(settingTab);
+
+    this.setupConfigListeners();
 
     // Defer heavy initialization to avoid blocking plugin load
     this.app.workspace.onLayoutReady(() => this.initializeAsync());
@@ -114,7 +202,7 @@ export default class SonarPlugin extends Plugin {
         this.configManager
       ));
       embedder.setStatusCallback(status =>
-        this.statusBarItem.setText(`Sonar: ${status}`)
+        this.statusBarItem.setText(this.formatStatusBarText(status))
       );
       const success = await this.initializeEmbedder(
         embedder,
@@ -124,15 +212,17 @@ export default class SonarPlugin extends Plugin {
       if (!success) return;
     } else {
       // Uses Blob URL Worker with inlined code to make Transformers.js think this Electron environment is a browser environment
+      const device = result.webgpu.available ? 'webgpu' : 'wasm';
+      this.log(`Using Transformers.js with device: ${device}`);
+
       const embedder = (this.embedder = new TransformersEmbedder(
         embeddingModel,
         this.configManager,
-        // TODO Make GPU use configurable
-        'webgpu',
+        device,
         'fp32'
       ));
       embedder.setStatusCallback(status =>
-        this.statusBarItem.setText(`Sonar: ${status}`)
+        this.statusBarItem.setText(this.formatStatusBarText(status))
       );
       const success = await this.initializeEmbedder(
         embedder,
@@ -214,7 +304,9 @@ export default class SonarPlugin extends Plugin {
     try {
       await this.indexManager.onLayoutReady();
     } catch (error) {
-      this.statusBarItem.setText('Sonar: Failed to initialize');
+      this.statusBarItem.setText(
+        this.formatStatusBarText('Failed to initialize')
+      );
       this.error(`Failed to initialize semantic search: ${error}`);
       new Notice('Failed to initialize semantic search - check console');
     }
@@ -521,6 +613,10 @@ export default class SonarPlugin extends Plugin {
 
   async onunload() {
     this.log('Obsidian Sonar plugin unloaded');
+
+    this.configListeners.forEach(unsubscribe => unsubscribe());
+    this.configListeners = [];
+
     if (this.indexManager) {
       this.indexManager.cleanup();
     }

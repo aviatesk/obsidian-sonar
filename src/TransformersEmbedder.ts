@@ -18,11 +18,6 @@ export class TransformersEmbedder extends Embedder {
     private dtype: 'q8' | 'q4' | 'fp16' | 'fp32' = 'q8'
   ) {
     super(configManager);
-    const hasWebGPU = navigator.gpu !== undefined;
-    if (this.device === 'webgpu' && !hasWebGPU) {
-      this.warn('WebGPU not available, falling back to WASM');
-      this.device = 'wasm';
-    }
     this.worker = new TransformersWorker(configManager);
   }
 
@@ -67,26 +62,15 @@ export class TransformersEmbedder extends Embedder {
   }
 
   async getEmbeddings(texts: string[]): Promise<number[][]> {
-    return this.worker.call('embeddings', {
-      texts: texts,
-      modelId: this.modelId,
-      device: this.device,
-      dtype: this.dtype,
-    });
+    return this.worker.call('embeddings', { texts });
   }
 
   async countTokens(text: string): Promise<number> {
-    return this.worker.call('countTokens', {
-      text,
-      modelId: this.modelId,
-    });
+    return this.worker.call('countTokens', { text });
   }
 
   async getTokenIds(text: string): Promise<number[]> {
-    return this.worker.call('getTokenIds', {
-      text,
-      modelId: this.modelId,
-    });
+    return this.worker.call('getTokenIds', { text });
   }
 
   getDevice(): 'webgpu' | 'wasm' {

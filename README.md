@@ -35,15 +35,19 @@ Transformers.js is bundled with the plugin, requiring no additional
 installation. This is the default backend for Sonar.
 
 However, Transformers.js can exhibit numerical instability when using WebGPU
-(see [bench/README](./bench/README.md#transformersjs-issues-found-during-benchmarking-sonar)
+(see
+[bench/README](./bench/README.md#transformersjs-issues-found-during-benchmarking-sonar)
 for details). For this reason, the default model for Transformers.js is limited
-to [`Xenova/multilingual-e5-small`](https://huggingface.co/Xenova/multilingual-e5-small).
+to
+[`Xenova/multilingual-e5-small`](https://huggingface.co/Xenova/multilingual-e5-small).
 
 **Pros:**
+
 - Zero external dependencies
 - Works out of the box
 
 **Cons:**
+
 - Numerical instability with WebGPU
 - Limited model selection
 
@@ -54,17 +58,20 @@ quantized GGUF models. The default model is configured to
 [`BAAI/bge-m3-gguf`](https://huggingface.co/BAAI/bge-m3-gguf).
 
 **Pros:**
+
 - Better numerical accuracy
 - Better performance with quantized models
 - Wider model selection (any GGUF embedding model on HuggingFace, without any
   numerical instability - hopefully)
 
 **Cons:**
+
 - Requires external llama.cpp installation
 
 **Installation:**
 
 1. Install llama.cpp:
+
    ```bash
    # macOS (Homebrew)
    brew install llama.cpp

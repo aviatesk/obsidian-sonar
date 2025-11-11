@@ -25,6 +25,7 @@
   "aggRrfK": 60,
   "retrievalMultiplier": 10,
   "statusBarMaxLength": 40,
+  "showBackendInStatusBar": true,
   "debugMode": "log",
   "benchmarkQueriesPath": "",
   "benchmarkQrelsPath": "",

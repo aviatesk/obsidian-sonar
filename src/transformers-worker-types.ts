@@ -16,23 +16,18 @@ export interface RPCMethods {
   embeddings: {
     params: {
       texts: string[];
-      modelId: string;
-      device: 'webgpu' | 'wasm';
-      dtype: 'q8' | 'q4' | 'fp16' | 'fp32';
     };
     returns: number[][];
   };
   countTokens: {
     params: {
       text: string;
-      modelId: string;
     };
     returns: number;
   };
   getTokenIds: {
     params: {
       text: string;
-      modelId: string;
     };
     returns: number[];
   };
