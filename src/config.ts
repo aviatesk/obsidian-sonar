@@ -1,5 +1,14 @@
-export type LogLevel = 'error' | 'warn' | 'log';
+export type LogLevel = 'error' | 'warn' | 'log' | 'verbose';
+
+export const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
+  error: 0,
+  warn: 1,
+  log: 2,
+  verbose: 3,
+} as const;
+
 export type EmbedderBackend = 'transformers' | 'llamacpp';
+
 export type AggregationMethod =
   | 'max_p'
   | 'top_m_sum'

@@ -3,6 +3,8 @@
  * Shared between main thread (TransformersWorker.ts) and Worker (transformers-worker.entry.ts)
  */
 
+import type { LogLevel } from './config';
+
 // Define all RPC methods with their params and return types in one place
 export interface RPCMethods {
   initializeModel: {
@@ -60,12 +62,12 @@ export interface ReadyMessage {
 
 export interface InitMessage {
   __kind: 'init';
-  logLevel: 'error' | 'warn' | 'log';
+  logLevel: LogLevel;
 }
 
 export interface UpdateLogLevelMessage {
   __kind: 'update-log-level';
-  logLevel: 'error' | 'warn' | 'log';
+  logLevel: LogLevel;
 }
 
 export interface ProgressMessage {

@@ -9,7 +9,7 @@ import {
 import { ConfigManager } from '../ConfigManager';
 import type SonarPlugin from '../../main';
 import { getIndexableFilesCount } from 'src/fileFilters';
-import type { EmbedderBackend, AggregationMethod } from '../config';
+import type { EmbedderBackend, AggregationMethod, LogLevel } from '../config';
 
 export class SettingTab extends PluginSettingTab {
   plugin: SonarPlugin;
@@ -834,12 +834,10 @@ Hybrid search limits both embedding and BM25 results to \`top_k * retrieval_mult
         .addOption('error', 'Error only')
         .addOption('warn', 'Warn + Error')
         .addOption('log', 'Log + Warn + Error')
+        .addOption('verbose', 'Verbose message + Log + Warn + Error')
         .setValue(this.configManager.get('debugMode'))
         .onChange(async value => {
-          await this.configManager.set(
-            'debugMode',
-            value as 'error' | 'warn' | 'log'
-          );
+          await this.configManager.set('debugMode', value as LogLevel);
         })
     );
   }

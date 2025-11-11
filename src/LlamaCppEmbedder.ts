@@ -29,9 +29,10 @@ export class LlamaCppEmbedder extends Embedder {
     private serverPath: string,
     private modelRepo: string,
     private modelFile: string,
-    configManager: ConfigManager
+    configManager: ConfigManager,
+    statusCallback: (status: string) => void
   ) {
-    super(configManager);
+    super(configManager, statusCallback);
   }
 
   protected async startInitialization(): Promise<void> {
@@ -115,7 +116,8 @@ export class LlamaCppEmbedder extends Embedder {
       '--embedding',
       '--ubatch-size',
       ubatchSize.toString(),
-      '--log-disable',
+      '-lv',
+      '0',
     ];
 
     return new Promise((resolve, reject) => {
@@ -161,11 +163,41 @@ export class LlamaCppEmbedder extends Embedder {
         }
       });
 
+      this.serverProcess.stdout?.on('data', data => {
+        throw new Error(`Unexpected data on stdout: ${data}`);
+      });
+
+      // XXX llama-server seems to output ALL logs to stderr (not just errors)
+      // This is abnormal behavior. stderr typically should only be used for
+      // error-related messages, and stdout should be used for regular logs.
+      // However, this issue seems to still be unresolved, which fundamentally
+      // makes it difficult to utilize llama-server's logs:
+      // https://github.com/ggml-org/llama.cpp/discussions/6786)
+      // Therefore here we filter stderr to show error messages with `this.error`,
+      // relatively important message with `this.log`, and use `this.verbose` otherwise.
       this.serverProcess.stderr?.on('data', data => {
         const message = data.toString().trim();
-        if (message) {
-          this.log(`Server: ${message}`);
+        if (!message) return;
+        const lower = message.toLowerCase();
+        // Log errors and exceptions
+        if (
+          lower.includes('exception') ||
+          lower.includes('error') ||
+          lower.includes('fail')
+        ) {
+          this.error(`Server: ${message}`);
+          return;
         }
+        // Log important server events
+        if (
+          lower.includes('listening') ||
+          lower.includes('model loaded') ||
+          message.startsWith('main:')
+        ) {
+          this.log(`Server: ${message}`);
+          return;
+        }
+        this.verbose(`Server: ${message}`);
       });
 
       this.exitHandlerBound = this.handleParentExit.bind(this);

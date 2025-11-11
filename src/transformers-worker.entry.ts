@@ -25,20 +25,16 @@ import type {
   UpdateLogLevelMessage,
   ProgressMessage,
 } from './transformers-worker-types';
+import { type LogLevel, LOG_LEVEL_ORDER } from './config';
 
 // Logging helpers (follows same format as main.ts)
 const COMPONENT_NAME = 'transformers-worker';
 
 // Log level state (default: 'error')
-let currentLogLevel: 'error' | 'warn' | 'log' = 'error';
+let currentLogLevel: LogLevel = 'error';
 
-function shouldLog(level: 'error' | 'warn' | 'log'): boolean {
-  const levels: Record<'error' | 'warn' | 'log', number> = {
-    error: 0,
-    warn: 1,
-    log: 2,
-  };
-  return levels[level] <= levels[currentLogLevel];
+function shouldLog(level: LogLevel): boolean {
+  return LOG_LEVEL_ORDER[level] <= LOG_LEVEL_ORDER[currentLogLevel];
 }
 
 function log(msg: string): void {
