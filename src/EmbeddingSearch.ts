@@ -58,12 +58,11 @@ export class EmbeddingSearch extends WithLogging {
 
     const combined: CombinedChunk[] = [];
 
-    // Filter embeddings by type
     const filteredEmbeddings = embeddings.filter(emb => {
       const isTitle = emb.id.endsWith('#title');
       if (type === 'title') return isTitle;
       if (type === 'content') return !isTitle;
-      return true; // no filter
+      return true;
     });
 
     const metadataById = new Map<string, ChunkMetadata>();
@@ -135,7 +134,6 @@ export class EmbeddingSearch extends WithLogging {
 
     const chunks = await this.getCombinedChunks(type);
 
-    // Check for NaN embeddings in stored chunks
     const chunksWithNaN = chunks.filter(chunk =>
       hasNaNEmbedding(chunk.embedding)
     );
@@ -173,7 +171,6 @@ export class EmbeddingSearch extends WithLogging {
 
     results.sort((a, b) => b.score - a.score);
 
-    // Apply chunk-level limit before aggregation
     const chunksToAggregate = results.slice(0, options.retrievalLimit);
 
     if (type === 'title') {
@@ -201,7 +198,6 @@ export class EmbeddingSearch extends WithLogging {
         groupedByFile.get(filePath)!.push(result);
       }
 
-      // Prepare file scores for aggregation
       const fileScores = new Map<string, number[]>();
       for (const [filePath, chunkResults] of groupedByFile.entries()) {
         chunkResults.sort((a, b) => b.score - a.score);
@@ -211,7 +207,6 @@ export class EmbeddingSearch extends WithLogging {
         );
       }
 
-      // Aggregate chunk scores using configured method
       const vectorAggMethod = this.configManager.get('vectorAggMethod');
       const aggM = this.configManager.get('aggM');
       const aggL = this.configManager.get('aggL');

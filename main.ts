@@ -83,7 +83,6 @@ export default class SonarPlugin extends Plugin {
     const embedderBackend = this.configManager.get('embedderBackend');
     const embeddingModel = this.configManager.get('embeddingModel');
 
-    // Initialize embedder based on type
     if (embedderBackend === 'ollama') {
       const { TransformersWorker } = await import('./src/TransformersWorker');
       const worker = new TransformersWorker(this.configManager);
@@ -98,9 +97,7 @@ export default class SonarPlugin extends Plugin {
         `Ollama embedder initialized: ${embeddingModel} (tokenizer: ${tokenizerModel})`
       );
     } else {
-      // Transformers.js embedding model
-      // Uses Blob URL Worker with inlined code for maximum compatibility
-      // Try WebGPU first (with worker_threads polyfill)
+      // Uses Blob URL Worker with inlined code to make Transformers.js think this Electron environment is a browser environment
       this.embedder = new TransformersEmbedder(
         embeddingModel,
         this.configManager,

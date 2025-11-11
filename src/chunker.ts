@@ -24,7 +24,6 @@ export async function createChunks(
     const line = lines[i];
     const lineTokens = await embedder.countTokens(line);
 
-    // Update headings if this is a heading line
     if (line.startsWith('#')) {
       const level = line.match(/^#+/)?.[0].length || 0;
       const heading = line.replace(/^#+\s*/, '').trim();
@@ -32,12 +31,10 @@ export async function createChunks(
       if (level <= 3) {
         currentHeadings = currentHeadings.slice(0, level - 1);
         currentHeadings.push(heading);
-        // Update chunk headings to current state
         chunkHeadings = [...currentHeadings];
       }
     }
 
-    // Check if we need to create a new chunk
     if (currentTokens + lineTokens > maxChunkSize && currentChunk.length > 0) {
       chunks.push({
         content: currentChunk.join('\n'),
@@ -66,7 +63,6 @@ export async function createChunks(
     currentTokens += lineTokens;
   }
 
-  // Add the last chunk if it has any content
   const finalChunkContent = currentChunk.join('\n').trim();
   if (finalChunkContent) {
     chunks.push({

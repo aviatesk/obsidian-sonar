@@ -156,11 +156,9 @@ export class IndexManager extends WithLogging {
     const vaultFiles = getFilesToIndex(this.vault, this.configManager);
     const vaultFileMap = new Map(vaultFiles.map(f => [f.path, f]));
 
-    // Build operations list
     const operations: FileOperation[] = [];
     let skippedCount = 0;
 
-    // Check vault files for new/modified
     for (const file of vaultFiles) {
       const meta = dbFileMap.get(file.path);
       if (this.needsReindex(file, meta)) {
@@ -173,7 +171,6 @@ export class IndexManager extends WithLogging {
       }
     }
 
-    // Check for deleted files
     for (const path of dbFileMap.keys()) {
       if (!vaultFileMap.has(path)) {
         operations.push({
@@ -184,7 +181,6 @@ export class IndexManager extends WithLogging {
       }
     }
 
-    // Count operation types for logging
     const newCount = operations.filter(op => op.type === 'create').length;
     const modifiedCount = operations.filter(op => op.type === 'modify').length;
     const deletedCount = operations.filter(op => op.type === 'delete').length;
@@ -222,7 +218,6 @@ export class IndexManager extends WithLogging {
             file: this.previousActiveFile,
           });
         }
-        // Update the reference to current active file
         this.previousActiveFile =
           activeFile instanceof TFile ? activeFile : null;
       })
@@ -312,7 +307,7 @@ export class IndexManager extends WithLogging {
     }
 
     if (this.isProcessing) {
-      return; // Prevent concurrent processing
+      return;
     }
 
     this.isProcessing = true;
@@ -346,7 +341,6 @@ export class IndexManager extends WithLogging {
       return { errored: 0, skipped: 0 };
     }
 
-    // Performance timing
     const timings = {
       deletion: 0,
       fileRead: 0,
@@ -358,7 +352,6 @@ export class IndexManager extends WithLogging {
     };
     const startTotal = Date.now();
 
-    // Batch delete all affected files from all stores first
     const filesToDelete: string[] = [];
     for (const operation of operations) {
       if (operation.type === 'delete' && operation.oldPath) {
@@ -377,7 +370,6 @@ export class IndexManager extends WithLogging {
       const deletionStart = Date.now();
       this.log(`Deleting ${filesToDelete.length} files...`);
 
-      // Get all chunk IDs from MetadataStore for these files (parallel)
       const chunkArrays = await Promise.all(
         filesToDelete.map(filePath =>
           this.metadataStore.getChunksByFile(filePath)
@@ -388,7 +380,6 @@ export class IndexManager extends WithLogging {
         allChunkIds.push(...chunks.map(c => c.id));
       }
 
-      // Delete from all stores in parallel
       await Promise.all([
         this.metadataStore.deleteChunks(allChunkIds),
         this.embeddingStore.deleteEmbeddings(allChunkIds),
@@ -399,7 +390,6 @@ export class IndexManager extends WithLogging {
       this.log(`Deleted ${allChunkIds.length} chunks`);
     }
 
-    // Filter operations that need indexing
     const indexOperations = operations.filter(
       op =>
         (op.type === 'create' ||
@@ -497,7 +487,6 @@ export class IndexManager extends WithLogging {
         embedding: number[];
       }>
     >();
-    // Track files with NaN embeddings across all batches
     const filesWithNaN = new Set<number>();
 
     for (let i = 0; i < allTextItems.length; i += batchSize) {
@@ -507,13 +496,11 @@ export class IndexManager extends WithLogging {
       );
       const batchTexts = batchItems.map(item => item.text);
 
-      // Generate embeddings for this batch
       const embeddingStart = Date.now();
       const batchEmbeddings = await this.embedder.getEmbeddings(batchTexts);
       timings.embeddingGeneration += Date.now() - embeddingStart;
       timings.workerCalls++;
 
-      // Check for NaN embeddings in this batch
       const batchFilesWithNaN = new Set<number>();
       for (let j = 0; j < batchEmbeddings.length; j++) {
         const embedding = batchEmbeddings[j];
@@ -529,12 +516,10 @@ export class IndexManager extends WithLogging {
         }
       }
 
-      // Associate embeddings with files (skip files with NaN from any batch)
       for (let j = 0; j < batchItems.length; j++) {
         const item = batchItems[j];
         const embedding = batchEmbeddings[j];
 
-        // Skip files that have any NaN embeddings (from this or previous batches)
         if (filesWithNaN.has(item.fileIndex)) {
           continue;
         }
@@ -549,12 +534,10 @@ export class IndexManager extends WithLogging {
         });
       }
 
-      // Remove files with NaN from the map (in case they were partially added before)
       for (const fileIndex of batchFilesWithNaN) {
         fileEmbeddingsMap.delete(fileIndex);
       }
 
-      // Check if we can index any complete files
       const completedFileIndices: number[] = [];
       for (const [fileIndex, embeddings] of fileEmbeddingsMap.entries()) {
         const { chunks } = fileChunkDataList[fileIndex];
@@ -564,7 +547,6 @@ export class IndexManager extends WithLogging {
         }
       }
 
-      // Index completed files and remove from map
       if (completedFileIndices.length > 0) {
         const batchMetadata: ChunkMetadata[] = [];
         const batchEmbeddingData: Array<{ id: string; embedding: number[] }> =
@@ -575,7 +557,6 @@ export class IndexManager extends WithLogging {
             fileChunkDataList[fileIndex];
           const fileEmbeddings = fileEmbeddingsMap.get(fileIndex)!;
 
-          // This should never throw - all embeddings are guaranteed to exist
           const indexData = this.prepareFileIndexData(
             file,
             chunks,
@@ -611,7 +592,6 @@ export class IndexManager extends WithLogging {
           fileEmbeddingsMap.delete(fileIndex);
         }
 
-        // Write this batch to stores (metadata + embeddings only)
         if (batchMetadata.length > 0) {
           const writeStart = Date.now();
           await Promise.all([
@@ -626,13 +606,11 @@ export class IndexManager extends WithLogging {
       this.log(`Processed: ${progress}/${allTextItems.length} texts`);
     }
 
-    // Count total files with NaN embeddings
     errorCount += filesWithNaN.size;
     const skippedFiles = Array.from(filesWithNaN).map(
       idx => fileChunkDataList[idx].file.path
     );
 
-    // Log skipped files
     if (skippedFiles.length > 0) {
       this.warn(`Skipped ${skippedFiles.length} files with NaN embeddings:`);
       for (const filePath of skippedFiles) {
@@ -645,7 +623,6 @@ export class IndexManager extends WithLogging {
     this.updateStatusBar('Finalizing BM25 index...');
     const allBM25Chunks: Array<{ docId: string; content: string }> = [];
     for (let fileIndex = 0; fileIndex < fileChunkDataList.length; fileIndex++) {
-      // Skip files with NaN embeddings
       if (filesWithNaN.has(fileIndex)) {
         continue;
       }
@@ -671,7 +648,6 @@ export class IndexManager extends WithLogging {
       this.log(`Indexed ${allBM25Chunks.length} BM25 chunks`);
     }
 
-    // Debug assertion: all files should have been indexed
     if (fileEmbeddingsMap.size > 0) {
       const remainingFiles = Array.from(fileEmbeddingsMap.keys())
         .map(idx => fileChunkDataList[idx].file.path)
@@ -686,7 +662,6 @@ export class IndexManager extends WithLogging {
 
     const totalTime = Date.now() - startTotal;
 
-    // Log detailed timing breakdown
     this.log('=== Performance Timing Breakdown ===');
     this.log(`Total time: ${totalTime}ms (${(totalTime / 1000).toFixed(2)}s)`);
     this.log(`  Deletion: ${timings.deletion}ms`);

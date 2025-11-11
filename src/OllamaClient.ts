@@ -18,7 +18,6 @@ export class OllamaClient {
     });
   }
 
-  // Check if model is available
   async checkModel(): Promise<boolean> {
     try {
       await this.ollama.show({
@@ -39,12 +38,10 @@ export class OllamaClient {
 
   async getEmbeddings(texts: string[]): Promise<number[][]> {
     try {
-      // Ollama's embed API accepts single or multiple inputs
       const response = await this.ollama.embed({
         model: this.model,
         input: texts,
       });
-      // The response always contains embeddings array for batch input
       if (response.embeddings) {
         return response.embeddings;
       }
