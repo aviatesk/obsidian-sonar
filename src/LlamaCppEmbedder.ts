@@ -4,6 +4,11 @@ import { createServer } from 'net';
 import type { ConfigManager } from './ConfigManager';
 import { Embedder } from './Embedder';
 import { LlamaCppClient } from './LlamaCppClient';
+import {
+  isModelCached,
+  downloadModel,
+  getModelCachePath,
+} from './llamaCppUtils';
 
 /**
  * Embedding generation using llama.cpp
@@ -29,6 +34,21 @@ export class LlamaCppEmbedder extends Embedder {
 
   protected async startInitialization(): Promise<void> {
     this.log(`Initializing with model: ${this.modelRepo}/${this.modelFile}`);
+
+    // Check if model is cached, download if not
+    if (!isModelCached(this.modelRepo, this.modelFile)) {
+      this.log(`Model not found in cache, downloading...`);
+      await downloadModel(this.modelRepo, this.modelFile, progress => {
+        if (progress.status === 'progress') {
+          const percent = progress.percent.toFixed(0);
+          this.log(`Loading ${progress.file}: ${percent}%`);
+          this.updateStatus(`Loading: ${percent}%`);
+        }
+      });
+      this.log(`Model downloaded`);
+    } else {
+      this.log(`Using cached model`);
+    }
 
     this.port = await this.findAvailablePort();
     this.log(`Selected port: ${this.port}`);
@@ -73,11 +93,10 @@ export class LlamaCppEmbedder extends Embedder {
 
     this.log(`Starting llama.cpp server...`);
 
+    const modelPath = getModelCachePath(this.modelRepo, this.modelFile);
     const args = [
-      '--hf-repo',
-      this.modelRepo,
-      '--hf-file',
-      this.modelFile,
+      '--model',
+      modelPath,
       '--port',
       this.port.toString(),
       '--embedding',

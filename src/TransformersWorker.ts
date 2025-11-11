@@ -157,11 +157,11 @@ export class TransformersWorker extends WithLogging {
         }
       } else if (progressMsg.status === 'progress' && progressMsg.file) {
         const percent = progressMsg.progress
-          ? (progressMsg.progress * 100).toFixed(0)
+          ? progressMsg.progress.toFixed(0)
           : '?';
-        this.log(`Downloading ${progressMsg.file}: ${percent}%`);
+        this.log(`Loading ${progressMsg.file}: ${percent}%`);
         if (this.statusCallback) {
-          this.statusCallback(`Downloading: ${percent}%`);
+          this.statusCallback(`Loading: ${percent}%`);
         }
       }
       return;

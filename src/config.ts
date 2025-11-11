@@ -94,7 +94,7 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   embedderBackend: 'transformers',
   embeddingModel: 'Xenova/bge-m3',
   llamacppServerPath: 'llama-server',
-  llamacppModelRepo: 'BAAI/bge-m3-gguf',
+  llamacppModelRepo: 'ggml-org/bge-m3-Q8_0-GGUF',
   llamacppModelFile: 'bge-m3-q8_0.gguf',
 
   // Search parameters
