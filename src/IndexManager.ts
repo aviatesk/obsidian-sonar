@@ -38,6 +38,16 @@ interface FileOperation {
   oldPath?: string;
 }
 
+interface SyncStats {
+  newCount: number;
+  modifiedCount: number;
+  deletedCount: number;
+  skippedCount: number;
+  errored: number;
+  skipped: number;
+  skippedFilePaths: string[];
+}
+
 export class IndexManager extends WithLogging {
   protected readonly componentName = 'IndexManager';
   private pendingOperations: Map<string, FileOperation> = new Map();
@@ -144,17 +154,13 @@ export class IndexManager extends WithLogging {
       total: number,
       filePath: string
     ) => void | Promise<void>
-  ): Promise<{
-    newCount: number;
-    modifiedCount: number;
-    deletedCount: number;
-    skippedCount: number;
-    errored: number;
-    skipped: number;
-  }> {
+  ): Promise<SyncStats> {
     const dbFileMap = await this.metadataStore.getFileMetadataMap();
     const vaultFiles = getFilesToIndex(this.vault, this.configManager);
     const vaultFileMap = new Map(vaultFiles.map(f => [f.path, f]));
+
+    const failedFilesList = await this.metadataStore.getAllFailedFiles();
+    const failedFilesMap = new Map(failedFilesList.map(f => [f.filePath, f]));
 
     const operations: FileOperation[] = [];
     let skippedCount = 0;
@@ -162,6 +168,28 @@ export class IndexManager extends WithLogging {
     for (const file of vaultFiles) {
       const meta = dbFileMap.get(file.path);
       if (this.needsReindex(file, meta)) {
+        // Check if file has previously failed to index
+        const failedFile = failedFilesMap.get(file.path);
+        if (
+          failedFile &&
+          failedFile.mtime === file.stat.mtime &&
+          failedFile.size === file.stat.size
+        ) {
+          // File hasn't changed since last failure, skip it
+          this.log(`Skipping previously failed file (unchanged): ${file.path}`);
+          skippedCount++;
+          continue;
+        }
+
+        // If file has changed, it will be removed from failed files list
+        // in processBatchOperations() batch deletion (where all create/modify
+        // operations first delete old data before writing new data)
+        if (failedFile) {
+          this.log(
+            `File has changed since last failure, will retry: ${file.path}`
+          );
+        }
+
         operations.push({
           type: meta ? 'modify' : 'create',
           file,
@@ -189,10 +217,8 @@ export class IndexManager extends WithLogging {
       `Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
     );
 
-    const { errored, skipped } = await this.processBatchOperations(
-      operations,
-      progressCallback
-    );
+    const { errored, skipped, skippedFilePaths } =
+      await this.processBatchOperations(operations, progressCallback);
 
     return {
       newCount,
@@ -201,6 +227,7 @@ export class IndexManager extends WithLogging {
       skippedCount,
       errored,
       skipped,
+      skippedFilePaths,
     };
   }
 
@@ -336,9 +363,9 @@ export class IndexManager extends WithLogging {
       total: number,
       filePath: string
     ) => void | Promise<void>
-  ): Promise<{ errored: number; skipped: number }> {
+  ): Promise<{ errored: number; skipped: number; skippedFilePaths: string[] }> {
     if (operations.length === 0) {
-      return { errored: 0, skipped: 0 };
+      return { errored: 0, skipped: 0, skippedFilePaths: [] };
     }
 
     const timings = {
@@ -384,6 +411,7 @@ export class IndexManager extends WithLogging {
         this.metadataStore.deleteChunks(allChunkIds),
         this.embeddingStore.deleteEmbeddings(allChunkIds),
         this.bm25Store.deleteChunks(allChunkIds),
+        this.metadataStore.deleteFailedFiles(filesToDelete),
       ]);
 
       timings.deletion = Date.now() - deletionStart;
@@ -399,7 +427,7 @@ export class IndexManager extends WithLogging {
     );
 
     if (indexOperations.length === 0) {
-      return { errored: 0, skipped: 0 };
+      return { errored: 0, skipped: 0, skippedFilePaths: [] };
     }
 
     // Step 1: Prepare all chunks for all files
@@ -678,7 +706,11 @@ export class IndexManager extends WithLogging {
     this.log('====================================');
 
     this.log('Batch indexing complete');
-    return { errored: errorCount, skipped: skippedFiles.length };
+    return {
+      errored: errorCount,
+      skipped: skippedFiles.length,
+      skippedFilePaths: skippedFiles,
+    };
   }
 
   private prepareFileIndexData(
@@ -917,6 +949,101 @@ export class IndexManager extends WithLogging {
     return message;
   }
 
+  private async retrySkippedFiles(
+    stats: SyncStats,
+    progressCallback?: (
+      current: number,
+      total: number,
+      filePath: string
+    ) => void | Promise<void>
+  ): Promise<void> {
+    const retryState = {
+      previousSkippedCount: null as number | null,
+      currentRetryCount: 0,
+      maxRetries: 3,
+      retryDelayMs: 1000,
+    };
+
+    while (
+      stats.skippedFilePaths.length > 0 &&
+      retryState.currentRetryCount < retryState.maxRetries
+    ) {
+      const currentSkippedCount = stats.skippedFilePaths.length;
+
+      if (
+        // Check for monotonic decrease
+        retryState.previousSkippedCount !== null &&
+        currentSkippedCount >= retryState.previousSkippedCount
+      ) {
+        this.log(
+          `Retry aborted: skipped file count did not decrease (${retryState.previousSkippedCount} -> ${currentSkippedCount})`
+        );
+        break;
+      }
+
+      retryState.previousSkippedCount = currentSkippedCount;
+      retryState.currentRetryCount++;
+
+      this.log(
+        `Retrying ${currentSkippedCount} files with NaN embeddings (attempt ${retryState.currentRetryCount}/${retryState.maxRetries})...`
+      );
+
+      await new Promise(resolve =>
+        setTimeout(resolve, retryState.retryDelayMs)
+      );
+
+      const retryOperations: FileOperation[] = [];
+      for (const filePath of stats.skippedFilePaths) {
+        const file = this.vault.getFileByPath(filePath);
+        if (file instanceof TFile) {
+          retryOperations.push({ type: 'modify', file });
+        } else {
+          this.warn(`Skipped file no longer exists: ${filePath}`);
+        }
+      }
+
+      const retryResult = await this.processBatchOperations(
+        retryOperations,
+        progressCallback
+      );
+
+      stats.errored += retryResult.errored;
+      stats.skipped = retryResult.skipped;
+      stats.skippedFilePaths = retryResult.skippedFilePaths;
+
+      if (retryResult.skipped === 0) {
+        this.log('Retry successful: all files indexed');
+        break;
+      } else {
+        this.log(`Retry completed: ${retryResult.skipped} files still skipped`);
+      }
+    }
+
+    if (
+      stats.skippedFilePaths.length > 0 &&
+      retryState.currentRetryCount >= retryState.maxRetries
+    ) {
+      this.warn(
+        `Max retries (${retryState.maxRetries}) reached. ${stats.skippedFilePaths.length} files could not be indexed.`
+      );
+
+      // Record failed files in DB
+      for (const filePath of stats.skippedFilePaths) {
+        const file = this.vault.getFileByPath(filePath);
+        if (file instanceof TFile) {
+          await this.metadataStore.addFailedFile({
+            filePath: file.path,
+            mtime: file.stat.mtime,
+            size: file.stat.size,
+            failedAt: Date.now(),
+            retryCount: retryState.maxRetries,
+          });
+          this.log(`Recorded failed file: ${file.path}`);
+        }
+      }
+    }
+  }
+
   async rebuildIndex(
     progressCallback?: (
       current: number,
@@ -928,6 +1055,9 @@ export class IndexManager extends WithLogging {
     const startTime = Date.now();
     await this.clearCurrentIndex();
     const stats = await this.performSync(progressCallback);
+
+    await this.retrySkippedFiles(stats, progressCallback);
+
     const duration = formatDuration(Date.now() - startTime);
     const message = this.buildIndexingCompleteMessage(
       `Rebuild complete: ${stats.newCount} files indexed in ${duration}`,
@@ -939,17 +1069,13 @@ export class IndexManager extends WithLogging {
     await this.updateStatusBarWithFileCount();
   }
 
-  async syncIndex(onload: boolean = false): Promise<{
-    newCount: number;
-    modifiedCount: number;
-    deletedCount: number;
-    skippedCount: number;
-    errored: number;
-    skipped: number;
-  }> {
+  async syncIndex(onload: boolean = false): Promise<SyncStats> {
     this.log('Syncing index...');
     const startTime = Date.now();
     const stats = await this.performSync();
+
+    await this.retrySkippedFiles(stats);
+
     const duration = formatDuration(Date.now() - startTime);
     const message = this.buildIndexingCompleteMessage(
       `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted in ${duration}`,
@@ -1047,6 +1173,7 @@ export class IndexManager extends WithLogging {
   }
 
   async clearCurrentIndex(): Promise<void> {
+    await this.metadataStore.clearFailedFiles();
     await this.metadataStore.clearAll();
     await this.embeddingStore.clearAll();
     await this.bm25Store.clearAll();
