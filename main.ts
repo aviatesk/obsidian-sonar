@@ -13,7 +13,7 @@ import { SemanticNoteFinder } from './src/ui/SemanticNoteFinder';
 import { IndexManager } from './src/IndexManager';
 import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
-import { MetadataStore } from './src/MetadataStore';
+import { getDBName, MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
 import type { Embedder } from './src/Embedder';
 import { TransformersEmbedder } from './src/TransformersEmbedder';
@@ -88,16 +88,22 @@ export default class SonarPlugin extends Plugin {
       this.configManager.subscribe('embedderBackend', handleBackendChange)
     );
     this.configListeners.push(
-      this.configManager.subscribe('embeddingModel', handleBackendChange)
+      this.configManager.subscribe('tfjsEmbedderModel', handleBackendChange)
     );
     this.configListeners.push(
       this.configManager.subscribe('llamacppServerPath', handleBackendChange)
     );
     this.configListeners.push(
-      this.configManager.subscribe('llamacppModelRepo', handleBackendChange)
+      this.configManager.subscribe(
+        'llamaEmbedderModelRepo',
+        handleBackendChange
+      )
     );
     this.configListeners.push(
-      this.configManager.subscribe('llamacppModelFile', handleBackendChange)
+      this.configManager.subscribe(
+        'llamaEmbedderModelFile',
+        handleBackendChange
+      )
     );
   }
 
@@ -189,12 +195,15 @@ export default class SonarPlugin extends Plugin {
     }
 
     const embedderBackend = this.configManager.get('embedderBackend');
-    const embeddingModel = this.configManager.get('embeddingModel');
+
+    let modelIdentifier: string;
 
     if (embedderBackend === 'llamacpp') {
       const serverPath = this.configManager.get('llamacppServerPath');
-      const modelRepo = this.configManager.get('llamacppModelRepo');
-      const modelFile = this.configManager.get('llamacppModelFile');
+      const modelRepo = this.configManager.get('llamaEmbedderModelRepo');
+      const modelFile = this.configManager.get('llamaEmbedderModelFile');
+      modelIdentifier = `${modelRepo}/${modelFile}`;
+
       const embedder = (this.embedder = new LlamaCppEmbedder(
         serverPath,
         modelRepo,
@@ -207,16 +216,19 @@ export default class SonarPlugin extends Plugin {
       const success = await this.initializeEmbedder(
         embedder,
         'llama.cpp',
-        `${modelRepo}/${modelFile}`
+        modelIdentifier
       );
       if (!success) return;
     } else {
+      const tfjsModel = this.configManager.get('tfjsEmbedderModel');
+      modelIdentifier = tfjsModel;
+
       // Uses Blob URL Worker with inlined code to make Transformers.js think this Electron environment is a browser environment
       const device = result.webgpu.available ? 'webgpu' : 'wasm';
       this.log(`Using Transformers.js with device: ${device}`);
 
       const embedder = (this.embedder = new TransformersEmbedder(
-        embeddingModel,
+        tfjsModel,
         this.configManager,
         device,
         'fp32'
@@ -227,7 +239,7 @@ export default class SonarPlugin extends Plugin {
       const success = await this.initializeEmbedder(
         embedder,
         'Transformers.js',
-        embeddingModel
+        tfjsModel
       );
       if (!success) return;
     }
@@ -236,7 +248,7 @@ export default class SonarPlugin extends Plugin {
       this.metadataStore = await MetadataStore.initialize(
         this.app.vault.getName(),
         embedderBackend,
-        embeddingModel,
+        modelIdentifier,
         this.configManager
       );
     } catch (error) {
@@ -573,12 +585,18 @@ export default class SonarPlugin extends Plugin {
     // Close current database connections if they're in the list to be deleted
     if (this.metadataStore) {
       const embedderBackend = this.configManager.get('embedderBackend');
-      const embeddingModel = this.configManager.get('embeddingModel');
-      const { getDBName } = await import('./src/MetadataStore');
+      let modelIdentifier: string;
+      if (embedderBackend === 'llamacpp') {
+        const modelRepo = this.configManager.get('llamaEmbedderModelRepo');
+        const modelFile = this.configManager.get('llamaEmbedderModelFile');
+        modelIdentifier = `${modelRepo}/${modelFile}`;
+      } else {
+        modelIdentifier = this.configManager.get('tfjsEmbedderModel');
+      }
       const currentDbName = getDBName(
         vaultName,
         embedderBackend,
-        embeddingModel
+        modelIdentifier
       );
 
       if (databases.includes(currentDbName)) {

@@ -66,13 +66,13 @@ export class SettingTab extends PluginSettingTab {
       this.configManager.subscribe('embedderBackend', handleStatsUpdate)
     );
     this.configListeners.push(
-      this.configManager.subscribe('embeddingModel', handleStatsUpdate)
+      this.configManager.subscribe('tfjsEmbedderModel', handleStatsUpdate)
     );
     this.configListeners.push(
-      this.configManager.subscribe('llamacppModelRepo', handleStatsUpdate)
+      this.configManager.subscribe('llamaEmbedderModelRepo', handleStatsUpdate)
     );
     this.configListeners.push(
-      this.configManager.subscribe('llamacppModelFile', handleStatsUpdate)
+      this.configManager.subscribe('llamaEmbedderModelFile', handleStatsUpdate)
     );
   }
 
@@ -505,14 +505,14 @@ This is the final number after chunk aggregation:
     );
     this.renderMarkdownDesc(
       embeddingModelSetting.descEl,
-      'HuggingFace model ID for Transformers.js (e.g., `Xenova/bge-m3`).'
+      'HuggingFace model ID for Transformers.js (e.g., `Xenova/multilingual-e5-small`).'
     );
     embeddingModelSetting.addText(text =>
       text
-        .setPlaceholder('Xenova/bge-m3')
-        .setValue(this.configManager.get('embeddingModel'))
+        .setPlaceholder('Xenova/multilingual-e5-small')
+        .setValue(this.configManager.get('tfjsEmbedderModel'))
         .onChange(async value => {
-          await this.configManager.set('embeddingModel', value);
+          await this.configManager.set('tfjsEmbedderModel', value);
         })
     );
 
@@ -550,9 +550,9 @@ This is the final number after chunk aggregation:
     llamacppModelRepoSetting.addText(text =>
       text
         .setPlaceholder('BAAI/bge-m3-gguf')
-        .setValue(this.configManager.get('llamacppModelRepo'))
+        .setValue(this.configManager.get('llamaEmbedderModelRepo'))
         .onChange(async value => {
-          await this.configManager.set('llamacppModelRepo', value);
+          await this.configManager.set('llamaEmbedderModelRepo', value);
         })
     );
 
@@ -566,9 +566,9 @@ This is the final number after chunk aggregation:
     llamacppModelFileSetting.addText(text =>
       text
         .setPlaceholder('bge-m3-q8_0.gguf')
-        .setValue(this.configManager.get('llamacppModelFile'))
+        .setValue(this.configManager.get('llamaEmbedderModelFile'))
         .onChange(async value => {
-          await this.configManager.set('llamacppModelFile', value);
+          await this.configManager.set('llamaEmbedderModelFile', value);
         })
     );
 

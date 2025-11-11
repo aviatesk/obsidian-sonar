@@ -30,14 +30,14 @@ import { WithLogging } from './WithLogging';
 export function getDBName(
   vaultName: string,
   embedderBackend: EmbedderBackend,
-  embeddingModel: string
+  modelIdentifier: string
 ): string {
   // Sanitize vault name and model name for use in DB name
   const sanitize = (str: string) =>
     str.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
 
   const sanitizedVault = sanitize(vaultName);
-  const sanitizedModel = sanitize(embeddingModel);
+  const sanitizedModel = sanitize(modelIdentifier);
 
   return `sonar/${sanitizedVault}/${embedderBackend}/${sanitizedModel}`;
 }

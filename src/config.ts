@@ -33,10 +33,10 @@ export interface SonarSettings {
   // Embedder configuration
   // ======================
   embedderBackend: EmbedderBackend; // Embedder backend: 'transformers' or 'llamacpp'
-  embeddingModel: string; // HuggingFace model ID (e.g., 'Xenova/bge-m3')
+  tfjsEmbedderModel: string; // HuggingFace model ID for Transformers.js (e.g., 'Xenova/multilingual-e5-small')
   llamacppServerPath: string; // Path to llama.cpp server binary (e.g., 'llama-server')
-  llamacppModelRepo: string; // HuggingFace repository for llama.cpp (e.g., 'BAAI/bge-m3-gguf')
-  llamacppModelFile: string; // GGUF filename in the repository (e.g., 'bge-m3-q8_0.gguf')
+  llamaEmbedderModelRepo: string; // HuggingFace repository for llama.cpp (e.g., 'BAAI/bge-m3-gguf')
+  llamaEmbedderModelFile: string; // GGUF filename in the repository (e.g., 'bge-m3-q8_0.gguf')
 
   // Search parameters
   // =================
@@ -92,10 +92,10 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   // Embedder configuration
   // ======================
   embedderBackend: 'transformers',
-  embeddingModel: 'Xenova/bge-m3',
+  tfjsEmbedderModel: 'Xenova/multilingual-e5-small',
   llamacppServerPath: 'llama-server',
-  llamacppModelRepo: 'ggml-org/bge-m3-Q8_0-GGUF',
-  llamacppModelFile: 'bge-m3-q8_0.gguf',
+  llamaEmbedderModelRepo: 'ggml-org/bge-m3-Q8_0-GGUF',
+  llamaEmbedderModelFile: 'bge-m3-q8_0.gguf',
 
   // Search parameters
   // =================

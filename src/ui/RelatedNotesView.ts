@@ -108,10 +108,6 @@ export class RelatedNotesView extends ItemView {
     this.configManager.subscribe('maxQueryTokens', () => {
       this.debouncedRefresh();
     });
-
-    this.configManager.subscribe('embeddingModel', () => {
-      this.debouncedRefresh();
-    });
   }
 
   getViewType(): string {
