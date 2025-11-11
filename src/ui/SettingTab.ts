@@ -279,7 +279,9 @@ Supports:
       indexingBatchSetting.descEl,
       `Number of texts (titles + chunks) to process in a single batch during indexing (default: \`32\`).
 - Larger values: process more texts at once but use more memory.
-- Smaller values: reduce memory usage but increase the number of calls to the embedder.`
+- Smaller values: reduce memory usage but increase the number of calls to the embedder.
+
+> [!WARNING]: This setting only applies to llama.cpp backend. Transformers.js always processes texts sequentially to avoid NaN embeddings.`
     );
     indexingBatchSetting.addSlider(slider =>
       slider
@@ -289,6 +291,18 @@ Supports:
         .onChange(async value => {
           await this.configManager.set('indexingBatchSize', value);
         })
+    );
+
+    const updateIndexingBatchVisibility = () => {
+      const backend = this.configManager.get('embedderBackend');
+      indexingBatchSetting.settingEl.style.display =
+        backend === 'llamacpp' ? '' : 'none';
+    };
+    updateIndexingBatchVisibility();
+    this.configListeners.push(
+      this.configManager.subscribe('embedderBackend', () => {
+        updateIndexingBatchVisibility();
+      })
     );
 
     const autoIndexSetting = new Setting(indexConfigContainer).setName(

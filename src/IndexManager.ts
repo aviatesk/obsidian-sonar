@@ -502,11 +502,20 @@ export class IndexManager extends WithLogging {
       }
     }
 
-    // Generate embeddings for batch -> index metadata/embeddings
-    const batchSize = this.configManager.get('indexingBatchSize');
-    this.log(
-      `Processing ${allTextItems.length} texts in batches of ${batchSize}...`
-    );
+    // Transformers.js generates NaN embeddings at batch boundaries
+    // See bench/README.md "NaN embeddings at batch boundaries" for details
+    const device = this.embedder.getDevice();
+    const batchSize =
+      device === 'llamacpp' ? this.configManager.get('indexingBatchSize') : 1;
+    if (device !== 'llamacpp') {
+      this.log(
+        'Processing 1 texts sequentially (Transformers.js batch processing disabled)...'
+      );
+    } else {
+      this.log(
+        `Processing ${allTextItems.length} texts in batches of ${batchSize}...`
+      );
+    }
     const fileEmbeddingsMap = new Map<
       number,
       Array<{
