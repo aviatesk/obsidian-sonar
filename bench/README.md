@@ -5,27 +5,127 @@ on multilingual and long document retrieval tasks.
 
 ## Overview
 
+### Benchmark datasets
+
 This benchmark suite evaluates search quality using two datasets:
 
 **[MIRACL](https://project-miracl.github.io/)**:
 
-- **Task**: Short-text Wikipedia retrieval
-- **Languages**: Japanese (~7M docs), English (~33M docs, capped at 7M)
-- **Queries**: 860 (ja), 799 (en)
+- **Languages**: Japanese (7M documents), English (33M documents)
+- **Corpus**: Wikipedia articles (pre-chunked)
+- **Query**: Short question sentences
+- **Task**: Short text Wikipedia retrieval: short question sentence → related Wikipedia chunk
 - **Reference**: [MIRACL Dataset](https://project-miracl.github.io/) |
   [Paper](https://arxiv.org/abs/2210.09984)
 
-**[SCIDOCS](https://github.com/beir-cellar/beir)**:
+<details>
+<summary>Example data</summary>
 
-- **Task**: Scientific paper retrieval
-- **Corpus**: Paper abstracts (~25K documents)
-- **Queries**: 1,000 paper queries (title + abstract)
+Query (English):
+```json
+{
+  "_id": "miracl_en_dev#105",
+  "text": "Is Abi Branning still a character on EastEnders?"
+}
+```
+
+Query (Japanese):
+```json
+{
+  "_id": "miracl_ja_dev#101",
+  "text": "日本で最古の民間保険会社は何？"
+}
+```
+
+Corpus (English):
+```json
+{
+  "_id": "miracl_en_dev#4768094#0",
+  "title": "Abi Branning",
+  "text": "Abi Branning is a fictional character from the BBC soap opera \"EastEnders\", played by Lorna Fitzgerald. She was introduced by executive producer Kate Harwood on 3 July 2006..."
+}
+```
+
+Corpus (Japanese):
+```json
+{
+  "_id": "miracl_ja_dev#96129#16",
+  "title": "生命保険",
+  "text": "日本では慶応3年（1868年）に福澤諭吉が著書「西洋旅案内」の中で欧米の文化の一つとして近代保険制度(損害保険、生命保険)を紹介したことが発端となり、1880年に岩倉使節団の随員だった若山儀一らによる日東保生会社（日本初の生命保険会社）開業されるが、倒産してしまう。1881年（明治14年）7月、福沢諭吉門下の阿部泰蔵によって現存最古の保険会社・有限明治生命保険会社が開業された..."
+}
+```
+
+Qrels (relevance judgments):
+```tsv
+query-id                   corpus-id                    score
+miracl_en_dev#105          miracl_en_dev#4768094#0      1
+miracl_ja_dev#101          miracl_ja_dev#96129#16       1
+```
+
+The English query asks about a TV character, and finds the relevant Wikipedia article about that character. The Japanese query asks about the oldest insurance company, and finds the relevant section in the life insurance article.
+
+</details>
+
+**[SciDocs](https://github.com/beir-cellar/beir)**:
+
+- **Languages**: English only (25K documents)
+- **Corpus**: Paper abstracts
+- **Query**: 1,000 citing paper title
+- **Task**: Scientific paper retrieval: citing paper title → cited paper abstract
 - **Reference**: [BEIR Benchmark](https://github.com/beir-cellar/beir) |
   [Paper](https://arxiv.org/abs/2104.08663)
 
+<details>
+<summary>Example data</summary>
+
+Query:
+```json
+{
+  "_id": "01273bd34dacfe9ef887b320f36934d2f9fa9b34",
+  "text": "Image-Guided Nanopositioning Scheme for SEM"
+}
+```
+
+Corpus:
+```json
+{
+  "_id": "00a7370518a6174e078df1c22ad366a2188313b5",
+  "title": "Determining Optical Flow",
+  "text": "Optical flow cannot be computed locally, since only one independent measurement is available from the image sequence at a point, while the flow velocity has two components. A second constraint is needed. A method for finding the optical flow pattern is presented which assumes that the apparent velocity of the brightness pattern varies smoothly almost everywhere in the image..."
+}
+```
+
+Qrels (relevance judgments):
+```tsv
+query-id                                  corpus-id                                 score
+01273bd34dacfe9ef887b320f36934d2f9fa9b34  00a7370518a6174e078df1c22ad366a2188313b5  1
+```
+
+The query is a paper title about nanopositioning in SEM (Scanning Electron Microscopy). The related corpus document is a classic paper on optical flow (Horn & Schunck, 1981). The relevance is based on citation relationships: the nanopositioning paper likely cites the optical flow paper as part of its image processing methodology, demonstrating the indirect, citation-based relevance characteristic of SciDocs.
+
+</details>
+
+These datasets are widely used for evaluating embedding models and other purposes, but their characteristics differ significantly.
+
+In rough terms:
+- MIRACL is a multilingual zero-shot database built on Wikipedia, 
+  using intuitive relevance from "question → answer" relationships as query-relevances
+- On the other hand, SciDocs is a dataset based on citation graphs of scientific papers, 
+  creating query-relevance sets by considering the relationship 
+  "paper A cites paper B → A and B are related" as indirect, academic relevance
+
+MIRACL can be used to measure the accuracy of general information retrieval tasks, 
+specifically finding short text chunks related to a given query, which is usually relatively simple and short question.
+
+Whereas SciDocs measures the accuracy of somewhat abstract tasks, specifically
+finding abstracts of cited papers that are loosely or strongly related to 
+a given scientific paper title.
+
+### Benchmark design
+
 Each dataset can be benchmarked with the following search methods across
-multiple backends ([Elasticsearch](https://www.elastic.co/elasticsearch/),
-[Weaviate](https://weaviate.io/), and Sonar).
+multiple backends, [Elasticsearch](https://www.elastic.co/elasticsearch/),
+[Weaviate](https://weaviate.io/), and Sonar (the Obsidian plugin).
 
 - **BM25**: Full-text keyword search
 - **Vector**: Dense embedding similarity (requires embeddings)
@@ -48,44 +148,9 @@ The benchmarks for Sonar, Elasticsearch, and Weaviate are implemented to be as f
 However, due to implementation constraints and for comparative reference, the following differences exist:
 - Elasticsearch uses [Kuromoji](https://www.elastic.co/docs/reference/elasticsearch/plugins/analysis-kuromoji-tokenizer) for BM25, so it is expected to achieve better accuracy in BM25 benchmarks that include Japanese documents
 - The Elasticsearch/Weaviate implementations use BYO embeddings generated with SentenceTransformer.
-  In contrast, Sonar generates embeddings using Transformers.js and manages them in IndexedDB, but
-  when using GPU, the embeddings generated by Transformers.js showed significant numerical instability.
+- In contrast, Sonar generates embeddings using Transformers.js and manages them in IndexedDB, but
+  when using GPU, the embeddings generated by Transformers.js showed significant numerical instability (elaborated in the next section).
   Through this benchmark, I was working to resolve these numerical instabilities on the Sonar side, but there may still be some minor instabilities.
-
-## Transformers.js issues found during benchmarking Sonar
-
-## Invalid embeddings on WebGPU
-
-When using `Xenova/multilingual-e5-base` with WebGPU, different embeddings were generated compared to those generated using WASM as the backend.
-Since the similarity between embeddings generated by SentenceTransformer and those generated with the WASM backend was >0.99, it appears that the embeddings generated by the WebGPU backend were invalid. Similar issues:
-
-- https://github.com/huggingface/transformers.js/issues/1046
-- https://github.com/microsoft/onnxruntime/issues/24442
-
-**Workaround**: Use `Xenova/multilingual-e5-small` instead.
-
-### NaN embeddings at batch boundaries
-
-**Symptom**: Transformers.js (WASM backend) consistently generates all-NaN embeddings (all 384 dimensions) for the **last item in any batch**, regardless of batch size.
-
-**Discovery**: During MIRACL benchmark (`miracl-ja-en_query-20`, 3455 files, batch_size=32), 7 chunks (0.2%) had completely NaN embeddings. The same texts processed with Python SentenceTransformer produced valid embeddings (norm=1.0, no NaN).
-
-**Impact on search quality**:
-
-Before fix (NaN embeddings present):
-
-| Run                  | nDCG@10 | Recall@10 | MRR@10 | MAP    |
-| -------------------- | ------- | --------- | ------ | ------ |
-| elasticsearch.vector | 0.9261  | 0.9677    | 0.9373 | 0.8972 |
-| weaviate.vector      | 0.9264  | 0.9664    | 0.9385 | 0.8980 |
-| **sonar.vector**     | **0.4189** | **0.4694** | **0.5344** | **0.3802** |
-| sonar.hybrid         | 0.7643  | 0.8589    | 0.7756 | 0.7214 |
-
-NaN embeddings cause JavaScript `Array.sort((a, b) => b.score - a.score)` to break (NaN comparison returns NaN), corrupting the entire ranking. Example: a document with score 0.921780 (expected rank #1) was placed at rank #1512, while documents with score ~0.75 ranked higher.
-
-**Workaround**: Application-layer NaN detection and skipping during indexing. See `experiments/transformers-js-batch-end-nan.md` for detailed reproduction and analysis.
-
-**Related upstream issue?**: https://github.com/microsoft/onnxruntime/issues/26367
 
 ## Results
 
@@ -107,7 +172,7 @@ NaN embeddings cause JavaScript `Array.sort((a, b) => b.score - a.score)` to bre
 | Weaviate      | Vector | 0.9358  | 0.9759    | 0.9975     | 0.9432 | 0.9124 |
 | Weaviate      | Hybrid | 0.8745  | 0.9316    | 1.0000     | 0.8816 | 0.8464 |
 
-### Result for SCIDOCS
+### Result for SciDocs
 
 > - Queries: 100
 > - Documents: 12426
@@ -159,8 +224,8 @@ TODO
 For detailed metric explanations, see
 [ir-measures documentation](https://ir-measur.es/en/latest/measures.html).
 
-> [!TIP] **nDCG@10 vs MAP**: Both are comprehensive metrics, but serve different
-> purposes:
+> [!TIP]
+> **nDCG@10 vs MAP**: Both are comprehensive metrics, but serve different purposes:
 >
 > - **nDCG@10**: Measures "quality of the first screen" (top 10 results). Uses
 >   logarithmic discounting, so rank 1 vs 2 matters much more than rank 9 vs 10.
@@ -177,421 +242,39 @@ For detailed metric explanations, see
 
 ## Benchmark workflow
 
-### Step 0: Prerequisites
+To actually run this benchmark, refer to [benchmark-workflow.md](./benchmark-workflow.md).
 
-- **Python dependencies**: Install [uv](https://docs.astral.sh/uv/)
-- **Docker**: Required for running Elasticsearch and Weaviate
-  - macOS: `brew install --cask docker`
-  - Or download from <https://www.docker.com/products/docker-desktop/>
+## Transformers.js issues found during benchmarking Sonar
 
-> [!NOTE] All commands below should be run from this directory (`/bench`).
+### Invalid embeddings on WebGPU
 
-### Step 1: Install Python dependencies
+When using `Xenova/multilingual-e5-base` with WebGPU, different embeddings were generated compared to those generated using WASM as the backend.
+Since the similarity between embeddings generated by SentenceTransformer and those generated with the WASM backend was >0.99, it appears that the embeddings generated by the WebGPU backend were invalid. Similar issues:
 
-```bash
-uv sync
-```
+- https://github.com/huggingface/transformers.js/issues/1046
+- https://github.com/microsoft/onnxruntime/issues/24442
 
-### Step 2: Download datasets
+**Workaround**: Use `Xenova/multilingual-e5-small` instead.
 
-#### MIRACL (Multilingual retrieval)
+### NaN embeddings at batch boundaries
 
-Download Japanese and English Wikipedia datasets:
+**Symptom**: Transformers.js (WASM backend) consistently generates all-NaN embeddings (all 384 dimensions) for the **last item in any batch**, regardless of batch size.
 
-```bash
-uv run scripts/download_datasets.py --datasets miracl_ja,miracl_en --splits dev
-```
+**Discovery**: During MIRACL benchmark (`miracl-ja-en_query-20`, 3455 files, batch_size=32), 7 chunks (0.2%) had completely NaN embeddings. The same texts processed with Python SentenceTransformer produced valid embeddings (norm=1.0, no NaN).
 
-Output: `datasets/raw/miracl_{ja,en}_*_dev.{jsonl,tsv}`
+**Impact on search quality**:
 
-#### SCIDOCS (Scientific papers)
+Before fix (NaN embeddings present):
 
-Download scientific paper dataset:
+| Run                  | nDCG@10 | Recall@10 | MRR@10 | MAP    |
+| -------------------- | ------- | --------- | ------ | ------ |
+| elasticsearch.vector | 0.9261  | 0.9677    | 0.9373 | 0.8972 |
+| weaviate.vector      | 0.9264  | 0.9664    | 0.9385 | 0.8980 |
+| **sonar.vector**     | **0.4189** | **0.4694** | **0.5344** | **0.3802** |
+| sonar.hybrid         | 0.7643  | 0.8589    | 0.7756 | 0.7214 |
 
-```bash
-uv run scripts/download_datasets.py --datasets scidocs
-```
+NaN embeddings cause JavaScript `Array.sort((a, b) => b.score - a.score)` to break (NaN comparison returns NaN), corrupting the entire ranking. Example: a document with score 0.921780 (expected rank #1) was placed at rank #1512, while documents with score ~0.75 ranked higher.
 
-Output: `datasets/raw/scidocs_*.{jsonl,tsv}`
+**Workaround**: Application-layer NaN detection and skipping during indexing. See `experiments/transformers-js-batch-end-nan.md` for detailed reproduction and analysis.
 
-### Step 3: Generate benchmark subset
-
-#### MIRACL subset
-
-Generate a mixed Japanese/English subset with 200 queries (100 ja + 100 en):
-
-```bash
-uv run scripts/generate_subset.py \
-  --corpus datasets/raw/miracl_ja_corpus_dev.jsonl,datasets/raw/miracl_en_corpus_dev.jsonl \
-  --queries datasets/raw/miracl_ja_queries_dev.jsonl,datasets/raw/miracl_en_queries_dev.jsonl \
-  --qrels datasets/raw/miracl_ja_qrels_dev.tsv,datasets/raw/miracl_en_qrels_dev.tsv \
-  --n-queries 200 \
-  --output-dir datasets/processed/miracl-ja-en_query-200
-```
-
-This creates:
-
-- `datasets/processed/miracl-ja-en_query-200/corpus.jsonl` -
-  Document corpus (~18,000 documents)
-- `datasets/processed/miracl-ja-en_query-200/queries.jsonl` - Test
-  queries (200 queries)
-- `datasets/processed/miracl-ja-en_query-200/qrels.tsv` - Relevance
-  judgments
-
-For multiple datasets, queries are sampled with equal distribution (1:1) by
-default. To customize the ratio, use `--query-ratio`:
-
-```bash
-# Example: 2x more Japanese queries than English (133 ja + 67 en)
-uv run scripts/generate_subset.py \
-  --corpus datasets/raw/miracl_ja_corpus_dev.jsonl,datasets/raw/miracl_en_corpus_dev.jsonl \
-  --queries datasets/raw/miracl_ja_queries_dev.jsonl,datasets/raw/miracl_en_queries_dev.jsonl \
-  --qrels datasets/raw/miracl_ja_qrels_dev.tsv,datasets/raw/miracl_en_qrels_dev.tsv \
-  --seed 42 \
-  --n-queries 200 \
-  --query-ratio 2:1 \
-  --output-dir datasets/processed/miracl-ja-en_query-200_ja2en1
-```
-
-#### SCIDOCS subset
-
-Generate a scientific paper subset with 100 queries:
-
-```bash
-uv run scripts/generate_subset.py \
-  --corpus datasets/raw/scidocs_corpus.jsonl \
-  --queries datasets/raw/scidocs_queries.jsonl \
-  --qrels datasets/raw/scidocs_qrels.tsv \
-  --seed 42 \
-  --n-queries 100  \
-  --output-dir datasets/processed/scidocs_query-100
-```
-
-This creates:
-
-- `datasets/processed/scidocs_query-100/corpus.jsonl` - Paper abstracts corpus
-  (~18,000 documents)
-- `datasets/processed/scidocs_query-100/queries.jsonl` - Research queries (100
-  queries)
-- `datasets/processed/scidocs_query-100/qrels.tsv` - Relevance judgments
-
-### Step 4: Generate embeddings (for vector/hybrid search)
-
-Skip this step if you only want to run BM25 benchmarks.
-
-#### MIRACL embeddings
-
-Generate corpus embeddings:
-
-```bash
-uv run scripts/generate_embeddings.py \
-  --corpus datasets/processed/miracl-ja-en_query-200/corpus.jsonl \
-  --output embeddings/miracl-ja-en_query-200/intfloat/multilingual-e5-small/corpus_embeddings.jsonl \
-  --model intfloat/multilingual-e5-small
-```
-
-Generate query embeddings:
-
-```bash
-uv run scripts/generate_embeddings.py \
-  --corpus datasets/processed/miracl-ja-en_query-200/queries.jsonl \
-  --output embeddings/miracl-ja-en_query-200/multilingual-e5-small/query_embeddings.jsonl \
-  --model intfloat/multilingual-e5-small
-```
-
-#### SCIDOCS embeddings
-
-Generate corpus embeddings:
-
-```bash
-uv run scripts/generate_embeddings.py \
-  --corpus datasets/processed/scidocs_query-100/corpus.jsonl \
-  --output embeddings/scidocs_query-100/intfloat/multilingual-e5-small/corpus_embeddings.jsonl \
-  --model intfloat/multilingual-e5-small
-```
-
-Generate query embeddings:
-
-```bash
-uv run scripts/generate_embeddings.py \
-  --corpus datasets/processed/scidocs_query-100/queries.jsonl \
-  --output embeddings/scidocs_query-100/intfloat/multilingual-e5-small/query_embeddings.jsonl \
-  --model intfloat/multilingual-e5-small
-```
-
-###### Device selection
-
-- The script automatically detects and uses GPU (CUDA/MPS) if available
-- Force CPU usage: add `--device cpu`
-- Adjust batch size based on GPU memory (default: 128 for GPU, 32 for CPU)
-
-#### Long document handling
-
-- Documents are automatically chunked if they exceed model's max sequence length
-  (default: 512 tokens per chunk, 128 token overlap)
-- Each chunk is stored as a separate embedding with metadata (`doc_id`,
-  `chunk_index`, `text`)
-- Chunk scores are aggregated to document level at search time (see Advanced
-  section in Step 5)
-
-#### Model selection
-
-Any sentence-transformers compatible model from Hugging Face can be used.
-Examples:
-
-- `intfloat/multilingual-e5-small` (384 dims, ~470MB, default)
-- `intfloat/multilingual-e5-base` (768 dims, ~1.1GB, currently has accuracy issues when used with Transformers.js)
-- `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 dims)
-
-### Step 4.5: Generate Obsidian vault (Sonar only)
-
-If you plan to benchmark Sonar (Obsidian plugin), generate vault format from the
-corpus:
-
-#### MIRACL vault
-
-```bash
-uv run scripts/generate_vault.py \
-  --corpus datasets/processed/miracl-ja-en_query-200/corpus.jsonl \
-  --output vaults/miracl-ja-en_query-200
-```
-
-#### SCIDOCS vault
-
-```bash
-uv run scripts/generate_vault.py \
-  --corpus datasets/processed/scidocs_query-100/corpus.jsonl \
-  --output vaults/scidocs_query-100
-```
-
-Skip this step if you only want to benchmark Elasticsearch and Weaviate.
-
-### Step 5: Run benchmarks
-
-#### Sonar (Obsidian plugin)
-
-Setup benchmark configuration and run all search methods:
-
-```bash
-VAULT=/path/to/the/vault
-DATASET=datasets/processed/miracl-ja-en_query-200
-
-mkdir -p $VAULT/.obsidian/plugins/sonar/
-cp ../main.js ../manifest.json ../styles.css data.json $VAULT/.obsidian/plugins/sonar/
-
-# Edit data.json to set benchmark paths (use vault-relative or absolute paths)
-# Set the following fields:
-#   "benchmarkQueriesPath": "/absolute/path/to/bench/datasets/processed/dataset/queries.jsonl"
-#   "benchmarkQrelsPath": "/absolute/path/to/bench/datasets/processed/dataset/qrels.tsv"
-#   "benchmarkOutputDir": "/absolute/path/to/bench/runs"
-# Copy benchmark configuration
-cp data.json $VAULT/.obsidian/plugins/sonar/data.json
-
-# 5. Open vault in Obsidian
-# 6. Wait for Sonar indexing to complete (check status bar)
-# 7. Run benchmark command:
-#    - Open Command Palette (Cmd+P / Ctrl+P)
-#    - Run "Sonar: Run benchmark (BM25, Vector, Hybrid)"
-# 8. Results will be written to:
-#    - /path/to/your/vault/runs/sonar.bm25.trec
-#    - /path/to/your/vault/runs/sonar.vector.trec
-#    - /path/to/your/vault/runs/sonar.hybrid.trec
-```
-
-#### Elasticsearch & Weaviate
-
-##### Quick start: automated benchmark
-
-Run the entire benchmark pipeline (Docker startup, indexing, search, evaluation)
-with a single script:
-
-```bash
-./runbechmark.sh --dataset datasets/processed/miracl-ja-en_query-200
-```
-
-This will run all backends (Elasticsearch and Weaviate) with all methods (BM25,
-Vector, Hybrid) and output evaluation results.
-
-Options:
-
-```bash
-# Use a different dataset
-./runbechmark.sh --dataset datasets/processed/scidocs_query-100
-
-# Use a different model for embeddings (need to specify vector dimention depending on model to be used)
-./runbechmark.sh --model intfloat/multilingual-e5-small --dataset datasets/processed/scidocs_query-100 --vector-dims 768
-```
-
-Use `./runbechmark.sh --help` for full options.
-
-##### Manual benchmark steps
-
-If you prefer to run each step manually:
-
-Start Elasticsearch and Weaviate backends:
-
-```bash
-docker compose up -d
-```
-
-Verify services are running:
-
-```bash
-# Elasticsearch
-curl http://localhost:9200
-
-# Weaviate
-curl http://localhost:8080/v1/.well-known/ready
-```
-
-###### Elasticsearch
-
-BM25 search (keyword-only):
-
-```bash
-# Index corpus for BM25
-uv run scripts/index.py \
-  --backend elasticsearch \
-  --dataset datasets/processed/miracl-ja-en_query-200
-
-# Search with BM25
-uv run scripts/search.py \
-  --backend elasticsearch \
-  --queries datasets/processed/miracl-ja-en_query-200/queries.jsonl \
-  --output runs/es.bm25.trec \
-  --method bm25
-```
-
-Vector/hybrid search (requires embeddings from Step 4):
-
-```bash
-# Index chunks with embeddings
-uv run scripts/index.py \
-  --backend elasticsearch \
-  --embeddings embeddings/miracl-ja-en_query-200/multilingual-e5-small/corpus_embeddings.jsonl
-
-# Vector search
-uv run scripts/search.py \
-  --backend elasticsearch \
-  --queries datasets/processed/miracl-ja-en_query-200/queries.jsonl \
-  --output runs/es.vector.trec \
-  --method vector \
-  --embeddings embeddings/miracl-ja-en_query-200/multilingual-e5-small/query_embeddings.jsonl
-
-# Hybrid search (BM25 + Vector with RRF fusion)
-uv run scripts/search.py \
-  --backend elasticsearch \
-  --queries datasets/processed/miracl-ja-en_query-200/queries.jsonl \
-  --output runs/es.hybrid.trec \
-  --method hybrid \
-  --embeddings embeddings/miracl-ja-en_query-200/multilingual-e5-small/query_embeddings.jsonl
-```
-
-###### Weaviate
-
-BM25 search (keyword-only):
-
-```bash
-# Index corpus for BM25
-uv run scripts/index.py \
-  --backend weaviate \
-  --dataset datasets/processed/miracl-ja-en_query-200
-
-# Search with BM25
-uv run scripts/search.py \
-  --backend weaviate \
-  --queries datasets/processed/miracl-ja-en_query-200/queries.jsonl \
-  --output runs/weaviate.bm25.trec \
-  --method bm25
-```
-
-Vector/hybrid search (requires embeddings from Step 4):
-
-```bash
-# Index chunks with embeddings
-uv run scripts/index.py \
-  --backend weaviate \
-  --embeddings embeddings/miracl-ja-en_query-200/multilingual-e5-small/corpus_embeddings.jsonl
-
-# Vector search
-uv run scripts/search.py \
-  --backend weaviate \
-  --queries datasets/processed/miracl-ja-en_query-200/queries.jsonl \
-  --output runs/weaviate.vector.trec \
-  --method vector \
-  --embeddings embeddings/miracl-ja-en_query-200/multilingual-e5-small/query_embeddings.jsonl
-
-# Hybrid search (BM25 + Vector with RRF fusion)
-uv run scripts/search.py \
-  --backend weaviate \
-  --queries datasets/processed/miracl-ja-en_query-200/queries.jsonl \
-  --output runs/weaviate.hybrid.trec \
-  --method hybrid \
-  --embeddings embeddings/miracl-ja-en_query-200/multilingual-e5-small/query_embeddings.jsonl
-```
-
-##### Advanced: Chunk aggregation parameters
-
-All search methods support chunk-level retrieval with document-level
-aggregation:
-
-- `--chunk-top-k`: Number of chunks to retrieve (default: 100)
-- `--agg-method`: Aggregation method (default: `max_p`)
-  - `max_p`: Maximum score across chunks (MaxP)
-  - `top_m_sum`: Sum of top m chunk scores
-  - `top_m_avg`: Average of top m chunk scores
-  - `rrf_per_doc`: RRF fusion within document chunks
-- `--agg-m`: Number of top chunks per document for `top_m_*` methods
-  (default: 3)
-
-Example with custom aggregation:
-
-```bash
-uv run scripts/search.py \
-  --backend elasticsearch \
-  --queries datasets/processed/miracl-ja-en_query-200/queries.jsonl \
-  --output runs/es.bm25.max_p.trec \
-  --method bm25 \
-  --chunk-top-k 200 \
-  --agg-method max_p
-```
-
-### Step 6: Evaluate results
-
-If you used `./runbechmark.sh`, evaluation is already complete. Otherwise,
-run:
-
-```bash
-uv run scripts/evaluate.py \
-  --runs runs/*.trec \
-  --qrels datasets/processed/miracl-ja-en_query-200/qrels.tsv
-```
-
-### Step 7: Clean up
-
-Stop Docker services:
-
-```bash
-docker compose down
-```
-
-To also remove indexed data volumes:
-
-```bash
-docker compose down -v
-```
-
-## Troubleshooting
-
-### Out of memory during subset generation
-
-Large corpora (especially MIRACL-en) can exhaust memory. Limit corpus size:
-
-```bash
-uv run scripts/generate_subset.py \
-  --corpus datasets/raw/miracl_ja_corpus_dev.jsonl,datasets/raw/miracl_en_corpus_dev.jsonl \
-  --queries datasets/raw/miracl_ja_queries_dev.jsonl,datasets/raw/miracl_en_queries_dev.jsonl \
-  --qrels datasets/raw/miracl_ja_qrels_dev.tsv,datasets/raw/miracl_en_qrels_dev.tsv \
-  --n-queries 200 \
-  --max-docs-per-dataset 1000000  # Limit to 1M docs per dataset
-```
+**Related upstream issue?**: https://github.com/microsoft/onnxruntime/issues/26367
