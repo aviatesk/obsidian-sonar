@@ -425,30 +425,53 @@ This is the final number after chunk aggregation:
     );
     this.renderMarkdownDesc(
       embedderBackendSetting.descEl,
-      `Choose embedding backend:
-- [Transformers.js](https://huggingface.co/docs/transformers.js/en/index) (default): Bundled with Sonar and works without external dependencies. However, Transformers.js behavior when using browser GPU resources remains unstable, and issues such as incorrect embeddings being generated have been reported when using some high-precision models.
-- [Ollama](https://ollama.com/): May provide more stable embeddings, especially with high-precision models. Requires Ollama to be installed on your system and the Ollama server to be running. This option offloads embedding computation to a local Ollama instance, which can be more reliable but adds an external dependency.
-`
+      'Choose embedding backend (Transformers.js or llama.cpp).'
     );
+
+    let transformersSettings: HTMLElement;
+    let llamacppSettings: HTMLElement;
+
+    const updateVisibility = (backendType: EmbedderBackend) => {
+      if (backendType === 'transformers') {
+        transformersSettings.style.display = '';
+        llamacppSettings.style.display = 'none';
+      } else {
+        transformersSettings.style.display = 'none';
+        llamacppSettings.style.display = '';
+      }
+    };
+
     embedderBackendSetting.addDropdown(dropdown =>
       dropdown
         .addOption('transformers', 'Transformers.js')
-        .addOption('ollama', 'Ollama')
+        .addOption('llamacpp', 'llama.cpp')
         .setValue(this.configManager.get('embedderBackend'))
         .onChange(async value => {
           await this.configManager.set(
             'embedderBackend',
             value as EmbedderBackend
           );
+          updateVisibility(value as EmbedderBackend);
+          new Notice(
+            'Embedder backend changed. Please reload the plugin for changes to take effect.'
+          );
         })
     );
 
-    const embeddingModelSetting = new Setting(embedderContainer).setName(
+    // Transformers.js settings
+    transformersSettings = embedderContainer.createDiv();
+    const transformersHeader = transformersSettings.createEl('h4', {
+      text: 'Transformers.js configuration',
+    });
+    transformersHeader.style.marginTop = '1em';
+    transformersHeader.style.marginBottom = '0.5em';
+
+    const embeddingModelSetting = new Setting(transformersSettings).setName(
       'Embedding model'
     );
     this.renderMarkdownDesc(
       embeddingModelSetting.descEl,
-      'HuggingFace model ID for Transformers.js (e.g., `Xenova/multilingual-e5-small`) or Ollama model name (e.g., `qllama/multilingual-e5-small`).'
+      'HuggingFace model ID for Transformers.js (e.g., `Xenova/bge-m3`).'
     );
     embeddingModelSetting.addText(text =>
       text
@@ -458,6 +481,74 @@ This is the final number after chunk aggregation:
           await this.configManager.set('embeddingModel', value);
         })
     );
+
+    // llama.cpp settings
+    llamacppSettings = embedderContainer.createDiv();
+    const llamacppHeader = llamacppSettings.createEl('h4', {
+      text: 'llama.cpp configuration',
+    });
+    llamacppHeader.style.marginTop = '1em';
+    llamacppHeader.style.marginBottom = '0.5em';
+
+    const llamacppServerPathSetting = new Setting(llamacppSettings).setName(
+      'Server path'
+    );
+    this.renderMarkdownDesc(
+      llamacppServerPathSetting.descEl,
+      'Path to llama.cpp server binary (e.g., `llama-server` or `/path/to/llama-server`).'
+    );
+    llamacppServerPathSetting.addText(text =>
+      text
+        .setPlaceholder('llama-server')
+        .setValue(this.configManager.get('llamacppServerPath'))
+        .onChange(async value => {
+          await this.configManager.set('llamacppServerPath', value);
+          new Notice(
+            'llama.cpp configuration changed. Please reload the plugin for changes to take effect.'
+          );
+        })
+    );
+
+    const llamacppModelRepoSetting = new Setting(llamacppSettings).setName(
+      'Model repository'
+    );
+    this.renderMarkdownDesc(
+      llamacppModelRepoSetting.descEl,
+      'HuggingFace repository for llama.cpp model (e.g., `BAAI/bge-m3-gguf`).'
+    );
+    llamacppModelRepoSetting.addText(text =>
+      text
+        .setPlaceholder('BAAI/bge-m3-gguf')
+        .setValue(this.configManager.get('llamacppModelRepo'))
+        .onChange(async value => {
+          await this.configManager.set('llamacppModelRepo', value);
+          new Notice(
+            'llama.cpp configuration changed. Please reload the plugin for changes to take effect.'
+          );
+        })
+    );
+
+    const llamacppModelFileSetting = new Setting(llamacppSettings).setName(
+      'Model file'
+    );
+    this.renderMarkdownDesc(
+      llamacppModelFileSetting.descEl,
+      'GGUF filename in the repository (e.g., `bge-m3-q8_0.gguf`).'
+    );
+    llamacppModelFileSetting.addText(text =>
+      text
+        .setPlaceholder('bge-m3-q8_0.gguf')
+        .setValue(this.configManager.get('llamacppModelFile'))
+        .onChange(async value => {
+          await this.configManager.set('llamacppModelFile', value);
+          new Notice(
+            'llama.cpp configuration changed. Please reload the plugin for changes to take effect.'
+          );
+        })
+    );
+
+    // Set initial visibility
+    updateVisibility(this.configManager.get('embedderBackend'));
   }
 
   private createSearchParamsSection(containerEl: HTMLElement): void {

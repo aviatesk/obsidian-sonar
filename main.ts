@@ -17,7 +17,7 @@ import { MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
 import type { Embedder } from './src/Embedder';
 import { TransformersEmbedder } from './src/TransformersEmbedder';
-import { OllamaEmbedder } from './src/OllamaEmbedder';
+import { LlamaCppEmbedder } from './src/LlamaCppEmbedder';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { DebugRunner } from './src/EmbeddingDebugger';
 
@@ -40,6 +40,26 @@ export default class SonarPlugin extends Plugin {
 
   private warn(msg: string): void {
     this.configManager.getLogger().warn(`[Sonar.Plugin] ${msg}`);
+  }
+
+  private async initializeEmbedder(
+    embedder: Embedder,
+    backendName: string,
+    modelDescription: string
+  ): Promise<boolean> {
+    try {
+      await embedder.initialize();
+      this.log(`${backendName} embedder initialized: ${modelDescription}`);
+      return true;
+    } catch (error) {
+      this.error(`Failed to initialize ${backendName} embedder: ${error}`);
+      new Notice(
+        `Failed to initialize ${backendName} embedder. Check console for details.`
+      );
+      embedder.cleanup();
+      this.embedder = null;
+      return false;
+    }
   }
 
   async onload() {
@@ -83,31 +103,43 @@ export default class SonarPlugin extends Plugin {
     const embedderBackend = this.configManager.get('embedderBackend');
     const embeddingModel = this.configManager.get('embeddingModel');
 
-    if (embedderBackend === 'ollama') {
-      const { TransformersWorker } = await import('./src/TransformersWorker');
-      const worker = new TransformersWorker(this.configManager);
-      const tokenizerModel = 'Xenova/multilingual-e5-small';
-      this.embedder = new OllamaEmbedder(
-        embeddingModel,
-        this.configManager,
-        worker,
-        tokenizerModel
+    if (embedderBackend === 'llamacpp') {
+      const serverPath = this.configManager.get('llamacppServerPath');
+      const modelRepo = this.configManager.get('llamacppModelRepo');
+      const modelFile = this.configManager.get('llamacppModelFile');
+      const embedder = (this.embedder = new LlamaCppEmbedder(
+        serverPath,
+        modelRepo,
+        modelFile,
+        this.configManager
+      ));
+      embedder.setStatusCallback(status =>
+        this.statusBarItem.setText(`Sonar: ${status}`)
       );
-      this.log(
-        `Ollama embedder initialized: ${embeddingModel} (tokenizer: ${tokenizerModel})`
+      const success = await this.initializeEmbedder(
+        embedder,
+        'llama.cpp',
+        `${modelRepo}/${modelFile}`
       );
+      if (!success) return;
     } else {
       // Uses Blob URL Worker with inlined code to make Transformers.js think this Electron environment is a browser environment
-      this.embedder = new TransformersEmbedder(
+      const embedder = (this.embedder = new TransformersEmbedder(
         embeddingModel,
         this.configManager,
         // TODO Make GPU use configurable
         'webgpu',
         'fp32'
+      ));
+      embedder.setStatusCallback(status =>
+        this.statusBarItem.setText(`Sonar: ${status}`)
       );
-      this.log(
-        `Transformers.js embedder initialized: ${embeddingModel} (${this.embedder.getDevice()})`
+      const success = await this.initializeEmbedder(
+        embedder,
+        'Transformers.js',
+        embeddingModel
       );
+      if (!success) return;
     }
 
     try {

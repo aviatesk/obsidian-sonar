@@ -24,6 +24,7 @@ import type {
   ReadyMessage,
   InitMessage,
   UpdateLogLevelMessage,
+  ProgressMessage,
 } from './transformers-worker-types';
 
 // Logging helpers (follows same format as main.ts)
@@ -64,16 +65,33 @@ env.useBrowserCache = true; // Cache models for offline use
 const featureExtractorCache = new Map<string, Promise<any>>();
 const tokenizerCache = new Map<string, Promise<PreTrainedTokenizer>>();
 
+function createProgressCallback() {
+  return (progressInfo: any) => {
+    const msg: ProgressMessage = {
+      __kind: 'progress',
+      status: progressInfo.status,
+      name: progressInfo.name,
+      file: progressInfo.file,
+      progress: progressInfo.progress,
+      loaded: progressInfo.loaded,
+      total: progressInfo.total,
+    };
+    self.postMessage(msg);
+  };
+}
+
 async function getFeatureExtractor(
   modelId: string,
   device: 'webgpu' | 'wasm',
-  dtype: 'q8' | 'q4' | 'fp16' | 'fp32'
+  dtype: 'q8' | 'q4' | 'fp16' | 'fp32',
+  sendProgress = false
 ): Promise<FeatureExtractionPipeline> {
   const cacheKey = `${modelId}-${device}-${dtype}`;
   if (!featureExtractorCache.has(cacheKey)) {
     const promise = pipeline('feature-extraction', modelId, {
       device,
       dtype,
+      progress_callback: sendProgress ? createProgressCallback() : undefined,
     });
     featureExtractorCache.set(cacheKey, promise);
     log(
@@ -83,9 +101,14 @@ async function getFeatureExtractor(
   return featureExtractorCache.get(cacheKey)!;
 }
 
-async function getTokenizer(modelId: string) {
+async function getTokenizer(modelId: string, sendProgress = false) {
   if (!tokenizerCache.has(modelId)) {
-    tokenizerCache.set(modelId, AutoTokenizer.from_pretrained(modelId));
+    tokenizerCache.set(
+      modelId,
+      AutoTokenizer.from_pretrained(modelId, {
+        progress_callback: sendProgress ? createProgressCallback() : undefined,
+      })
+    );
     log(`Created tokenizer cache for ${modelId}`);
   }
   return tokenizerCache.get(modelId)!;
@@ -119,7 +142,17 @@ self.addEventListener('message', async (e: MessageEvent) => {
   try {
     let result: unknown;
 
-    if (method === 'embeddings') {
+    if (method === 'initializeModel') {
+      // Pre-load model with progress reporting
+      await getFeatureExtractor(
+        params.modelId,
+        params.device,
+        params.dtype,
+        true
+      );
+      await getTokenizer(params.modelId, true);
+      result = undefined;
+    } else if (method === 'embeddings') {
       const extractor = await getFeatureExtractor(
         params.modelId,
         params.device,

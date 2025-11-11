@@ -7,6 +7,7 @@ import type {
   ReadyMessage,
   InitMessage,
   UpdateLogLevelMessage,
+  ProgressMessage,
   RPCMethodReturnTypes,
 } from './transformers-worker-types';
 
@@ -40,11 +41,18 @@ export class TransformersWorker extends WithLogging {
   >();
   private initPromise: Promise<void>;
   private unsubscribeLogLevel?: () => void;
+  private lastProgressTime: number = 0;
+  private modelReady: boolean = false;
+  private statusCallback?: (status: string) => void;
 
   constructor(protected configManager: ConfigManager) {
     super();
     this.initPromise = this.initialize();
     this.setupLogLevelListener();
+  }
+
+  setStatusCallback(callback: (status: string) => void): void {
+    this.statusCallback = callback;
   }
 
   private setupLogLevelListener(): void {
@@ -135,8 +143,33 @@ export class TransformersWorker extends WithLogging {
   }
 
   private handleMessage(event: MessageEvent): void {
-    const data = event.data as RPCResponse;
-    const { id, result, error } = data;
+    const data = event.data;
+
+    // Handle progress messages
+    if ('__kind' in data && data.__kind === 'progress') {
+      const progressMsg = data as ProgressMessage;
+      this.lastProgressTime = Date.now();
+      if (progressMsg.status === 'ready') {
+        this.modelReady = true;
+        this.log('Model loaded');
+        if (this.statusCallback) {
+          this.statusCallback('Model loaded');
+        }
+      } else if (progressMsg.status === 'progress' && progressMsg.file) {
+        const percent = progressMsg.progress
+          ? (progressMsg.progress * 100).toFixed(0)
+          : '?';
+        this.log(`Downloading ${progressMsg.file}: ${percent}%`);
+        if (this.statusCallback) {
+          this.statusCallback(`Downloading: ${percent}%`);
+        }
+      }
+      return;
+    }
+
+    // Handle RPC responses
+    const rpcData = data as RPCResponse;
+    const { id, result, error } = rpcData;
     if (typeof id !== 'string') return;
 
     const pending = this.pendingRequests.get(id);
@@ -190,6 +223,17 @@ export class TransformersWorker extends WithLogging {
 
   isReady(): boolean {
     return this.worker !== null;
+  }
+
+  isModelReady(): boolean {
+    return this.modelReady;
+  }
+
+  getTimeSinceLastProgress(): number {
+    if (this.lastProgressTime === 0) {
+      return Infinity;
+    }
+    return Date.now() - this.lastProgressTime;
   }
 
   cleanup(): void {
