@@ -1232,11 +1232,8 @@ export class IndexManager extends WithLogging {
     let totalSize = 0;
     for (const file of files) {
       const content = await this.vault.cachedRead(file);
-      const lines = content.split('\n');
-      for (const line of lines) {
-        const lineTokens = await this.embedder.countTokens(line);
-        totalTokens += lineTokens;
-      }
+      const fileTokens = await this.embedder.countTokens(content);
+      totalTokens += fileTokens;
       totalCharacters += content.length;
       totalSize += file.stat.size;
     }

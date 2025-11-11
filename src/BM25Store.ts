@@ -362,7 +362,6 @@ export class BM25Store extends WithLogging {
       }
     }
 
-    // Sort by score and return top K
     const results = Array.from(docScores.entries())
       .map(([docId, score]) => ({ docId, score }))
       .sort((a, b) => b.score - a.score)
@@ -375,7 +374,6 @@ export class BM25Store extends WithLogging {
     documentFrequency: number,
     totalDocuments: number
   ): number {
-    // BM25 IDF formula
     return Math.log(
       (totalDocuments - documentFrequency + 0.5) / (documentFrequency + 0.5) + 1
     );
@@ -497,8 +495,7 @@ export class BM25Store extends WithLogging {
 
   /**
    * Tokenizes text for BM25 indexing and search
-   * Uses transformers.js tokenizer (e.g., BGE-M3)
-   * Processes line by line to avoid hanging on large files
+   * Uses embedder tokenizer
    * Returns token IDs as strings for efficient exact matching
    */
   private async tokenize(
@@ -511,21 +508,11 @@ export class BM25Store extends WithLogging {
       normalizedText = text.toLowerCase();
     }
 
-    // Split by lines and tokenize line by line to avoid hanging on large files
-    const lines = normalizedText.split('\n');
-    const allTokens: string[] = [];
+    // Get token IDs using Embedder API (handles large texts internally)
+    const tokenIds = await this.embedder.getTokenIds(normalizedText);
 
-    for (const line of lines) {
-      // Get token IDs using Embedder API (special tokens already filtered)
-      const tokenIds = await this.embedder.getTokenIds(line);
-
-      // Convert to strings for BM25 matching
-      for (const tokenId of tokenIds) {
-        allTokens.push(String(tokenId));
-      }
-    }
-
-    return allTokens;
+    // Convert to strings for BM25 matching
+    return tokenIds.map(id => String(id));
   }
 
   /**
