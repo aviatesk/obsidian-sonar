@@ -102,7 +102,7 @@ export class SettingTab extends PluginSettingTab {
     );
     reinitializeSetting.addButton(button =>
       button.setButtonText('Reinitialize').onClick(async () => {
-        await this.plugin.reinitializeBackend();
+        await this.plugin.reinitializeSonar();
       })
     );
 

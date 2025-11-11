@@ -84,7 +84,7 @@ export default class SonarPlugin extends Plugin {
       if (this.reinitializing) {
         return;
       }
-      await this.reinitializeBackend();
+      await this.reinitializeSonar();
     };
 
     this.configListeners.push(
@@ -110,19 +110,17 @@ export default class SonarPlugin extends Plugin {
     );
   }
 
-  async reinitializeBackend(): Promise<void> {
+  async reinitializeSonar(): Promise<void> {
     if (this.reinitializing) {
-      this.warn('Backend reinitialization already in progress');
+      this.warn('Sonar reinitialization already in progress');
       return;
     }
 
     this.reinitializing = true;
-    this.statusBarItem.setText(
-      this.formatStatusBarText('Switching backend...')
-    );
+    this.statusBarItem.setText(this.formatStatusBarText('Reinitializing...'));
 
     try {
-      this.log('Reinitializing backend...');
+      this.log('Reinitializing Sonar...');
 
       if (this.indexManager) {
         this.indexManager.cleanup();
@@ -144,13 +142,13 @@ export default class SonarPlugin extends Plugin {
 
       await this.initializeAsync();
 
-      this.log('Backend reinitialized successfully');
-      new Notice('Embedder backend switched successfully');
+      this.log('Sonar reinitialized successfully');
+      new Notice('Sonar reinitialized successfully');
     } catch (error) {
-      this.error(`Failed to reinitialize backend: ${error}`);
-      new Notice('Failed to switch embedder backend - check console');
+      this.error(`Failed to reinitialize Sonar: ${error}`);
+      new Notice('Failed to reinitialize Sonar - check console');
       this.statusBarItem.setText(
-        this.formatStatusBarText('Failed to switch backend')
+        this.formatStatusBarText('Failed to reinitialize')
       );
     } finally {
       this.reinitializing = false;
@@ -172,6 +170,9 @@ export default class SonarPlugin extends Plugin {
     this.registerCommands();
     const settingTab = new SettingTab(this.app, this);
     this.addSettingTab(settingTab);
+
+    // Register views once
+    this.registerViews();
 
     this.setupConfigListeners();
 
@@ -320,14 +321,13 @@ export default class SonarPlugin extends Plugin {
 
     this.debugRunner = new DebugRunner(this.configManager, this.embedder);
 
-    this.registerViews(this.searchManager, this.embedder);
-
     if (this.configManager.get('autoOpenRelatedNotes')) {
       this.activateRelatedNotesView();
     }
 
     try {
       await this.indexManager.onLayoutReady();
+      this.notifyRelatedNotesViewsInitialized();
     } catch (error) {
       this.statusBarItem.setText(
         this.formatStatusBarText('Failed to initialize')
@@ -342,6 +342,16 @@ export default class SonarPlugin extends Plugin {
     }
   }
 
+  private notifyRelatedNotesViewsInitialized(): void {
+    const leaves = this.app.workspace.getLeavesOfType(RELATED_NOTES_VIEW_TYPE);
+    leaves.forEach(leaf => {
+      const view = leaf.view;
+      if (view instanceof RelatedNotesView) {
+        view.onSonarInitialized();
+      }
+    });
+  }
+
   private isInitialized(): boolean {
     return this.indexManager !== null;
   }
@@ -354,19 +364,9 @@ export default class SonarPlugin extends Plugin {
     return true;
   }
 
-  private registerViews(
-    searchManager: SearchManager,
-    embedder: Embedder
-  ): void {
+  private registerViews(): void {
     this.registerView(RELATED_NOTES_VIEW_TYPE, leaf => {
-      return new RelatedNotesView(
-        leaf,
-        searchManager,
-        this.configManager,
-        embedder,
-        ext => this.registerEditorExtension(ext),
-        processor => this.registerMarkdownPostProcessor(processor)
-      );
+      return new RelatedNotesView(leaf, this, this.configManager);
     });
   }
 
@@ -375,7 +375,7 @@ export default class SonarPlugin extends Plugin {
       id: 'reinitialize-sonar',
       name: 'Reinitialize Sonar',
       callback: async () => {
-        await this.reinitializeBackend();
+        await this.reinitializeSonar();
       },
     });
 
@@ -431,9 +431,7 @@ export default class SonarPlugin extends Plugin {
     this.addCommand({
       id: 'delete-vault-databases',
       name: 'Delete all search databases for this vault',
-      callback: async () => {
-        await this.deleteAllVaultDatabases();
-      },
+      callback: () => this.deleteAllVaultDatabases(),
     });
 
     this.addCommand({
@@ -653,6 +651,8 @@ export default class SonarPlugin extends Plugin {
     } else {
       new Notice('Failed to delete any databases - check console');
     }
+
+    this.reinitializeSonar();
   }
 
   async onunload() {
