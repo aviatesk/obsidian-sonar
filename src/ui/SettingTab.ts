@@ -15,6 +15,7 @@ export class SettingTab extends PluginSettingTab {
   plugin: SonarPlugin;
   statsDiv: HTMLDivElement | null = null;
   private configManager: ConfigManager;
+  private configListeners: Array<() => void> = [];
 
   constructor(app: App, plugin: SonarPlugin) {
     super(app, plugin);
@@ -25,6 +26,9 @@ export class SettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
+
+    this.setupConfigListeners();
+
     this.createActionsSection(containerEl);
     this.createStatisticsSection(containerEl);
     this.createIndexConfigSection(containerEl);
@@ -35,6 +39,41 @@ export class SettingTab extends PluginSettingTab {
     this.createLoggingConfigSection(containerEl);
     this.createBenchmarkConfigSection(containerEl);
     this.createDebugConfigSection(containerEl);
+  }
+
+  hide(): void {
+    this.configListeners.forEach(unsubscribe => unsubscribe());
+    this.configListeners = [];
+  }
+
+  private setupConfigListeners(): void {
+    this.configListeners.forEach(unsubscribe => unsubscribe());
+    this.configListeners = [];
+
+    const handleStatsUpdate = async () => {
+      await this.updateStats();
+    };
+
+    // Index configuration changes (indexable files change)
+    this.configListeners.push(
+      this.configManager.subscribe('indexPath', handleStatsUpdate)
+    );
+    this.configListeners.push(
+      this.configManager.subscribe('excludedPaths', handleStatsUpdate)
+    );
+    // Embedder backend changes (database changes)
+    this.configListeners.push(
+      this.configManager.subscribe('embedderBackend', handleStatsUpdate)
+    );
+    this.configListeners.push(
+      this.configManager.subscribe('embeddingModel', handleStatsUpdate)
+    );
+    this.configListeners.push(
+      this.configManager.subscribe('llamacppModelRepo', handleStatsUpdate)
+    );
+    this.configListeners.push(
+      this.configManager.subscribe('llamacppModelFile', handleStatsUpdate)
+    );
   }
 
   private renderMarkdownDesc(el: HTMLElement, markdown: string): void {
@@ -190,7 +229,6 @@ export class SettingTab extends PluginSettingTab {
         .onChange(async value => {
           const normalized = value ? normalizePath(value) : '';
           await this.configManager.set('indexPath', normalized);
-          await this.updateStats();
         })
     );
 
@@ -216,7 +254,6 @@ Supports:
             .filter(line => line.length > 0)
             .map(path => normalizePath(path));
           await this.configManager.set('excludedPaths', paths);
-          await this.updateStats();
         });
       text.inputEl.rows = 5;
       text.inputEl.cols = 50;
@@ -452,9 +489,6 @@ This is the final number after chunk aggregation:
             value as EmbedderBackend
           );
           updateVisibility(value as EmbedderBackend);
-          new Notice(
-            'Embedder backend changed. Please reload the plugin for changes to take effect.'
-          );
         })
     );
 
@@ -503,9 +537,6 @@ This is the final number after chunk aggregation:
         .setValue(this.configManager.get('llamacppServerPath'))
         .onChange(async value => {
           await this.configManager.set('llamacppServerPath', value);
-          new Notice(
-            'llama.cpp configuration changed. Please reload the plugin for changes to take effect.'
-          );
         })
     );
 
@@ -522,9 +553,6 @@ This is the final number after chunk aggregation:
         .setValue(this.configManager.get('llamacppModelRepo'))
         .onChange(async value => {
           await this.configManager.set('llamacppModelRepo', value);
-          new Notice(
-            'llama.cpp configuration changed. Please reload the plugin for changes to take effect.'
-          );
         })
     );
 
@@ -541,13 +569,9 @@ This is the final number after chunk aggregation:
         .setValue(this.configManager.get('llamacppModelFile'))
         .onChange(async value => {
           await this.configManager.set('llamacppModelFile', value);
-          new Notice(
-            'llama.cpp configuration changed. Please reload the plugin for changes to take effect.'
-          );
         })
     );
 
-    // Set initial visibility
     updateVisibility(this.configManager.get('embedderBackend'));
   }
 
@@ -758,6 +782,21 @@ Hybrid search limits both embedding and BM25 results to \`top_k * retrieval_mult
         .setDynamicTooltip()
         .onChange(async value => {
           await this.configManager.set('statusBarMaxLength', value);
+        })
+    );
+
+    const showBackendSetting = new Setting(loggingContainer).setName(
+      'Show backend in status bar'
+    );
+    this.renderMarkdownDesc(
+      showBackendSetting.descEl,
+      'Display embedder backend in status bar (e.g., `Sonar (llama): Ready`).'
+    );
+    showBackendSetting.addToggle(toggle =>
+      toggle
+        .setValue(this.configManager.get('showBackendInStatusBar'))
+        .onChange(async value => {
+          await this.configManager.set('showBackendInStatusBar', value);
         })
     );
 

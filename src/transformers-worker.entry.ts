@@ -16,7 +16,6 @@ import {
   AutoTokenizer,
   env,
   type PreTrainedTokenizer,
-  type FeatureExtractionPipeline,
 } from '@huggingface/transformers';
 import type {
   RPCRequest,
@@ -58,12 +57,11 @@ function error(msg: string): void {
 env.allowLocalModels = false; // Browser environment doesn't support local file access
 env.useBrowserCache = true; // Cache models for offline use
 
-// Lazy initialization (avoid top-level await to reduce crash points)
-// Note: Using Promise<any> because pipeline() with conditional dtype parameter
+// Model state (one Worker = one model configuration)
+// Note: Using 'any' for featureExtractor because pipeline() with conditional dtype parameter
 // produces a union type too complex for TypeScript to represent
-// Cache by modelId to support model switching
-const featureExtractorCache = new Map<string, Promise<any>>();
-const tokenizerCache = new Map<string, Promise<PreTrainedTokenizer>>();
+let featureExtractor: any = null;
+let tokenizer: PreTrainedTokenizer | null = null;
 
 function createProgressCallback() {
   return (progressInfo: any) => {
@@ -80,38 +78,24 @@ function createProgressCallback() {
   };
 }
 
-async function getFeatureExtractor(
+async function initializeModel(
   modelId: string,
   device: 'webgpu' | 'wasm',
-  dtype: 'q8' | 'q4' | 'fp16' | 'fp32',
-  sendProgress = false
-): Promise<FeatureExtractionPipeline> {
-  const cacheKey = `${modelId}-${device}-${dtype}`;
-  if (!featureExtractorCache.has(cacheKey)) {
-    const promise = pipeline('feature-extraction', modelId, {
-      device,
-      dtype,
-      progress_callback: sendProgress ? createProgressCallback() : undefined,
-    });
-    featureExtractorCache.set(cacheKey, promise);
-    log(
-      `Created feature extractor cache for ${modelId} with device=${device}, dtype=${dtype}`
-    );
-  }
-  return featureExtractorCache.get(cacheKey)!;
-}
+  dtype: 'q8' | 'q4' | 'fp16' | 'fp32'
+): Promise<void> {
+  log(`Initializing model: ${modelId} (device=${device}, dtype=${dtype})`);
 
-async function getTokenizer(modelId: string, sendProgress = false) {
-  if (!tokenizerCache.has(modelId)) {
-    tokenizerCache.set(
-      modelId,
-      AutoTokenizer.from_pretrained(modelId, {
-        progress_callback: sendProgress ? createProgressCallback() : undefined,
-      })
-    );
-    log(`Created tokenizer cache for ${modelId}`);
-  }
-  return tokenizerCache.get(modelId)!;
+  featureExtractor = await pipeline('feature-extraction', modelId, {
+    device,
+    dtype,
+    progress_callback: createProgressCallback(),
+  });
+
+  tokenizer = await AutoTokenizer.from_pretrained(modelId, {
+    progress_callback: createProgressCallback(),
+  });
+
+  log(`Model initialized: ${modelId}`);
 }
 
 // Message handler
@@ -143,35 +127,30 @@ self.addEventListener('message', async (e: MessageEvent) => {
     let result: unknown;
 
     if (method === 'initializeModel') {
-      // Pre-load model with progress reporting
-      await getFeatureExtractor(
-        params.modelId,
-        params.device,
-        params.dtype,
-        true
-      );
-      await getTokenizer(params.modelId, true);
+      await initializeModel(params.modelId, params.device, params.dtype);
       result = undefined;
     } else if (method === 'embeddings') {
-      const extractor = await getFeatureExtractor(
-        params.modelId,
-        params.device,
-        params.dtype
-      );
-      const out = await extractor(params.texts, {
+      if (!featureExtractor) {
+        throw new Error('Model not initialized. Call initializeModel first.');
+      }
+      const out = await featureExtractor(params.texts, {
         pooling: 'mean',
         normalize: true,
       });
       result = out.tolist();
     } else if (method === 'countTokens') {
-      const tok = await getTokenizer(params.modelId);
-      const { input_ids } = await tok(params.text, {
+      if (!tokenizer) {
+        throw new Error('Model not initialized. Call initializeModel first.');
+      }
+      const { input_ids } = await tokenizer(params.text, {
         add_special_tokens: true,
       });
       result = Number(input_ids.size);
     } else if (method === 'getTokenIds') {
-      const tok = await getTokenizer(params.modelId);
-      const ids = tok.encode(params.text, {
+      if (!tokenizer) {
+        throw new Error('Model not initialized. Call initializeModel first.');
+      }
+      const ids = tokenizer.encode(params.text, {
         add_special_tokens: true,
       });
       result = Array.from(ids) as number[];

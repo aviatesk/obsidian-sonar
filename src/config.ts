@@ -51,6 +51,7 @@ export interface SonarSettings {
   // Logging configuration
   // =====================
   statusBarMaxLength: number; // Maximum characters in status bar (0 = no limit)
+  showBackendInStatusBar: boolean; // Show embedder backend in status bar
   debugMode: LogLevel; // Logging verbosity level
 
   // Benchmark configuration
@@ -109,6 +110,7 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   // Logging configuration
   // =====================
   statusBarMaxLength: 40,
+  showBackendInStatusBar: true,
   debugMode: 'error',
 
   // Benchmark configuration
