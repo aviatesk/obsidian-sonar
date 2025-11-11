@@ -20,7 +20,6 @@ export interface FailedFileMetadata {
   mtime: number;
   size: number;
   failedAt: number;
-  retryCount: number;
 }
 
 import type { EmbedderBackend } from './config';

@@ -416,7 +416,7 @@ export default class SonarPlugin extends Plugin {
             '',
             ...failedFiles.map(
               f =>
-                `- ${f.filePath} (failed at ${new Date(f.failedAt).toLocaleString()}, retries: ${f.retryCount})`
+                `- ${f.filePath} (failed at ${new Date(f.failedAt).toLocaleString()})`
             ),
           ].join('\n');
           this.log(message);
