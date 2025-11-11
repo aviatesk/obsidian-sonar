@@ -6,7 +6,7 @@ node_modules/
 *.egg-info/
 
 # Obsidian
-# data.json # TODO When releasing
+data.json
 main.js
 
 # Build intermediates
