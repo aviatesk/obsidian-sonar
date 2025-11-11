@@ -12,6 +12,17 @@ export interface ChunkMetadata {
   indexedAt: number;
 }
 
+/**
+ * Metadata for files that failed to index
+ */
+export interface FailedFileMetadata {
+  filePath: string;
+  mtime: number;
+  size: number;
+  failedAt: number;
+  retryCount: number;
+}
+
 import type { EmbedderBackend } from './config';
 import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
@@ -37,6 +48,7 @@ export const STORE_METADATA = 'metadata';
 export const STORE_EMBEDDINGS = 'embeddings';
 export const STORE_BM25_INVERTED_INDEX = 'bm25-inverted-index';
 export const STORE_BM25_DOC_TOKENS = 'bm25-doc-tokens';
+export const STORE_FAILED_FILES = 'failed-files';
 
 // Index names
 export const INDEX_FILE_PATH = 'file-path';
@@ -75,7 +87,6 @@ export class MetadataStore extends WithLogging {
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = (event.target as any).result as IDBDatabase;
 
-        // Create metadata store
         if (!db.objectStoreNames.contains(STORE_METADATA)) {
           const store = db.createObjectStore(STORE_METADATA, {
             keyPath: 'id',
@@ -85,19 +96,21 @@ export class MetadataStore extends WithLogging {
           });
         }
 
-        // Create embeddings store
         if (!db.objectStoreNames.contains(STORE_EMBEDDINGS)) {
           db.createObjectStore(STORE_EMBEDDINGS, {
             keyPath: 'id',
           });
         }
 
-        // Create BM25 stores
         if (!db.objectStoreNames.contains(STORE_BM25_INVERTED_INDEX)) {
           db.createObjectStore(STORE_BM25_INVERTED_INDEX, { keyPath: 'token' });
         }
         if (!db.objectStoreNames.contains(STORE_BM25_DOC_TOKENS)) {
           db.createObjectStore(STORE_BM25_DOC_TOKENS, { keyPath: 'docId' });
+        }
+
+        if (!db.objectStoreNames.contains(STORE_FAILED_FILES)) {
+          db.createObjectStore(STORE_FAILED_FILES, { keyPath: 'filePath' });
         }
       };
     });
@@ -176,6 +189,7 @@ export class MetadataStore extends WithLogging {
   }
 
   async clearAll(): Promise<void> {
+    this.log('Clearing all data...');
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_METADATA], 'readwrite');
       const store = transaction.objectStore(STORE_METADATA);
@@ -183,9 +197,103 @@ export class MetadataStore extends WithLogging {
 
       transaction.oncomplete = () => {
         this.invalidateCache();
+        this.log('All data cleared');
         resolve();
       };
       transaction.onerror = () => reject(new Error('Failed to clear store'));
+    });
+  }
+
+  async addFailedFile(failedFile: FailedFileMetadata): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(
+        [STORE_FAILED_FILES],
+        'readwrite'
+      );
+      const store = transaction.objectStore(STORE_FAILED_FILES);
+      store.put(failedFile);
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () =>
+        reject(new Error('Failed to add failed file'));
+    });
+  }
+
+  async getFailedFile(filePath: string): Promise<FailedFileMetadata | null> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_FAILED_FILES], 'readonly');
+      const store = transaction.objectStore(STORE_FAILED_FILES);
+      const request = store.get(filePath);
+
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(new Error('Failed to get failed file'));
+    });
+  }
+
+  async getAllFailedFiles(): Promise<FailedFileMetadata[]> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_FAILED_FILES], 'readonly');
+      const store = transaction.objectStore(STORE_FAILED_FILES);
+      const request = store.getAll();
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(new Error('Failed to get failed files'));
+    });
+  }
+
+  async deleteFailedFile(filePath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(
+        [STORE_FAILED_FILES],
+        'readwrite'
+      );
+      const store = transaction.objectStore(STORE_FAILED_FILES);
+      store.delete(filePath);
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () =>
+        reject(new Error('Failed to delete failed file'));
+    });
+  }
+
+  async deleteFailedFiles(filePaths: string[]): Promise<void> {
+    if (filePaths.length === 0) {
+      return;
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(
+        [STORE_FAILED_FILES],
+        'readwrite'
+      );
+      const store = transaction.objectStore(STORE_FAILED_FILES);
+
+      filePaths.forEach(filePath => {
+        store.delete(filePath);
+      });
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () =>
+        reject(new Error('Failed to delete failed files'));
+    });
+  }
+
+  async clearFailedFiles(): Promise<void> {
+    this.log('Clearing failed files data...');
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(
+        [STORE_FAILED_FILES],
+        'readwrite'
+      );
+      const store = transaction.objectStore(STORE_FAILED_FILES);
+      store.clear();
+
+      transaction.oncomplete = () => {
+        this.log('Failed files data cleared');
+        resolve();
+      };
+      transaction.onerror = () =>
+        reject(new Error('Failed to clear failed files'));
     });
   }
 

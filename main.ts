@@ -241,6 +241,32 @@ export default class SonarPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'show-failed-files',
+      name: 'Show files that failed to index',
+      callback: async () => {
+        if (!this.checkInitialized()) return;
+        const failedFiles = await this.metadataStore!.getAllFailedFiles();
+        if (failedFiles.length === 0) {
+          new Notice('No files have failed to index');
+        } else {
+          const message = [
+            `Files that failed to index (${failedFiles.length}):`,
+            '',
+            ...failedFiles.map(
+              f =>
+                `- ${f.filePath} (failed at ${new Date(f.failedAt).toLocaleString()}, retries: ${f.retryCount})`
+            ),
+          ].join('\n');
+          this.log(message);
+          new Notice(
+            `${failedFiles.length} files failed to index - check console for details`,
+            0
+          );
+        }
+      },
+    });
+
+    this.addCommand({
       id: 'delete-vault-databases',
       name: 'Delete all search databases for this vault',
       callback: async () => {
