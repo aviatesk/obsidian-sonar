@@ -1,3 +1,5 @@
+import { requestUrl } from 'obsidian';
+
 export class LlamaCppClient {
   public readonly serverUrl: string;
 
@@ -7,7 +9,8 @@ export class LlamaCppClient {
 
   async getEmbeddings(texts: string[]): Promise<number[][]> {
     try {
-      const response = await fetch(`${this.serverUrl}/v1/embeddings`, {
+      const response = await requestUrl({
+        url: `${this.serverUrl}/v1/embeddings`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -17,13 +20,13 @@ export class LlamaCppClient {
         }),
       });
 
-      if (!response.ok) {
+      if (response.status !== 200) {
         throw new Error(
-          `llama.cpp API error: ${response.status} ${response.statusText}`
+          `llama.cpp API error: ${response.status} ${response.text}`
         );
       }
 
-      const data = await response.json();
+      const data = response.json;
       if (!data.data || !Array.isArray(data.data)) {
         throw new Error('Invalid response from llama.cpp API');
       }
@@ -38,7 +41,8 @@ export class LlamaCppClient {
 
   async tokenize(text: string): Promise<number[]> {
     try {
-      const response = await fetch(`${this.serverUrl}/tokenize`, {
+      const response = await requestUrl({
+        url: `${this.serverUrl}/tokenize`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -48,13 +52,13 @@ export class LlamaCppClient {
         }),
       });
 
-      if (!response.ok) {
+      if (response.status !== 200) {
         throw new Error(
-          `llama.cpp tokenize API error: ${response.status} ${response.statusText}`
+          `llama.cpp tokenize API error: ${response.status} ${response.text}`
         );
       }
 
-      const data = await response.json();
+      const data = response.json;
       if (!data.tokens || !Array.isArray(data.tokens)) {
         throw new Error('Invalid tokenize response from llama.cpp API');
       }
@@ -69,13 +73,14 @@ export class LlamaCppClient {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.serverUrl}/health`, {
+      const response = await requestUrl({
+        url: `${this.serverUrl}/health`,
         method: 'GET',
       });
-      if (!response.ok) {
+      if (response.status !== 200) {
         return false;
       }
-      const data = await response.json();
+      const data = response.json;
       // Server is ready only when status is "ok"
       // Other states: "loading model", "error"
       return data.status === 'ok';
