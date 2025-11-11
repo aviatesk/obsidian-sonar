@@ -93,6 +93,19 @@ export class SettingTab extends PluginSettingTab {
       indexPath = 'root (all files in this vault)';
     }
 
+    const reinitializeSetting = new Setting(actionsContainer).setName(
+      'Reinitialize Sonar'
+    );
+    this.renderMarkdownDesc(
+      reinitializeSetting.descEl,
+      'Reinitialize embedder backend (useful to reinitialize after updating configuration if the initialization failed for missing configuration etc.).'
+    );
+    reinitializeSetting.addButton(button =>
+      button.setButtonText('Reinitialize').onClick(async () => {
+        await this.plugin.reinitializeBackend();
+      })
+    );
+
     const syncSetting = new Setting(actionsContainer).setName(
       'Sync index with vault'
     );

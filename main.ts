@@ -65,7 +65,10 @@ export default class SonarPlugin extends Plugin {
     } catch (error) {
       this.error(`Failed to initialize ${backendName} embedder: ${error}`);
       new Notice(
-        `Failed to initialize ${backendName} embedder. Check console for details.`
+        `Failed to initialize ${backendName} embedder.\n\n` +
+          `Check console for details.\n\n` +
+          `You can change settings and run "Sonar: Reinitialize Sonar" command to retry.`,
+        0
       );
       embedder.cleanup();
       this.embedder = null;
@@ -107,7 +110,7 @@ export default class SonarPlugin extends Plugin {
     );
   }
 
-  private async reinitializeBackend(): Promise<void> {
+  async reinitializeBackend(): Promise<void> {
     if (this.reinitializing) {
       this.warn('Backend reinitialization already in progress');
       return;
@@ -253,7 +256,12 @@ export default class SonarPlugin extends Plugin {
       );
     } catch (error) {
       this.error(`Failed to initialize metadata store: ${error}`);
-      new Notice('Failed to initialize metadata store - check console');
+      new Notice(
+        'Failed to initialize metadata store.\n\n' +
+          'Check console for details.\n\n' +
+          'You can change settings and run "Sonar: Reinitialize Sonar" command to retry.',
+        0
+      );
       return;
     }
 
@@ -270,7 +278,12 @@ export default class SonarPlugin extends Plugin {
       );
     } catch (error) {
       this.error(`Failed to initialize BM25 store: ${error}`);
-      new Notice('Failed to initialize BM25 store - check console');
+      new Notice(
+        'Failed to initialize BM25 store.\n\n' +
+          'Check console for details.\n\n' +
+          'You can change settings and run "Sonar: Reinitialize Sonar" command to retry.',
+        0
+      );
       return;
     }
 
@@ -320,7 +333,12 @@ export default class SonarPlugin extends Plugin {
         this.formatStatusBarText('Failed to initialize')
       );
       this.error(`Failed to initialize semantic search: ${error}`);
-      new Notice('Failed to initialize semantic search - check console');
+      new Notice(
+        'Failed to initialize semantic search.\n\n' +
+          'Check console for details.\n\n' +
+          'You can change settings and run "Sonar: Reinitialize Sonar" command to retry.',
+        0
+      );
     }
   }
 
@@ -353,6 +371,14 @@ export default class SonarPlugin extends Plugin {
   }
 
   private registerCommands(): void {
+    this.addCommand({
+      id: 'reinitialize-sonar',
+      name: 'Reinitialize Sonar',
+      callback: async () => {
+        await this.reinitializeBackend();
+      },
+    });
+
     this.addCommand({
       id: 'sync-index',
       name: 'Sync search index with vault',
