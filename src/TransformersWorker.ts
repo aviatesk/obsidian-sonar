@@ -159,7 +159,6 @@ export class TransformersWorker extends WithLogging {
         const percent = progressMsg.progress
           ? progressMsg.progress.toFixed(0)
           : '?';
-        this.log(`Loading ${progressMsg.file}: ${percent}%`);
         if (this.statusCallback) {
           this.statusCallback(`Loading: ${percent}%`);
         }
@@ -190,7 +189,7 @@ export class TransformersWorker extends WithLogging {
   async call<M extends RPCRequest['method']>(
     method: M,
     params: Extract<RPCRequest, { method: M }>['params'],
-    timeout: number = 120000
+    timeout: number = 60000
   ): Promise<RPCMethodReturnTypes[M]> {
     await this.initPromise;
 
@@ -210,7 +209,6 @@ export class TransformersWorker extends WithLogging {
 
       this.worker!.postMessage(request);
 
-      // Timeout (default: 120 seconds for model loading)
       setTimeout(() => {
         if (this.pendingRequests.has(id)) {
           this.pendingRequests.delete(id);

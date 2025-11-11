@@ -41,7 +41,6 @@ export class LlamaCppEmbedder extends Embedder {
       await downloadModel(this.modelRepo, this.modelFile, progress => {
         if (progress.status === 'progress') {
           const percent = progress.percent.toFixed(0);
-          this.log(`Loading ${progress.file}: ${percent}%`);
           this.updateStatus(`Loading: ${percent}%`);
         }
       });
