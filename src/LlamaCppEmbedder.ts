@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'child_process';
 import { spawn } from 'child_process';
 import { createServer } from 'net';
+import { Notice } from 'obsidian';
 import type { ConfigManager } from './ConfigManager';
 import { Embedder } from './Embedder';
 import { LlamaCppClient } from './LlamaCppClient';
@@ -102,38 +103,70 @@ export class LlamaCppEmbedder extends Embedder {
       '--log-disable',
     ];
 
-    this.serverProcess = spawn(this.serverPath, args, {
-      stdio: 'pipe',
-      detached: false, // Ensure child dies when parent dies
-    });
+    return new Promise((resolve, reject) => {
+      this.serverProcess = spawn(this.serverPath, args, {
+        stdio: 'pipe',
+        detached: false, // Ensure child dies when parent dies
+      });
 
-    this.serverProcess.on('error', error => {
-      this.error(`Failed to start server: ${error.message}`);
-    });
+      let errorHandled = false;
 
-    this.serverProcess.on('exit', (code, signal) => {
-      if (code !== null && code !== 0) {
-        this.warn(`Server exited with code ${code}`);
-      } else if (signal) {
-        this.warn(`Server killed with signal ${signal}`);
-      }
-      if (this.healthCheckInterval) {
-        clearInterval(this.healthCheckInterval);
-        this.healthCheckInterval = null;
-      }
-    });
+      this.serverProcess.on('error', error => {
+        errorHandled = true;
+        this.error(`Failed to start server: ${error.message}`);
+        if ('code' in error && error.code === 'ENOENT') {
+          const noticeMsg =
+            `llama-server not found at path: ${this.serverPath}\n\n` +
+            `Please install llama.cpp first.\n` +
+            `See README for installation instructions`;
+          new Notice(noticeMsg, 0);
+          reject(
+            new Error(
+              `llama-server executable not found at: ${this.serverPath}`
+            )
+          );
+        } else {
+          new Notice(
+            `Failed to start llama.cpp server: ${error.message}\n` +
+              `Check console for details.`
+          );
+          reject(error);
+        }
+      });
 
-    this.serverProcess.stderr?.on('data', data => {
-      const message = data.toString().trim();
-      if (message) {
-        this.log(`Server: ${message}`);
-      }
-    });
+      this.serverProcess.on('exit', (code, signal) => {
+        if (code !== null && code !== 0) {
+          this.warn(`Server exited with code ${code}`);
+        } else if (signal) {
+          this.warn(`Server killed with signal ${signal}`);
+        }
+        if (this.healthCheckInterval) {
+          clearInterval(this.healthCheckInterval);
+          this.healthCheckInterval = null;
+        }
+      });
 
-    this.exitHandlerBound = this.handleParentExit.bind(this);
-    process.on('exit', this.exitHandlerBound);
-    process.on('SIGINT', this.exitHandlerBound);
-    process.on('SIGTERM', this.exitHandlerBound);
+      this.serverProcess.stderr?.on('data', data => {
+        const message = data.toString().trim();
+        if (message) {
+          this.log(`Server: ${message}`);
+        }
+      });
+
+      this.exitHandlerBound = this.handleParentExit.bind(this);
+      process.on('exit', this.exitHandlerBound);
+      process.on('SIGINT', this.exitHandlerBound);
+      process.on('SIGTERM', this.exitHandlerBound);
+
+      // Resolve immediately after spawn (not waiting for server to be ready)
+      // Server readiness is checked by health checks in checkReady()
+      // Small delay to ensure error event fires before we resolve if there's an immediate error
+      setTimeout(() => {
+        if (!errorHandled) {
+          resolve();
+        }
+      }, 100);
+    });
   }
 
   private handleParentExit(): void {
