@@ -50,15 +50,17 @@ def detect_device(device: str = "auto") -> str:
         return "cpu"
 
 
-def chunk_text(text: str, max_length: int, tokenizer, overlap: int = 50) -> List[str]:
+def chunk_text(
+    tokenizer, text: str, max_chunk_tokens: int, chunk_overlap: int = 50
+) -> List[str]:
     """
     Split text into overlapping chunks based on token count.
 
     Args:
-        text: Input text
-        max_length: Maximum tokens per chunk
         tokenizer: Tokenizer from SentenceTransformer model
-        overlap: Number of overlapping tokens between chunks
+        text: Input text
+        max_chunk_tokens: Maximum tokens per chunk
+        chunk_overlap: Number of overlapping tokens between chunks
 
     Returns:
         List of text chunks
@@ -67,7 +69,7 @@ def chunk_text(text: str, max_length: int, tokenizer, overlap: int = 50) -> List
     tokens = tokenizer.tokenize(text)
 
     # If text fits in one chunk, return as is
-    if len(tokens) <= max_length:
+    if len(tokens) <= max_chunk_tokens:
         return [text]
 
     # Split into chunks with overlap
@@ -75,7 +77,7 @@ def chunk_text(text: str, max_length: int, tokenizer, overlap: int = 50) -> List
     start = 0
 
     while start < len(tokens):
-        end = min(start + max_length, len(tokens))
+        end = min(start + max_chunk_tokens, len(tokens))
         chunk_tokens = tokens[start:end]
 
         # Convert tokens back to text
@@ -85,7 +87,7 @@ def chunk_text(text: str, max_length: int, tokenizer, overlap: int = 50) -> List
         # Move to next chunk with overlap
         if end >= len(tokens):
             break
-        start += max_length - overlap
+        start += max_chunk_tokens - chunk_overlap
 
     return chunks
 
@@ -96,8 +98,8 @@ def generate_embeddings(
     model_name: str = "intfloat/multilingual-e5-small",
     batch_size: int = 32,
     device: str = "auto",
-    max_chunk_tokens: int = 512,
-    chunk_overlap: int = 128,
+    max_chunk_tokens: int = 384,
+    chunk_overlap: int = 64,
     limit: int | None = None,
 ) -> None:
     """
@@ -113,8 +115,8 @@ def generate_embeddings(
         model_name: Model name from Hugging Face Hub
         batch_size: Batch size for encoding
         device: Device to use ('auto', 'cuda', 'mps', 'cpu')
-        max_chunk_tokens: Max tokens per chunk (default: 512)
-        chunk_overlap: Number of overlapping tokens between chunks (default: 128)
+        max_chunk_tokens: Max tokens per chunk (default: 384)
+        chunk_overlap: Number of overlapping tokens between chunks (default: 64)
         limit: Maximum number of documents to process (default: None = all)
     """
     device = detect_device(device)
@@ -177,7 +179,7 @@ def generate_embeddings(
 
             # Split into chunks if needed
             chunk_start = time.time()
-            chunks = chunk_text(text, max_chunk_tokens, tokenizer, chunk_overlap)
+            chunks = chunk_text(tokenizer, text, max_chunk_tokens, chunk_overlap)
             timings["chunking"] += time.time() - chunk_start
 
             # Generate embeddings for all chunks
@@ -291,14 +293,14 @@ Examples:
     parser.add_argument(
         "--max-chunk-tokens",
         type=int,
-        default=512,
-        help="Max tokens per chunk (default: 512)",
+        default=384,
+        help="Max tokens per chunk (default: 384)",
     )
     parser.add_argument(
         "--chunk-overlap",
         type=int,
-        default=128,
-        help="Number of overlapping tokens between chunks (default: 128)",
+        default=64,
+        help="Number of overlapping tokens between chunks (default: 64)",
     )
     parser.add_argument(
         "--limit",
