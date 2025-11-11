@@ -12,7 +12,7 @@
   "maxChunkSize": 512,
   "chunkOverlap": 64,
   "maxQueryTokens": 128,
-  "embedderBackend": "transformers",
+  "embedderBackend": "llamacpp",
   "tfjsEmbedderModel": "Xenova/multilingual-e5-small",
   "llamacppServerPath": "llama-server",
   "llamaEmbedderModelRepo": "ggml-org/bge-m3-Q8_0-GGUF",
