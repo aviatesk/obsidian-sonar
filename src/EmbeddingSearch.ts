@@ -23,6 +23,9 @@ function cosineSimilarity(vec1: number[], vec2: number[]): number {
     norm1 += vec1[i] * vec1[i];
     norm2 += vec2[i] * vec2[i];
   }
+  if (norm1 === 0 || norm2 === 0) {
+    return 0;
+  }
   return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
 }
 
