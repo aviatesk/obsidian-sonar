@@ -63,6 +63,10 @@ that the code works by following these steps:
 - Keep the plugin small. Avoid large dependencies. Prefer browser-compatible
   packages.
 - Avoid Node/Electron APIs where possible.
+- **Place temporary and experimental scripts in `/experiments` directory**: All
+  one-off scripts, prototypes, or experimental code should be placed under the
+  `/experiments` directory. This keeps the main codebase clean and makes it
+  clear which code is production vs. experimental.
 
 ### Coding style
 
@@ -76,13 +80,13 @@ that the code works by following these steps:
 - **Do not leave unnecessary comments in code**
   - Instead prefer self-documenting code with clear variable, function names,
     and data/control flows
-- **When writing documentation, avoid excessive decoration**. For example, avoid
-  scattering emojis or overusing `**` bold formatting. Use these only where
-  truly necessary.
-- **Use backticks for code references**: When writing comments, commit messages,
-  or documentation, wrap code-related terms in backticks (e.g., `functionName`,
+- **When writing comments or documentation, avoid excessive decoration**. For
+  example, avoid scattering emojis or overusing `**` bold formatting. Use these
+  only where truly necessary.
+- Use backticks for code references: When writing comments, commit messages, or
+  documentation, wrap code-related terms in backticks (e.g., `functionName`,
   `variableName`, `file.ts`) to distinguish them from regular text.
-- **Commit messages**:
+- Commit messages:
   - Do not include the "Generated with
     [Claude Code](https://claude.com/claude-code)" footer in commit messages for
     this project. Keep commit messages focused and concise.
@@ -167,13 +171,6 @@ format conventions:
     fallback
 - Use `log()`: Normal operations and informational messages
 
-### Commands & settings
-
-- Any user-facing commands should be added via `this.addCommand(...)`.
-- If the plugin has configuration, provide a settings tab and sensible defaults.
-- Persist settings using `this.loadData()` / `this.saveData()`.
-- Use stable command IDs; avoid renaming once released.
-
 ### UX & copy guidelines (for UI text, commands, settings)
 
 - Prefer sentence case for headings, buttons, and titles.
@@ -189,45 +186,6 @@ format conventions:
 - Batch disk access and avoid excessive vault scans.
 - Debounce/throttle expensive operations in response to file system events.
 
-### Agent do/don't
-
-**Do**:
-
-- **Always verify code quality before finalizing changes:**
-  - TypeScript/JavaScript (`main.ts`, `src/`):
-    - During development: Use `npm run build` for quick compilation checks
-    - Before completing work: Run `npm run check` for comprehensive validation
-  - Python (`bench/scripts/`):
-    - Before completing work: Run `uv run basedpyright` and
-      `uv run ruff check .`
-- Provide defaults and validation in settings.
-- Write idempotent code paths so `reload`/`unload` doesn't leak listeners or
-  intervals.
-- Use `this.register*` helpers for everything that needs cleanup, e.g.:
-  ```ts
-  this.registerEvent(
-    this.app.workspace.on('file-open', f => {
-      /* ... */
-    })
-  );
-  this.registerDomEvent(window, 'resize', () => {
-    /* ... */
-  });
-  this.registerInterval(
-    window.setInterval(() => {
-      /* ... */
-    }, 1000)
-  );
-  ```
-
-**Don't**:
-
-- Introduce network calls without an obvious user-facing reason and
-  documentation.
-- Ship features that require cloud services without clear disclosure and
-  explicit opt-in.
-- Store or transmit vault contents unless essential and consented.
-
 ### Versioning & releases
 
 - Bump `version` in `manifest.json` (SemVer) and update `versions.json` to map
@@ -241,8 +199,7 @@ format conventions:
 
 ### Security, privacy, and compliance
 
-Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In
-particular:
+Follow Obsidian's Developer Policies and Plugin Guidelines. In particular:
 
 - Default to local/offline operation. Only make network requests when essential
   to the feature.
