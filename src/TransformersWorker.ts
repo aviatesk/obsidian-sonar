@@ -43,16 +43,14 @@ export class TransformersWorker extends WithLogging {
   private unsubscribeLogLevel?: () => void;
   private lastProgressTime: number = 0;
   private modelReady: boolean = false;
-  private statusCallback?: (status: string) => void;
 
-  constructor(protected configManager: ConfigManager) {
+  constructor(
+    protected configManager: ConfigManager,
+    private statusCallback: (status: string) => void
+  ) {
     super();
     this.initPromise = this.initialize();
     this.setupLogLevelListener();
-  }
-
-  setStatusCallback(callback: (status: string) => void): void {
-    this.statusCallback = callback;
   }
 
   private setupLogLevelListener(): void {
@@ -152,16 +150,12 @@ export class TransformersWorker extends WithLogging {
       if (progressMsg.status === 'ready') {
         this.modelReady = true;
         this.log('Model loaded');
-        if (this.statusCallback) {
-          this.statusCallback('Model loaded');
-        }
+        this.statusCallback('Model loaded');
       } else if (progressMsg.status === 'progress' && progressMsg.file) {
         const percent = progressMsg.progress
           ? progressMsg.progress.toFixed(0)
           : '?';
-        if (this.statusCallback) {
-          this.statusCallback(`Loading: ${percent}%`);
-        }
+        this.statusCallback(`Loading: ${percent}%`);
       }
       return;
     }

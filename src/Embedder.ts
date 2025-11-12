@@ -7,26 +7,18 @@ import { WithLogging } from './WithLogging';
  * Supports both Transformers.js and llama.cpp backends
  */
 export abstract class Embedder extends WithLogging {
-  private statusCallback?: (status: string) => void;
-
-  constructor(protected configManager: ConfigManager) {
+  constructor(
+    protected configManager: ConfigManager,
+    private statusCallback: (status: string) => void
+  ) {
     super();
-  }
-
-  /**
-   * Set callback for status updates (e.g., for status bar display)
-   */
-  setStatusCallback(callback: (status: string) => void): void {
-    this.statusCallback = callback;
   }
 
   /**
    * Update status via callback if set
    */
   protected updateStatus(status: string): void {
-    if (this.statusCallback) {
-      this.statusCallback(status);
-    }
+    this.statusCallback(status);
   }
 
   /**

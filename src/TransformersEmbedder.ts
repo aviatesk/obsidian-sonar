@@ -13,17 +13,13 @@ export class TransformersEmbedder extends Embedder {
 
   constructor(
     private modelId: string,
-    configManager: ConfigManager,
     private device: 'webgpu' | 'wasm' = 'wasm',
-    private dtype: 'q8' | 'q4' | 'fp16' | 'fp32' = 'q8'
+    private dtype: 'q8' | 'q4' | 'fp16' | 'fp32' = 'q8',
+    configManager: ConfigManager,
+    statusCallback: (status: string) => void
   ) {
-    super(configManager);
-    this.worker = new TransformersWorker(configManager);
-  }
-
-  setStatusCallback(callback: (status: string) => void): void {
-    super.setStatusCallback(callback);
-    this.worker.setStatusCallback(callback);
+    super(configManager, statusCallback);
+    this.worker = new TransformersWorker(configManager, statusCallback);
   }
 
   protected async startInitialization(): Promise<void> {

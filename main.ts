@@ -53,6 +53,33 @@ export default class SonarPlugin extends Plugin {
     return `Sonar [${shortName}]: ${status}`;
   }
 
+  private updateStatusBar(text: string, tooltip?: string): void {
+    const maxLength = this.configManager.get('statusBarMaxLength');
+    const fullText = this.formatStatusBarText(text);
+
+    // Always set tooltip to show full text (use custom tooltip if provided)
+    this.statusBarItem.title = tooltip
+      ? this.formatStatusBarText(tooltip)
+      : fullText;
+
+    let paddedText = text;
+    if (maxLength > 0 && text.length > maxLength) {
+      // Need at least 4 characters for ellipsis truncation (e.g., "a...b")
+      if (maxLength >= 4) {
+        const halfLength = Math.floor((maxLength - 3) / 2);
+        const prefix = text.slice(0, halfLength);
+        const suffix = text.slice(-(maxLength - halfLength - 3));
+        paddedText = prefix + '...' + suffix;
+      } else {
+        // For very short maxLength, just truncate
+        paddedText = text.slice(0, maxLength);
+      }
+    } else if (maxLength > 0) {
+      paddedText = text.padEnd(maxLength);
+    }
+    this.statusBarItem.setText(this.formatStatusBarText(paddedText));
+  }
+
   private async initializeEmbedder(
     embedder: Embedder,
     backendName: string,
@@ -117,7 +144,7 @@ export default class SonarPlugin extends Plugin {
     }
 
     this.reinitializing = true;
-    this.statusBarItem.setText(this.formatStatusBarText('Reinitializing...'));
+    this.updateStatusBar('Reinitializing...');
 
     try {
       this.log('Reinitializing Sonar...');
@@ -147,9 +174,7 @@ export default class SonarPlugin extends Plugin {
     } catch (error) {
       this.error(`Failed to reinitialize Sonar: ${error}`);
       new Notice('Failed to reinitialize Sonar - check console');
-      this.statusBarItem.setText(
-        this.formatStatusBarText('Failed to reinitialize')
-      );
+      this.updateStatusBar('Failed to reinitialize');
     } finally {
       this.reinitializing = false;
     }
@@ -164,7 +189,7 @@ export default class SonarPlugin extends Plugin {
 
     // UI elements - needed immediately
     this.statusBarItem = this.addStatusBarItem();
-    this.statusBarItem.setText(this.formatStatusBarText('Initializing...'));
+    this.updateStatusBar('Initializing...');
 
     // Register commands immediately (lightweight)
     this.registerCommands();
@@ -217,11 +242,9 @@ export default class SonarPlugin extends Plugin {
         serverPath,
         modelRepo,
         modelFile,
-        this.configManager
+        this.configManager,
+        status => this.updateStatusBar(status)
       ));
-      embedder.setStatusCallback(status =>
-        this.statusBarItem.setText(this.formatStatusBarText(status))
-      );
       const success = await this.initializeEmbedder(
         embedder,
         'llama.cpp',
@@ -238,13 +261,11 @@ export default class SonarPlugin extends Plugin {
 
       const embedder = (this.embedder = new TransformersEmbedder(
         tfjsModel,
-        this.configManager,
         device,
-        'fp32'
+        'fp32',
+        this.configManager,
+        status => this.updateStatusBar(status)
       ));
-      embedder.setStatusCallback(status =>
-        this.statusBarItem.setText(this.formatStatusBarText(status))
-      );
       const success = await this.initializeEmbedder(
         embedder,
         'Transformers.js',
@@ -321,7 +342,7 @@ export default class SonarPlugin extends Plugin {
       this.app.vault,
       this.app.workspace,
       this.configManager,
-      this.statusBarItem
+      (text: string, tooltip?: string) => this.updateStatusBar(text, tooltip)
     );
 
     this.debugRunner = new DebugRunner(this.configManager, this.embedder);
@@ -330,9 +351,7 @@ export default class SonarPlugin extends Plugin {
       await this.indexManager.onLayoutReady();
       this.notifyRelatedNotesViewsInitialized();
     } catch (error) {
-      this.statusBarItem.setText(
-        this.formatStatusBarText('Failed to initialize')
-      );
+      this.updateStatusBar('Failed to initialize');
       this.error(`Failed to initialize semantic search: ${error}`);
       new Notice(
         'Failed to initialize semantic search.\n\n' +

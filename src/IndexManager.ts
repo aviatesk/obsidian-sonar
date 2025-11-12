@@ -57,6 +57,7 @@ export class IndexManager extends WithLogging {
   private isInitialized: boolean = false;
   private previousActiveFile: TFile | null = null;
   private debouncedProcess: () => void;
+  private statusBarCallback: (text: string, tooltip?: string) => void;
 
   constructor(
     private metadataStore: MetadataStore,
@@ -66,16 +67,16 @@ export class IndexManager extends WithLogging {
     private vault: Vault,
     private workspace: Workspace,
     protected configManager: ConfigManager,
-    private statusBarItem: HTMLElement
+    statusBarCallback: (text: string, tooltip?: string) => void
   ) {
     super();
+    this.statusBarCallback = statusBarCallback;
     this.debouncedProcess = debounce(
       () => this.processPendingOperations(),
       AUTO_INDEX_DEBOUNCE_MS,
       true
     );
     this.setupConfigListeners();
-    this.updateStatusBarWithFileCount();
   }
 
   /**
@@ -91,6 +92,7 @@ export class IndexManager extends WithLogging {
       this.log('Auto-indexing enabled');
     } else {
       this.log('Auto-indexing disabled');
+      await this.updateStatus();
     }
   }
 
@@ -349,7 +351,7 @@ export class IndexManager extends WithLogging {
 
     this.isProcessing = false;
 
-    await this.updateStatusBarWithFileCount();
+    await this.updateStatus();
   }
 
   /**
@@ -431,7 +433,8 @@ export class IndexManager extends WithLogging {
     }
 
     // Step 1: Prepare all chunks for all files
-    this.log(`Preparing ${indexOperations.length} files for indexing...`);
+    this.log(`Chunking ${indexOperations.length} files for indexing...`);
+    this.updateStatus(`Chunking (0/${indexOperations.length})`);
     interface FileChunkData {
       operation: FileOperation;
       file: TFile;
@@ -442,7 +445,8 @@ export class IndexManager extends WithLogging {
     const fileChunkDataList: FileChunkData[] = [];
     let errorCount = 0;
 
-    for (const operation of indexOperations) {
+    for (let opIndex = 0; opIndex < indexOperations.length; opIndex++) {
+      const operation = indexOperations[opIndex];
       const file = operation.file!;
 
       const readStart = Date.now();
@@ -471,6 +475,13 @@ export class IndexManager extends WithLogging {
         chunks,
         indexedAt: Date.now(),
       });
+
+      if (opIndex % 10 === 0 || opIndex === indexOperations.length - 1) {
+        const current = opIndex + 1;
+        const total = indexOperations.length;
+        const percent = Math.round((current / total) * 100);
+        this.updateStatus(`Chunking (${current}/${total}, ${percent}%)`);
+      }
     }
 
     // Step 2: Process embeddings in batches
@@ -616,13 +627,13 @@ export class IndexManager extends WithLogging {
             }
           }
 
-          this.updateStatus({
-            action: this.getOperationAction(operation.type),
-            file: file.basename,
-            filePath: file.path,
-            current: fileIndex + 1,
-            total: fileChunkDataList.length,
-          });
+          const action = this.getOperationAction(operation.type);
+          const current = fileIndex + 1;
+          const total = fileChunkDataList.length;
+          const percent = Math.round((current / total) * 100);
+          const text = `${action} ${file.basename} (${current}/${total}, ${percent}%)`;
+          const tooltip = `${action} ${file.path} (${current}/${total}, ${percent}%)`;
+          this.updateStatus(text, tooltip);
 
           this.log(`${this.getOperationAction(operation.type)} ${file.path}`);
 
@@ -667,7 +678,6 @@ export class IndexManager extends WithLogging {
 
     // Step 3: Index BM25 chunks (excluding NaN files)
     this.log('Preparing BM25 chunks...');
-    this.updateStatusBar('Finalizing BM25 index...');
     const allBM25Chunks: Array<{ docId: string; content: string }> = [];
     for (let fileIndex = 0; fileIndex < fileChunkDataList.length; fileIndex++) {
       if (filesWithNaN.has(fileIndex)) {
@@ -690,7 +700,10 @@ export class IndexManager extends WithLogging {
     if (allBM25Chunks.length > 0) {
       this.log(`Indexing ${allBM25Chunks.length} BM25 chunks...`);
       const bm25Start = Date.now();
-      await this.bm25Store.indexChunkBatch(allBM25Chunks);
+      await this.bm25Store.indexChunkBatch(allBM25Chunks, (current, total) => {
+        const percent = Math.round((current / total) * 100);
+        this.updateStatus(`BM25 indexing (${current}/${total}, ${percent}%)`);
+      });
       timings.bm25Indexing = Date.now() - bm25Start;
       this.log(`Indexed ${allBM25Chunks.length} BM25 chunks`);
     }
@@ -810,13 +823,13 @@ export class IndexManager extends WithLogging {
   private getOperationAction(type: FileOperation['type']): string {
     switch (type) {
       case 'create':
-        return 'Indexed';
+        return 'Indexing';
       case 'modify':
-        return 'Reindexed';
+        return 'Reindexing';
       case 'delete':
-        return 'Deleted';
+        return 'Deleting';
       case 'rename':
-        return 'Renamed';
+        return 'Renaming';
     }
   }
 
@@ -988,7 +1001,7 @@ export class IndexManager extends WithLogging {
     );
     new Notice(message, 0);
     this.log(message);
-    await this.updateStatusBarWithFileCount();
+    await this.updateStatus();
   }
 
   async syncIndex(onload: boolean = false): Promise<SyncStats> {
@@ -1004,7 +1017,7 @@ export class IndexManager extends WithLogging {
     );
     new Notice(message, onload ? 10000 : 0);
     this.log(message);
-    await this.updateStatusBarWithFileCount();
+    await this.updateStatus();
     return stats;
   }
 
@@ -1024,80 +1037,30 @@ export class IndexManager extends WithLogging {
     this.configSubscribers = [];
   }
 
-  private updateStatusBar(text: string): void {
-    const maxLength = this.configManager.get('statusBarMaxLength');
-    const fullText = `Sonar: ${text}`;
-
-    // Always set tooltip to show full text
-    this.statusBarItem.title = fullText;
-
-    let paddedText = text;
-    if (maxLength > 0 && text.length > maxLength) {
-      // Need at least 4 characters for ellipsis truncation (e.g., "a...b")
-      if (maxLength >= 4) {
-        const halfLength = Math.floor((maxLength - 3) / 2);
-        const prefix = text.slice(0, halfLength);
-        const suffix = text.slice(-(maxLength - halfLength - 3));
-        paddedText = prefix + '...' + suffix;
-      } else {
-        // For very short maxLength, just truncate
-        paddedText = text.slice(0, maxLength);
-      }
-    } else if (maxLength > 0) {
-      paddedText = text.padEnd(maxLength);
-    }
-    this.statusBarItem.setText(`Sonar: ${paddedText}`);
-  }
-
-  private async updateStatusBarWithFileCount(): Promise<void> {
-    const indexableCount = getIndexableFilesCount(
-      this.vault,
-      this.configManager
-    );
-    let stats;
-    try {
-      stats = await this.getStats();
-    } catch (error) {
-      this.error(`Failed to get stats: ${error}`);
-      return;
-    }
-    this.updateStatusBar(`Indexed ${stats.totalFiles}/${indexableCount} files`);
-  }
-
-  private updateStatus(progress: {
-    action: string;
-    file: string;
-    filePath: string;
-    current: number;
-    total: number;
-  }): void {
-    const text = `${progress.action} ${progress.file} [${progress.current}/${progress.total}]`;
-    const fullText = `Sonar: ${progress.action} ${progress.filePath} [${progress.current}/${progress.total}]`;
-    this.statusBarItem.title = fullText;
-
-    const maxLength = this.configManager.get('statusBarMaxLength');
-    let paddedText = text;
-    if (maxLength > 0 && text.length > maxLength) {
-      if (maxLength >= 4) {
-        const halfLength = Math.floor((maxLength - 3) / 2);
-        const prefix = text.slice(0, halfLength);
-        const suffix = text.slice(-(maxLength - halfLength - 3));
-        paddedText = prefix + '...' + suffix;
-      } else {
-        paddedText = text.slice(0, maxLength);
-      }
-    } else if (maxLength > 0) {
-      paddedText = text.padEnd(maxLength);
-    }
-    this.statusBarItem.setText(`Sonar: ${paddedText}`);
-  }
-
   async clearCurrentIndex(): Promise<void> {
     await this.metadataStore.clearFailedFiles();
     await this.metadataStore.clearAll();
     await this.embeddingStore.clearAll();
     await this.bm25Store.clearAll();
-    await this.updateStatusBarWithFileCount();
+    await this.updateStatus();
+  }
+
+  private async updateStatus(text?: string, tooltip?: string): Promise<void> {
+    if (!text) {
+      const indexableCount = getIndexableFilesCount(
+        this.vault,
+        this.configManager
+      );
+      let stats;
+      try {
+        stats = await this.getStats();
+      } catch (error) {
+        this.error(`Failed to get stats: ${error}`);
+        return;
+      }
+      text = `Indexed (${stats.totalFiles}/${indexableCount})`;
+    }
+    this.statusBarCallback(text, tooltip);
   }
 
   async getStats(): Promise<{ totalChunks: number; totalFiles: number }> {

@@ -115,7 +115,8 @@ export class BM25Store extends WithLogging {
    * Indexes multiple chunks in a single transaction (much faster than individual indexing)
    */
   async indexChunkBatch(
-    chunks: Array<{ docId: string; content: string }>
+    chunks: Array<{ docId: string; content: string }>,
+    progressCallback?: (current: number, total: number) => void
   ): Promise<void> {
     if (chunks.length === 0) return;
 
@@ -125,7 +126,8 @@ export class BM25Store extends WithLogging {
     const chunksTokenInfo: ChunkTokenInfo[] = [];
     const allTokensToFetch = new Set<string>();
 
-    for (const chunk of chunks) {
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
       const tokens = await this.tokenize(chunk.content);
       const termFreq = this.calculateTermFrequency(tokens);
 
@@ -137,6 +139,10 @@ export class BM25Store extends WithLogging {
 
       for (const token of termFreq.keys()) {
         allTokensToFetch.add(token);
+      }
+
+      if (progressCallback && (i % 10 === 0 || i === chunks.length - 1)) {
+        progressCallback(i + 1, chunks.length);
       }
     }
 
