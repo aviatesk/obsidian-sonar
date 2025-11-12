@@ -93,16 +93,14 @@ export class LlamaCppEmbedder extends Embedder {
       throw new Error('Port not selected');
     }
 
-    // Resolve server path using 'which' if it's not an absolute path
     const resolvedServerPath = await this.resolveServerPath(this.serverPath);
 
     const modelPath = getModelCachePath(this.modelRepo, this.modelFile);
 
-    // Calculate ubatch-size based on chunk configuration
-    // Set to maxChunkSize + 2*chunkOverlap with safety margin for edge cases
     const maxChunkSize = this.configManager.get('maxChunkSize');
     const chunkOverlap = this.configManager.get('chunkOverlap');
-    const ubatchSize = maxChunkSize + 2 * chunkOverlap;
+    const batchSize = this.configManager.get('indexingBatchSize');
+    const ubatchSize = batchSize * (maxChunkSize + chunkOverlap);
 
     this.log(
       `Starting llama.cpp server (port: ${this.port}, ubatch-size: ${ubatchSize})...`
