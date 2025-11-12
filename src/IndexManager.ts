@@ -85,10 +85,12 @@ export class IndexManager extends WithLogging {
   async onLayoutReady(): Promise<void> {
     this.isReady = true;
     if (this.configManager.get('autoIndex')) {
-      // Sync to detect changes made while Obsidian was closed
-      await this.syncIndex(true);
-      this.registerEventHandlers();
       this.log('Auto-indexing enabled');
+      this.registerEventHandlers();
+      // Sync to detect changes made while Obsidian was closed
+      this.syncIndex(true).catch(error =>
+        this.error(`Failed to sync on load: ${error}`)
+      );
     } else {
       this.log('Auto-indexing disabled');
       await this.updateStatus();
@@ -1054,12 +1056,14 @@ export class IndexManager extends WithLogging {
     this.error(`${operation} failed: ${errorMessage}`, error);
 
     new Notice(
-      `Sonar indexing error: ${operation}\n\n` +
-        `${errorMessage}\n\n` +
-        `Please check:\n` +
-        `1. Console for detailed error\n` +
-        `2. Embedder settings (model, max chunk size, server path)\n` +
-        `3. Reinitialize via Settings → Sonar`,
+      `Sonar indexing error: ${operation}
+
+Please check:
+1. Console for detailed error
+2. Embedder settings (backend, model, llama-server path)
+3. Chunking settings (max chunk size)
+
+And then reinitialize Sonar via "Reinitialize Sonar" action/command`,
       0
     );
 

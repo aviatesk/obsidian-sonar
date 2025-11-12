@@ -349,17 +349,18 @@ export default class SonarPlugin extends Plugin {
 
     try {
       await this.indexManager.onLayoutReady();
-      this.notifyRelatedNotesViewsInitialized();
     } catch (error) {
       this.updateStatusBar('Failed to initialize');
-      this.error(`Failed to initialize semantic search: ${error}`);
+      this.error(`Failed to initialize Sonar: ${error}`);
       new Notice(
-        'Failed to initialize semantic search.\n\n' +
+        'Failed to initialize Sonar.\n\n' +
           'Check console for details.\n\n' +
-          'You can change settings and run "Sonar: Reinitialize Sonar" command to retry.',
+          'You can change settings and run "Reinitialize Sonar" action/command to retry.',
         0
       );
+      return;
     }
+    this.notifyRelatedNotesViewsInitialized();
   }
 
   private notifyRelatedNotesViewsInitialized(): void {
