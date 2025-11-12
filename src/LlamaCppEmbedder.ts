@@ -1,11 +1,10 @@
 import type { ChildProcess } from 'child_process';
 import { spawn } from 'child_process';
 import { createServer } from 'net';
-import { Notice } from 'obsidian';
+import { Notice, requestUrl } from 'obsidian';
 import * as path from 'path';
 import type { ConfigManager } from './ConfigManager';
 import { Embedder } from './Embedder';
-import { LlamaCppClient } from './LlamaCppClient';
 import {
   isModelCached,
   downloadModel,
@@ -19,7 +18,6 @@ import {
 export class LlamaCppEmbedder extends Embedder {
   protected readonly componentName = 'LlamaCppEmbedder';
 
-  private client: LlamaCppClient | null = null;
   private serverProcess: ChildProcess | null = null;
   private port: number | null = null;
   private exitHandlerBound: (() => void) | null = null;
@@ -56,14 +54,145 @@ export class LlamaCppEmbedder extends Embedder {
     this.log(`Selected port: ${this.port}`);
 
     await this.startServer();
-    this.client = new LlamaCppClient(this.port);
+  }
+
+  private get serverUrl(): string {
+    if (!this.port) {
+      throw new Error('Server port not initialized');
+    }
+    return `http://localhost:${this.port}`;
+  }
+
+  private async getTokenStats(
+    texts: string[]
+  ): Promise<{ total: number; max: number } | null> {
+    try {
+      const tokenCounts = await Promise.all(
+        texts.map(async text => {
+          const tokens = await this.httpTokenize(text);
+          return tokens.length;
+        })
+      );
+      return {
+        total: tokenCounts.reduce((sum, count) => sum + count, 0),
+        max: Math.max(...tokenCounts),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async httpGetEmbeddings(texts: string[]): Promise<number[][]> {
+    try {
+      const response = await requestUrl({
+        url: `${this.serverUrl}/v1/embeddings`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input: texts,
+        }),
+      });
+
+      if (response.status !== 200) {
+        const errorDetails = `Status: ${response.status}, Body: ${response.text}`;
+        this.error(`Embedding request failed. ${errorDetails}`);
+        const tokenStats = await this.getTokenStats(texts);
+        if (tokenStats) {
+          this.error(
+            `Request details: ${texts.length} texts, ${tokenStats.total} tokens total, ${tokenStats.max} tokens max`
+          );
+        } else {
+          this.error(
+            `Request details: ${texts.length} texts, ${texts.reduce((sum, t) => sum + t.length, 0)} chars total`
+          );
+        }
+        throw new Error(`Request failed, status ${response.status}`);
+      }
+
+      const data = response.json;
+      if (!data.data || !Array.isArray(data.data)) {
+        throw new Error('Invalid response from llama.cpp API');
+      }
+
+      return data.data.map((item: { embedding: number[] }) => item.embedding);
+    } catch (error) {
+      this.error('Embedding request error:', error);
+      const tokenStats = await this.getTokenStats(texts);
+      if (tokenStats) {
+        this.error(
+          `Request context: ${texts.length} texts, ${tokenStats.total} tokens total, ${tokenStats.max} tokens max`
+        );
+      } else {
+        this.error(
+          `Request context: ${texts.length} texts, ${texts.reduce((sum, t) => sum + t.length, 0)} chars total`
+        );
+      }
+      throw new Error(
+        `Batch embedding failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  private async httpTokenize(text: string): Promise<number[]> {
+    try {
+      const response = await requestUrl({
+        url: `${this.serverUrl}/tokenize`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: text,
+        }),
+      });
+
+      if (response.status !== 200) {
+        const errorDetails = `Status: ${response.status}, Body: ${response.text}`;
+        this.error(`Tokenize request failed. ${errorDetails}`);
+        this.error(`Text length: ${text.length} chars`);
+        throw new Error(`Request failed, status ${response.status}`);
+      }
+
+      const data = response.json;
+      if (!data.tokens || !Array.isArray(data.tokens)) {
+        throw new Error('Invalid tokenize response from llama.cpp API');
+      }
+
+      return data.tokens;
+    } catch (error) {
+      this.error('Tokenize request error:', error);
+      this.error(`Text context: ${text.length} chars`);
+      throw new Error(
+        `Tokenization failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  private async httpHealthCheck(): Promise<boolean> {
+    try {
+      const response = await requestUrl({
+        url: `${this.serverUrl}/health`,
+        method: 'GET',
+      });
+      if (response.status !== 200) {
+        return false;
+      }
+      const data = response.json;
+      // Server is ready only when status is "ok"
+      // Other states: "loading model", "error"
+      return data.status === 'ok';
+    } catch {
+      return false;
+    }
   }
 
   protected async checkReady(): Promise<boolean> {
-    if (!this.client) {
+    if (!this.port) {
       return false;
     }
-    return await this.client.healthCheck();
+    return await this.httpHealthCheck();
   }
 
   protected async onInitializationComplete(): Promise<void> {
@@ -278,10 +407,10 @@ export class LlamaCppEmbedder extends Embedder {
   private startHealthCheck(): void {
     // Check server health every 60 seconds
     this.healthCheckInterval = setInterval(async () => {
-      if (!this.client) {
+      if (!this.port) {
         return;
       }
-      const isHealthy = await this.client.healthCheck();
+      const isHealthy = await this.httpHealthCheck();
       if (!isHealthy) {
         this.warn(`llama.cpp server on port ${this.port} became unresponsive`);
         // Don't auto-restart for now, just log the issue
@@ -290,53 +419,26 @@ export class LlamaCppEmbedder extends Embedder {
     }, 60000); // 60 seconds
   }
 
-  async getEmbeddings(
-    texts: string[],
-    _type?: 'query' | 'passage'
-  ): Promise<number[][]> {
-    if (!this.client) {
+  async getEmbeddings(texts: string[]): Promise<number[][]> {
+    if (!this.port) {
       throw new Error('Embedder not initialized. Call initialize() first.');
     }
-
-    try {
-      return await this.client.getEmbeddings(texts);
-    } catch (error) {
-      this.error(
-        `Failed to generate embeddings: ${error instanceof Error ? error.message : String(error)}`
-      );
-      throw error;
-    }
+    return await this.httpGetEmbeddings(texts);
   }
 
   async countTokens(text: string): Promise<number> {
-    if (!this.client) {
+    if (!this.port) {
       throw new Error('Embedder not initialized. Call initialize() first.');
     }
-
-    try {
-      const tokens = await this.client.tokenize(text);
-      return tokens.length;
-    } catch (error) {
-      this.error(
-        `Failed to count tokens: ${error instanceof Error ? error.message : String(error)}`
-      );
-      throw error;
-    }
+    const tokens = await this.httpTokenize(text);
+    return tokens.length;
   }
 
   async getTokenIds(text: string): Promise<number[]> {
-    if (!this.client) {
+    if (!this.port) {
       throw new Error('Embedder not initialized. Call initialize() first.');
     }
-
-    try {
-      return await this.client.tokenize(text);
-    } catch (error) {
-      this.error(
-        `Failed to get token IDs: ${error instanceof Error ? error.message : String(error)}`
-      );
-      throw error;
-    }
+    return await this.httpTokenize(text);
   }
 
   getDevice(): 'llamacpp' {
@@ -364,7 +466,6 @@ export class LlamaCppEmbedder extends Embedder {
       this.serverProcess = null;
     }
 
-    this.client = null;
     this.port = null;
 
     this.log(`Completed cleanup`);
