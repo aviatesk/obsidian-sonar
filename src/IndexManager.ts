@@ -870,85 +870,48 @@ export class IndexManager extends WithLogging {
 
     const indexedAt = Date.now();
 
-    if (chunks.length === 0) {
-      // Empty file: index only title
-      const titleEmbeddings = await this.embedder.getEmbeddings([
-        file.basename,
-      ]);
-      const titleEmbedding = titleEmbeddings[0];
+    // Treat empty files as having a single empty chunk
+    const chunkContents =
+      chunks.length === 0 ? [''] : chunks.map(c => c.content);
 
-      const chunkId = `${file.path}#0`;
-      const metadata: ChunkMetadata = {
-        id: chunkId,
+    const metadataChunks: ChunkMetadata[] = [];
+    for (let i = 0; i < chunkContents.length; i++) {
+      metadataChunks.push({
+        id: `${file.path}#${i}`,
         filePath: file.path,
         title: file.basename,
-        content: '',
-        headings: [],
+        content: chunkContents[i],
+        headings: chunks[i]?.headings || [],
         mtime: file.stat.mtime,
         size: file.stat.size,
         indexedAt,
-      };
-      await this.metadataStore.addChunk(metadata);
-
-      // Add title as separate BM25/embedding entries
-      await this.embeddingStore.addEmbedding(
-        `${file.path}#title`,
-        titleEmbedding
-      );
-      await this.bm25Store.indexChunkBatch([
-        { docId: `${file.path}#title`, content: file.basename },
-      ]);
-    } else {
-      // Non-empty file: process chunks
-
-      const chunkContents = chunks.map(c => c.content);
-
-      const metadataChunks: ChunkMetadata[] = [];
-      for (let i = 0; i < chunks.length; i++) {
-        const chunkId = `${file.path}#${i}`;
-        metadataChunks.push({
-          id: chunkId,
-          filePath: file.path,
-          title: file.basename,
-          content: chunkContents[i],
-          headings: chunks[i].headings,
-          mtime: file.stat.mtime,
-          size: file.stat.size,
-          indexedAt,
-        });
-      }
-
-      const bm25Chunks = [
-        { docId: `${file.path}#title`, content: file.basename },
-      ];
-      for (let i = 0; i < chunks.length; i++) {
-        bm25Chunks.push({
-          docId: `${file.path}#${i}`,
-          content: chunkContents[i],
-        });
-      }
-
-      const embeddings = await this.embedder.getEmbeddings(chunkContents);
-      const titleEmbeddings = await this.embedder.getEmbeddings([
-        file.basename,
-      ]);
-      const titleEmbedding = titleEmbeddings[0];
-      const embeddingData: Array<{
-        id: string;
-        embedding: number[];
-      }> = [{ id: `${file.path}#title`, embedding: titleEmbedding }];
-      for (let i = 0; i < chunks.length; i++) {
-        embeddingData.push({
-          id: `${file.path}#${i}`,
-          embedding: embeddings[i],
-        });
-      }
-
-      // Batch index all chunks in single transactions
-      await this.metadataStore.addChunks(metadataChunks);
-      await this.embeddingStore.addEmbeddings(embeddingData);
-      await this.bm25Store.indexChunkBatch(bm25Chunks);
+      });
     }
+
+    const titleEmbeddings = await this.embedder.getEmbeddings([file.basename]);
+    const contentEmbeddings = await this.embedder.getEmbeddings(chunkContents);
+
+    const bm25Chunks = [
+      { docId: `${file.path}#title`, content: file.basename },
+    ];
+    const embeddingData = [
+      { id: `${file.path}#title`, embedding: titleEmbeddings[0] },
+    ];
+
+    for (let i = 0; i < chunkContents.length; i++) {
+      bm25Chunks.push({
+        docId: `${file.path}#${i}`,
+        content: chunkContents[i],
+      });
+      embeddingData.push({
+        id: `${file.path}#${i}`,
+        embedding: contentEmbeddings[i],
+      });
+    }
+
+    await this.metadataStore.addChunks(metadataChunks);
+    await this.embeddingStore.addEmbeddings(embeddingData);
+    await this.bm25Store.indexChunkBatch(bm25Chunks);
   }
 
   async indexFile(file: TFile): Promise<void> {
@@ -963,6 +926,7 @@ export class IndexManager extends WithLogging {
       return;
     }
     await this.indexFileInternal(file);
+    await this.updateStatus();
     new Notice(`Indexed: ${file.path}`);
   }
 
