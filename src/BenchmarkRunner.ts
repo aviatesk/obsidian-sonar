@@ -539,27 +539,25 @@ export class BenchmarkRunner extends WithLogging {
 
       // Display comparison table in logs
       this.log('');
-      this.log('='.repeat(96));
+      this.log('='.repeat(80));
       this.log('COMPARISON TABLE');
-      this.log('='.repeat(96));
+      this.log('='.repeat(80));
       this.log(
-        'Run                                      ' +
-          'nDCG@10    Recall@10  Recall@100     MRR@10        MAP'
+        'Run                   nDCG@10      Recall@10    Recall@100   MRR@10       MAP    '
       );
-      this.log('-'.repeat(96));
-
+      this.log('-'.repeat(80));
       for (const evaluation of evaluations) {
         const m = evaluation.metrics;
         this.log(
-          `${evaluation.runName.padEnd(40)} ` +
-            `${m['nDCG@10'].toFixed(4).padStart(10)} ` +
-            `${m['Recall@10'].toFixed(4).padStart(10)} ` +
-            `${m['Recall@100'].toFixed(4).padStart(11)} ` +
-            `${m['MRR@10'].toFixed(4).padStart(10)} ` +
-            `${m.MAP.toFixed(4).padStart(10)}`
+          `${evaluation.runName.padEnd(20)} ` +
+            `${m['nDCG@10'].toFixed(4).padEnd(12)} ` +
+            `${m['Recall@10'].toFixed(4).padEnd(12)} ` +
+            `${m['Recall@100'].toFixed(4).padEnd(12)} ` +
+            `${m['MRR@10'].toFixed(4).padEnd(12)} ` +
+            `${m.MAP.toFixed(4).padEnd(12)}`
         );
       }
-      this.log('='.repeat(96));
+      this.log('='.repeat(80));
 
       // Show simple summary in notification
       const summaryLines = evaluations.map(e => {
