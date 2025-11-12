@@ -18,6 +18,9 @@
     "sonar:stats": "npx tsx scripts/sonar.ts stats",
     "sonar:config": "npx tsx scripts/sonar.ts config",
     "parse-line-chat": "npx tsx scripts/parse-line-chat.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
     "fix:format": "prettier --write .",
     "fix:lint": "eslint . --fix",
     "fix": "npm run fix:format && npm run fix:lint",
@@ -57,6 +60,7 @@
     "@types/node": "^24.3.0",
     "@typescript-eslint/eslint-plugin": "^8.41.0",
     "@typescript-eslint/parser": "^8.41.0",
+    "@vitest/ui": "^3.2.4",
     "@webgpu/types": "^0.1.66",
     "builtin-modules": "^5.0.0",
     "esbuild-svelte": "^0.9.3",
@@ -72,6 +76,7 @@
     "svelte-preprocess": "^6.0.3",
     "tslib": "^2.8.1",
     "tsx": "^4.20.5",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
   }
 }

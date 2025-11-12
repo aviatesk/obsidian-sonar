@@ -41,13 +41,15 @@ npm run fix:lint      # Auto-fix ESLint errors -- included in `npm run fix`
 
 ## Testing
 
-Currently, there are no agent-executable tests available, as testing typically
-requires manual intervention. Instead, it is recommended to statically ensure
-that the code works by following these steps:
+This project uses Vitest as the testing framework. Test files are located in
+`src/` directory alongside the source files (e.g., `src/chunker.test.ts` for
+`src/chunker.ts`).
 
-1. Run `npm run build` to verify that the build completes without issues
-2. Run `npm run check` to verify that there are no errors in the code
-3. Run `npm run fix` to adjust code style
+```bash
+npm run test        # Run all tests once
+npm run test:watch  # Run tests in watch mode
+npm run test:ui     # Run tests with interactive browser UI
+```
 
 ## Development
 
@@ -55,11 +57,15 @@ that the code works by following these steps:
 
 - **Make sure to run the code quality checks after making changes**
   - During development: Run `npm run build` to verify compilation succeeds
-  - Before finalizing/committing: Run `npm run check` for comprehensive
-    validation. This runs format check, ESLint (0 warnings) and strict
-    TypeScript type checking (no `skipLibCheck`)
-  - To fix issues: Use `npm run fix` to auto-format and fix linting in one
-    command
+  - Before finalizing/committing:
+    1. Run `npm run test` to verify all tests pass
+    2. Run `npm run build` to verify that the build completes without issues
+    3. Run `npm run check` for comprehensive validation (format check, ESLint
+       with 0 warnings, and strict TypeScript type checking without
+       `skipLibCheck`)
+    4. Run `npm run fix` to adjust code style if needed
+  - For Python files in `bench/scripts/`: Run `uv run basedpyright` and
+    `uv run ruff check .`
 - Keep the plugin small. Avoid large dependencies. Prefer browser-compatible
   packages.
 - Avoid Node/Electron APIs where possible.
