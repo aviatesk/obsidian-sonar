@@ -21,9 +21,14 @@ export class LlamaCppClient {
       });
 
       if (response.status !== 200) {
-        throw new Error(
-          `llama.cpp API error: ${response.status} ${response.text}`
+        const errorDetails = `Status: ${response.status}, Body: ${response.text}`;
+        console.error(
+          `[LlamaCppClient] Embedding request failed. ${errorDetails}`
         );
+        console.error(
+          `[LlamaCppClient] Request details: ${texts.length} texts, total length: ${texts.reduce((sum, t) => sum + t.length, 0)} chars`
+        );
+        throw new Error(`Request failed, status ${response.status}`);
       }
 
       const data = response.json;
@@ -33,6 +38,17 @@ export class LlamaCppClient {
 
       return data.data.map((item: { embedding: number[] }) => item.embedding);
     } catch (error) {
+      console.error(`[LlamaCppClient] Embedding request error:`, error);
+      console.error(
+        `[LlamaCppClient] Request context: ${texts.length} texts, total ${texts.reduce((sum, t) => sum + t.length, 0)} chars`
+      );
+      // Check if error has response details (Obsidian requestUrl error format)
+      if (error && typeof error === 'object' && 'status' in error) {
+        const errObj = error as { status: number; text?: string };
+        console.error(
+          `[LlamaCppClient] Response status: ${errObj.status}, body: ${errObj.text || 'no body'}`
+        );
+      }
       throw new Error(
         `Batch embedding failed: ${error instanceof Error ? error.message : String(error)}`
       );

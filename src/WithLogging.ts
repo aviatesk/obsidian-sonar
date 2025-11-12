@@ -8,27 +8,27 @@ export class Logger {
     return LOG_LEVEL_ORDER[level] <= LOG_LEVEL_ORDER[this.getLogLevel()];
   }
 
-  verbose(msg: string): void {
+  verbose(msg: string, ...data: any[]): void {
     if (this.shouldLog('verbose')) {
-      console.log(msg);
+      console.log(msg, ...data);
     }
   }
 
-  log(msg: string): void {
+  log(msg: string, ...data: any[]): void {
     if (this.shouldLog('log')) {
-      console.log(msg);
+      console.log(msg, ...data);
     }
   }
 
-  warn(msg: string): void {
+  warn(msg: string, ...data: any[]): void {
     if (this.shouldLog('warn')) {
-      console.warn(msg);
+      console.warn(msg, ...data);
     }
   }
 
-  error(msg: string): void {
+  error(msg: string, ...data: any[]): void {
     if (this.shouldLog('error')) {
-      console.error(msg);
+      console.error(msg, ...data);
     }
   }
 }
@@ -41,23 +41,27 @@ export abstract class WithLogging {
   protected abstract readonly configManager: ConfigManager;
   protected abstract readonly componentName: string;
 
-  protected verbose(msg: string): void {
+  protected verbose(msg: string, ...data: any[]): void {
     this.configManager
       .getLogger()
-      .verbose(`[Sonar.${this.componentName}] ${msg}`);
+      .verbose(`[Sonar.${this.componentName}] ${msg}`, ...data);
   }
 
-  protected log(msg: string): void {
-    this.configManager.getLogger().log(`[Sonar.${this.componentName}] ${msg}`);
-  }
-
-  protected error(msg: string): void {
+  protected log(msg: string, ...data: any[]): void {
     this.configManager
       .getLogger()
-      .error(`[Sonar.${this.componentName}] ${msg}`);
+      .log(`[Sonar.${this.componentName}] ${msg}`, ...data);
   }
 
-  protected warn(msg: string): void {
-    this.configManager.getLogger().warn(`[Sonar.${this.componentName}] ${msg}`);
+  protected error(msg: string, ...data: any[]): void {
+    this.configManager
+      .getLogger()
+      .error(`[Sonar.${this.componentName}] ${msg}`, ...data);
+  }
+
+  protected warn(msg: string, ...data: any[]): void {
+    this.configManager
+      .getLogger()
+      .warn(`[Sonar.${this.componentName}] ${msg}`, ...data);
   }
 }
