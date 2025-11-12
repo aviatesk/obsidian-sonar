@@ -54,7 +54,7 @@ export class IndexManager extends WithLogging {
   private eventRefs: EventRef[] = [];
   private isProcessing: boolean = false;
   private configSubscribers: Array<() => void> = [];
-  private isInitialized: boolean = false;
+  private isReady: boolean = false;
   private previousActiveFile: TFile | null = null;
   private debouncedProcess: () => void;
   private statusBarCallback: (text: string, tooltip?: string) => void;
@@ -83,8 +83,7 @@ export class IndexManager extends WithLogging {
    * Initialize after layout is ready to avoid startup event spam
    */
   async onLayoutReady(): Promise<void> {
-    this.isInitialized = true;
-
+    this.isReady = true;
     if (this.configManager.get('autoIndex')) {
       // Sync to detect changes made while Obsidian was closed
       await this.syncIndex(true);
@@ -98,9 +97,9 @@ export class IndexManager extends WithLogging {
 
   private setupConfigListeners(): void {
     const debouncedConfigSync = debounce(
-      () => {
-        if (!this.isInitialized) return;
-        this.log('Config changed, syncing index...');
+      (msg: string) => {
+        if (!this.isReady) return;
+        this.log(msg);
         this.syncIndex().catch(error =>
           this.error(`Failed to sync after config change: ${error}`)
         );
@@ -111,31 +110,25 @@ export class IndexManager extends WithLogging {
 
     this.configSubscribers.push(
       this.configManager.subscribe('autoIndex', (_key, value) => {
-        if (this.isInitialized) {
-          if (value) {
-            this.registerEventHandlers();
-            this.log('Auto-indexing enabled');
-          } else {
-            this.unregisterEventHandlers();
-            this.log('Auto-indexing disabled');
-          }
+        if (value) {
+          this.registerEventHandlers();
+          this.log('Auto-indexing enabled');
+        } else {
+          this.unregisterEventHandlers();
+          this.log('Auto-indexing disabled');
         }
       })
     );
 
     this.configSubscribers.push(
-      this.configManager.subscribe('excludedPaths', () => {
-        if (!this.isInitialized) return;
-        this.log('Excluded paths updated, scheduling sync...');
-        debouncedConfigSync();
+      this.configManager.subscribe('indexPath', () => {
+        debouncedConfigSync('Index path updated, scheduling sync...');
       })
     );
 
     this.configSubscribers.push(
-      this.configManager.subscribe('indexPath', () => {
-        if (!this.isInitialized) return;
-        this.log('Index path updated, scheduling sync...');
-        debouncedConfigSync();
+      this.configManager.subscribe('excludedPaths', () => {
+        debouncedConfigSync('Excluded paths updated, scheduling sync...');
       })
     );
   }
@@ -331,6 +324,13 @@ export class IndexManager extends WithLogging {
   }
 
   private async processPendingOperations(): Promise<void> {
+    if (!this.isReady) {
+      this.warn(
+        'Skipping pending operations due to indexing error. Reinitialize to resume.'
+      );
+      return;
+    }
+
     if (this.pendingOperations.size === 0) {
       return;
     }
@@ -914,7 +914,7 @@ export class IndexManager extends WithLogging {
     await this.bm25Store.indexChunkBatch(bm25Chunks);
   }
 
-  async indexFile(file: TFile): Promise<void> {
+  private async _indexFile(file: TFile): Promise<void> {
     if (!shouldIndexFile(file, this.configManager)) {
       new Notice(`File excluded from indexing: ${file.path}`);
       return;
@@ -928,6 +928,16 @@ export class IndexManager extends WithLogging {
     await this.indexFileInternal(file);
     await this.updateStatus();
     new Notice(`Indexed: ${file.path}`);
+  }
+
+  async indexFile(file: TFile): Promise<void> {
+    this.ensureReady();
+    try {
+      await this._indexFile(file);
+    } catch (error) {
+      this.handleCriticalError(`Index file (${file.path})`, error);
+      throw error;
+    }
   }
 
   private buildIndexingCompleteMessage(
@@ -945,7 +955,7 @@ export class IndexManager extends WithLogging {
     return message;
   }
 
-  async rebuildIndex(
+  private async _rebuildIndex(
     progressCallback?: (
       current: number,
       total: number,
@@ -968,7 +978,23 @@ export class IndexManager extends WithLogging {
     await this.updateStatus();
   }
 
-  async syncIndex(onload: boolean = false): Promise<SyncStats> {
+  async rebuildIndex(
+    progressCallback?: (
+      current: number,
+      total: number,
+      filePath: string
+    ) => void | Promise<void>
+  ): Promise<void> {
+    this.ensureReady();
+    try {
+      await this._rebuildIndex(progressCallback);
+    } catch (error) {
+      this.handleCriticalError('Rebuild', error);
+      throw error;
+    }
+  }
+
+  private async _syncIndex(onload: boolean): Promise<SyncStats> {
     this.log('Syncing index...');
     const startTime = Date.now();
     const stats = await this.performSync();
@@ -985,6 +1011,16 @@ export class IndexManager extends WithLogging {
     return stats;
   }
 
+  async syncIndex(onload: boolean = false): Promise<SyncStats> {
+    this.ensureReady();
+    try {
+      return await this._syncIndex(onload);
+    } catch (error) {
+      this.handleCriticalError('Sync', error);
+      throw error;
+    }
+  }
+
   private unregisterEventHandlers(): void {
     for (const eventRef of this.eventRefs) {
       this.workspace.offref(eventRef);
@@ -999,6 +1035,38 @@ export class IndexManager extends WithLogging {
       unsubscribe();
     }
     this.configSubscribers = [];
+  }
+
+  private ensureReady(): void {
+    if (!this.isReady) {
+      new Notice(
+        'Indexing is disabled due to a previous error.\n' +
+          'Please check console and reinitialize via Settings → Sonar.'
+      );
+      throw new Error('IndexManager not ready');
+    }
+  }
+
+  private handleCriticalError(operation: string, error: unknown): void {
+    this.isReady = false;
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    this.error(`${operation} failed: ${errorMessage}`, error);
+
+    new Notice(
+      `Sonar indexing error: ${operation}\n\n` +
+        `${errorMessage}\n\n` +
+        `Please check:\n` +
+        `1. Console for detailed error\n` +
+        `2. Embedder settings (model, max chunk size, server path)\n` +
+        `3. Reinitialize via Settings → Sonar`,
+      0
+    );
+
+    this.updateStatus(
+      'Indexing failed',
+      'Indexing failed. Check settings and console, and then reinitialize.'
+    );
   }
 
   async clearCurrentIndex(): Promise<void> {
