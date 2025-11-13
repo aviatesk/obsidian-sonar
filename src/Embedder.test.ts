@@ -10,7 +10,7 @@ let embedders: TestEmbedderSetupInfo[] = [];
 
 beforeAll(async () => {
   embedders = await setupTestEmbedders();
-}, 60000);
+});
 
 afterAll(() => {
   cleanupTestEmbedders();
@@ -57,4 +57,25 @@ describe('embedder backends', () => {
       expect(tokenIds.every(id => Number.isInteger(id))).toBe(true);
     }
   }, 30000);
+
+  it('can generate embeddings', async () => {
+    for (const embedderInfo of embedders) {
+      const embedder = embedderInfo.embedder;
+      const embeddings = await embedder.getEmbeddings(['hello world']);
+      expect(embeddings.length).toBe(1);
+      expect(embeddings[0].length).toBeGreaterThan(1);
+    }
+  });
+
+  it('can generate batch embeddings', async () => {
+    for (const embedderInfo of embedders) {
+      const embedder = embedderInfo.embedder;
+      const embeddings = await embedder.getEmbeddings([
+        'I love',
+        'Julia programming language',
+      ]);
+      expect(embeddings.length).toBe(2);
+      embeddings.forEach(emb => expect(emb.length).toBeGreaterThan(1));
+    }
+  });
 });
