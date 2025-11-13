@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { spawn } from 'child_process';
+import { createServer } from 'net';
 
 /**
  * Get the cache directory path for llama.cpp models
@@ -155,4 +156,119 @@ export async function downloadModel(
       }
     });
   });
+}
+
+/**
+ * Find an available port for llama-server
+ *
+ * @returns Promise that resolves to an available port number
+ */
+export async function findAvailablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.on('error', reject);
+    server.listen(0, () => {
+      const address = server.address();
+      if (address && typeof address !== 'string') {
+        const { port } = address;
+        server.close(() => resolve(port));
+      } else {
+        reject(new Error('Failed to get port'));
+      }
+    });
+  });
+}
+
+/**
+ * Tokenize text using llama-server API
+ *
+ * @param serverUrl - Base URL of llama-server (e.g., "http://localhost:8080")
+ * @param text - Text to tokenize
+ * @returns Promise that resolves to array of token IDs
+ */
+export async function llamaServerTokenize(
+  serverUrl: string,
+  text: string
+): Promise<number[]> {
+  const response = await fetch(`${serverUrl}/tokenize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: text }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Tokenize request failed: ${response.status} ${response.statusText}`
+    );
+  }
+
+  const data = (await response.json()) as { tokens: number[] };
+  if (!data.tokens || !Array.isArray(data.tokens)) {
+    throw new Error('Invalid tokenize response from llama.cpp API');
+  }
+
+  return data.tokens;
+}
+
+/**
+ * Get embeddings using llama-server API
+ *
+ * @param serverUrl - Base URL of llama-server (e.g., "http://localhost:8080")
+ * @param texts - Array of texts to embed
+ * @returns Promise that resolves to array of embedding vectors
+ */
+export async function llamaServerGetEmbeddings(
+  serverUrl: string,
+  texts: string[]
+): Promise<number[][]> {
+  const response = await fetch(`${serverUrl}/v1/embeddings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: texts }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Embedding request failed: ${response.status} ${response.statusText}. Body: ${errorText}`
+    );
+  }
+
+  const data = (await response.json()) as {
+    data: Array<{ embedding: number[] }>;
+  };
+
+  if (!data.data || !Array.isArray(data.data)) {
+    throw new Error('Invalid embedding response from llama.cpp API');
+  }
+
+  return data.data.map(item => item.embedding);
+}
+
+/**
+ * Check llama-server health status
+ *
+ * @param serverUrl - Base URL of llama-server (e.g., "http://localhost:8080")
+ * @returns Promise that resolves to true if server is ready, false otherwise
+ */
+export async function llamaServerHealthCheck(
+  serverUrl: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${serverUrl}/health`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const data = (await response.json()) as { status: string };
+    // Server is ready only when status is "ok"
+    // Other states: "loading model", "error"
+    return data.status === 'ok';
+  } catch {
+    return false;
+  }
 }

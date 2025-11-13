@@ -26,6 +26,10 @@ import type {
   ProgressMessage,
 } from './transformers-worker-types';
 import { type LogLevel, LOG_LEVEL_ORDER } from './config';
+import {
+  countTokensTransformers,
+  getTokenIdsTransformers,
+} from './transformers-tokenizer-utils';
 
 // Logging helpers (follows same format as main.ts)
 const COMPONENT_NAME = 'transformers-worker';
@@ -138,37 +142,12 @@ self.addEventListener('message', async (e: MessageEvent) => {
       if (!tokenizer) {
         throw new Error('Model not initialized. Call initializeModel first.');
       }
-      // Process line by line to avoid hanging on large texts.
-      // Transformers.js tokenizer can hang when processing large texts (e.g., entire
-      // file contents) in one call. By splitting into lines and processing each line
-      // separately, we ensure responsiveness even for large documents.
-      // Special tokens are excluded to get accurate token counts for the content itself.
-      const lines = params.text.split('\n');
-      let totalTokens = 0;
-      for (const line of lines) {
-        const { input_ids } = await tokenizer(line, {
-          add_special_tokens: false,
-        });
-        totalTokens += Number(input_ids.size);
-      }
-      result = totalTokens;
+      result = await countTokensTransformers(tokenizer, params.text);
     } else if (method === 'getTokenIds') {
       if (!tokenizer) {
         throw new Error('Model not initialized. Call initializeModel first.');
       }
-      // Process line by line to avoid hanging on large texts.
-      // Transformers.js tokenizer can hang when processing large texts in one call.
-      // By processing line by line and aggregating results, we maintain responsiveness.
-      // Special tokens are excluded since callers (e.g., BM25) need content tokens only.
-      const lines = params.text.split('\n');
-      const allTokenIds: number[] = [];
-      for (const line of lines) {
-        const ids = tokenizer.encode(line, {
-          add_special_tokens: false,
-        });
-        allTokenIds.push(...Array.from(ids));
-      }
-      result = allTokenIds;
+      result = getTokenIdsTransformers(tokenizer, params.text);
     } else {
       const exhaustiveCheck: never = method;
       throw new Error(`Unknown method: ${exhaustiveCheck}`);

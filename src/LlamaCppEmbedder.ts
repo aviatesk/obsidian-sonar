@@ -1,7 +1,6 @@
 import type { ChildProcess } from 'child_process';
 import { spawn } from 'child_process';
-import { createServer } from 'net';
-import { Notice, requestUrl } from 'obsidian';
+import { Notice } from 'obsidian';
 import * as path from 'path';
 import type { ConfigManager } from './ConfigManager';
 import { Embedder } from './Embedder';
@@ -9,6 +8,10 @@ import {
   isModelCached,
   downloadModel,
   getModelCachePath,
+  findAvailablePort,
+  llamaServerTokenize,
+  llamaServerGetEmbeddings,
+  llamaServerHealthCheck,
 } from './llamaCppUtils';
 
 /**
@@ -50,7 +53,7 @@ export class LlamaCppEmbedder extends Embedder {
       this.log(`Using cached model`);
     }
 
-    this.port = await this.findAvailablePort();
+    this.port = await findAvailablePort();
     this.log(`Selected port: ${this.port}`);
 
     await this.startServer();
@@ -84,39 +87,7 @@ export class LlamaCppEmbedder extends Embedder {
 
   private async httpGetEmbeddings(texts: string[]): Promise<number[][]> {
     try {
-      const response = await requestUrl({
-        url: `${this.serverUrl}/v1/embeddings`,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          input: texts,
-        }),
-      });
-
-      if (response.status !== 200) {
-        const errorDetails = `Status: ${response.status}, Body: ${response.text}`;
-        this.error(`Embedding request failed. ${errorDetails}`);
-        const tokenStats = await this.getTokenStats(texts);
-        if (tokenStats) {
-          this.error(
-            `Request details: ${texts.length} texts, ${tokenStats.total} tokens total, ${tokenStats.max} tokens max`
-          );
-        } else {
-          this.error(
-            `Request details: ${texts.length} texts, ${texts.reduce((sum, t) => sum + t.length, 0)} chars total`
-          );
-        }
-        throw new Error(`Request failed, status ${response.status}`);
-      }
-
-      const data = response.json;
-      if (!data.data || !Array.isArray(data.data)) {
-        throw new Error('Invalid response from llama.cpp API');
-      }
-
-      return data.data.map((item: { embedding: number[] }) => item.embedding);
+      return await llamaServerGetEmbeddings(this.serverUrl, texts);
     } catch (error) {
       this.error('Embedding request error:', error);
       const tokenStats = await this.getTokenStats(texts);
@@ -137,30 +108,7 @@ export class LlamaCppEmbedder extends Embedder {
 
   private async httpTokenize(text: string): Promise<number[]> {
     try {
-      const response = await requestUrl({
-        url: `${this.serverUrl}/tokenize`,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          content: text,
-        }),
-      });
-
-      if (response.status !== 200) {
-        const errorDetails = `Status: ${response.status}, Body: ${response.text}`;
-        this.error(`Tokenize request failed. ${errorDetails}`);
-        this.error(`Text length: ${text.length} chars`);
-        throw new Error(`Request failed, status ${response.status}`);
-      }
-
-      const data = response.json;
-      if (!data.tokens || !Array.isArray(data.tokens)) {
-        throw new Error('Invalid tokenize response from llama.cpp API');
-      }
-
-      return data.tokens;
+      return await llamaServerTokenize(this.serverUrl, text);
     } catch (error) {
       this.error('Tokenize request error:', error);
       this.error(`Text context: ${text.length} chars`);
@@ -171,21 +119,7 @@ export class LlamaCppEmbedder extends Embedder {
   }
 
   private async httpHealthCheck(): Promise<boolean> {
-    try {
-      const response = await requestUrl({
-        url: `${this.serverUrl}/health`,
-        method: 'GET',
-      });
-      if (response.status !== 200) {
-        return false;
-      }
-      const data = response.json;
-      // Server is ready only when status is "ok"
-      // Other states: "loading model", "error"
-      return data.status === 'ok';
-    } catch {
-      return false;
-    }
+    return llamaServerHealthCheck(this.serverUrl);
   }
 
   protected async checkReady(): Promise<boolean> {
@@ -198,23 +132,6 @@ export class LlamaCppEmbedder extends Embedder {
   protected async onInitializationComplete(): Promise<void> {
     this.startHealthCheck();
     this.log(`Initialized on port ${this.port}`);
-  }
-
-  private async findAvailablePort(): Promise<number> {
-    return new Promise((resolve, reject) => {
-      const server = createServer();
-      server.unref();
-      server.on('error', reject);
-      server.listen(0, () => {
-        const address = server.address();
-        if (address && typeof address !== 'string') {
-          const { port } = address;
-          server.close(() => resolve(port));
-        } else {
-          reject(new Error('Failed to get port'));
-        }
-      });
-    });
   }
 
   private async startServer(): Promise<void> {
