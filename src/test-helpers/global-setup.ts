@@ -12,7 +12,9 @@ export async function setup() {
   const modelRepo = DEFAULT_SETTINGS.llamaEmbedderModelRepo;
   const modelFile = DEFAULT_SETTINGS.llamaEmbedderModelFile;
   if (!isModelCached(modelRepo, modelFile)) {
-    console.log(`[llama.cpp] Downloading model file: ${modelRepo}/${modelFile}...`);
+    console.log(
+      `[llama.cpp] Downloading model file: ${modelRepo}/${modelFile}...`
+    );
     await downloadModel(modelRepo, modelFile);
   }
 

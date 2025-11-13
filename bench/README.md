@@ -320,8 +320,11 @@ document with score 0.921780 (expected rank #1) was placed at rank #1512, while
 documents with score ~0.75 ranked higher.
 
 **Workaround**: Application-layer NaN detection and skipping during indexing.
-See `experiments/transformers-js-batch-end-nan.md` for detailed reproduction and
-analysis.
+
+**UPDATE 2025-11-13**: Additionally, we found that forcing the batch size to 1
+prevents this issue from occurring, so the tables in the
+[results section](#results) are based on results from indexing with batch
+size 1.
 
 **Related upstream issue?**:
 https://github.com/microsoft/onnxruntime/issues/26367

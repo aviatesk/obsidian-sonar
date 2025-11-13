@@ -521,8 +521,8 @@ export class IndexManager extends WithLogging {
     const batchSize =
       device === 'llamacpp' ? this.configManager.get('indexingBatchSize') : 1;
     if (device !== 'llamacpp') {
-      this.log(
-        'Processing 1 texts sequentially (Transformers.js batch processing disabled)...'
+      this.warn(
+        `Processing ${allTextItems.length} texts sequentially (Transformers.js batch processing disabled)...`
       );
     } else {
       this.log(
