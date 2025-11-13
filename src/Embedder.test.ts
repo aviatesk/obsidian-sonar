@@ -10,7 +10,7 @@ let embedders: TestEmbedderSetupInfo[] = [];
 
 beforeAll(async () => {
   embedders = await setupTestEmbedders();
-});
+}, 60000);
 
 afterAll(() => {
   cleanupTestEmbedders();

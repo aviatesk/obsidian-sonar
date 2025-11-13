@@ -1,4 +1,4 @@
-import { AutoTokenizer } from '@huggingface/transformers';
+import { AutoTokenizer, pipeline } from '@huggingface/transformers';
 import type { PreTrainedTokenizer } from '@huggingface/transformers/types/base/processing_utils';
 import type { Embedder } from '../Embedder';
 import {
@@ -7,6 +7,7 @@ import {
   getModelCachePath,
   findAvailablePort,
   llamaServerTokenize,
+  llamaServerGetEmbeddings,
   llamaServerHealthCheck,
 } from '../llamaCppUtils';
 import {
@@ -16,7 +17,10 @@ import {
 import { DEFAULT_SETTINGS } from '../config';
 import { spawn, type ChildProcess } from 'child_process';
 
-export type TestEmbedder = Pick<Embedder, 'countTokens' | 'getTokenIds'>;
+export type TestEmbedder = Pick<
+  Embedder,
+  'countTokens' | 'getTokenIds' | 'getEmbeddings'
+>;
 
 export interface TestEmbedderSetupInfo {
   name: string;
@@ -33,6 +37,10 @@ class LlamaServerTestEmbedder implements TestEmbedder {
 
   async getTokenIds(text: string): Promise<number[]> {
     return llamaServerTokenize(this.serverUrl, text);
+  }
+
+  async getEmbeddings(texts: string[]): Promise<number[][]> {
+    return llamaServerGetEmbeddings(this.serverUrl, texts);
   }
 }
 
@@ -126,11 +134,14 @@ async function setupLlamaCppEmbedder(): Promise<TestEmbedderSetupInfo> {
 }
 
 /**
- * Simple embedder that uses Transformers.js tokenizer
+ * Simple embedder that uses Transformers.js tokenizer and pipeline
  * Bypasses full Embedder initialization for testing
  */
 class TransformersTestEmbedder implements TestEmbedder {
-  constructor(private tokenizer: PreTrainedTokenizer) {}
+  constructor(
+    private tokenizer: PreTrainedTokenizer,
+    private featureExtractor: any
+  ) {}
 
   async countTokens(text: string): Promise<number> {
     return countTokensTransformers(this.tokenizer, text);
@@ -138,6 +149,14 @@ class TransformersTestEmbedder implements TestEmbedder {
 
   async getTokenIds(text: string): Promise<number[]> {
     return getTokenIdsTransformers(this.tokenizer, text);
+  }
+
+  async getEmbeddings(texts: string[]): Promise<number[][]> {
+    const out = await this.featureExtractor(texts, {
+      pooling: 'mean',
+      normalize: true,
+    });
+    return out.tolist();
   }
 }
 
@@ -148,9 +167,14 @@ class TransformersTestEmbedder implements TestEmbedder {
 async function setupTransformersEmbedder(): Promise<TestEmbedderSetupInfo> {
   const modelId = DEFAULT_SETTINGS.tfjsEmbedderModel;
   const tokenizer = await AutoTokenizer.from_pretrained(modelId);
+  // Use 'cpu' device in Node.js test environment (wasm is not supported)
+  const featureExtractor = await pipeline('feature-extraction', modelId, {
+    device: 'cpu',
+    dtype: 'fp32',
+  });
   return {
     name: 'Transformers.js',
-    embedder: new TransformersTestEmbedder(tokenizer),
+    embedder: new TransformersTestEmbedder(tokenizer, featureExtractor),
   };
 }
 
