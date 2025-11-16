@@ -126,7 +126,7 @@ export abstract class Embedder extends WithLogging {
   abstract getTokenIds(text: string): Promise<number[]>;
 
   abstract getDevice(): string;
-  abstract cleanup(): void;
+  abstract cleanup(): Promise<void>;
 }
 
 export function formatTokenCountShort(count: number): string {

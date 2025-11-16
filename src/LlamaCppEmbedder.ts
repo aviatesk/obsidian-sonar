@@ -12,6 +12,7 @@ import {
   llamaServerTokenize,
   llamaServerGetEmbeddings,
   llamaServerHealthCheck,
+  killServerProcess,
 } from './llamaCppUtils';
 
 /**
@@ -362,7 +363,7 @@ export class LlamaCppEmbedder extends Embedder {
     return 'llamacpp';
   }
 
-  cleanup(): void {
+  async cleanup(): Promise<void> {
     this.log(`Cleaning up...`);
 
     if (this.healthCheckInterval) {
@@ -379,7 +380,7 @@ export class LlamaCppEmbedder extends Embedder {
 
     if (this.serverProcess) {
       this.log(`Stopping server on port ${this.port}`);
-      this.serverProcess.kill();
+      await killServerProcess(this.serverProcess, this.configManager.logger);
       this.serverProcess = null;
     }
 

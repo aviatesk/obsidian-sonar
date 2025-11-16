@@ -97,7 +97,7 @@ export default class SonarPlugin extends Plugin {
           `You can change settings and run "Sonar: Reinitialize Sonar" command to retry.`,
         0
       );
-      embedder.cleanup();
+      await embedder.cleanup();
       this.embedder = null;
       return false;
     }
@@ -157,7 +157,7 @@ export default class SonarPlugin extends Plugin {
 
       if (this.embedder) {
         this.log('Cleaning up old embedder...');
-        this.embedder.cleanup();
+        await this.embedder.cleanup();
         this.embedder = null;
       }
 
@@ -200,6 +200,19 @@ export default class SonarPlugin extends Plugin {
     this.registerViews();
 
     this.setupConfigListeners();
+
+    // Register quit event for cleanup when Obsidian closes
+    // Note: onunload() is NOT called when Obsidian closes, only on plugin reload
+    // The quit event is not guaranteed to complete - OS may kill process at any time
+    this.registerEvent(
+      this.app.workspace.on('quit', () => {
+        this.log('Quit event triggered, performing cleanup...');
+        // Fire-and-forget: best effort cleanup before process terminates
+        this.performCleanup().catch(error => {
+          this.error(`Cleanup during quit failed: ${error}`);
+        });
+      })
+    );
 
     // Defer heavy initialization to avoid blocking plugin load
     this.app.workspace.onLayoutReady(() => {
@@ -676,12 +689,9 @@ export default class SonarPlugin extends Plugin {
     this.reinitializeSonar();
   }
 
-  async onunload() {
-    this.log('Obsidian Sonar plugin unloaded');
-
+  private async performCleanup(): Promise<void> {
     this.configListeners.forEach(unsubscribe => unsubscribe());
     this.configListeners = [];
-
     if (this.indexManager) {
       this.indexManager.cleanup();
     }
@@ -689,7 +699,12 @@ export default class SonarPlugin extends Plugin {
       await this.metadataStore.close();
     }
     if (this.embedder) {
-      this.embedder.cleanup();
+      await this.embedder.cleanup();
     }
+  }
+
+  async onunload() {
+    this.log('Obsidian Sonar plugin unloaded');
+    await this.performCleanup();
   }
 }

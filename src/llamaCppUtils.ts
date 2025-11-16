@@ -1,8 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { spawn } from 'child_process';
+import { ChildProcess, spawn } from 'child_process';
 import { createServer } from 'net';
+import type { Logger } from './WithLogging';
 
 /**
  * Get the cache directory path for llama.cpp models
@@ -271,4 +272,40 @@ export async function llamaServerHealthCheck(
   } catch {
     return false;
   }
+}
+
+export async function killServerProcess(
+  process: ChildProcess,
+  logger?: Logger
+): Promise<void> {
+  if (process.killed) {
+    return;
+  }
+
+  return new Promise<void>(resolve => {
+    const timeout = setTimeout(() => {
+      if (!process.killed) {
+        const msg = 'llama-server did not exit after SIGTERM, sending SIGKILL';
+        if (logger) {
+          logger.warn(msg);
+        } else {
+          console.warn(msg);
+        }
+        process.kill('SIGKILL');
+      }
+    }, 5000);
+
+    process.once('exit', () => {
+      clearTimeout(timeout);
+      const msg = 'llama-server process exited';
+      if (logger) {
+        logger.log(msg);
+      } else {
+        console.log(msg);
+      }
+      resolve();
+    });
+
+    process.kill('SIGTERM');
+  });
 }

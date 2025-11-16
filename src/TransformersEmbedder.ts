@@ -73,7 +73,7 @@ export class TransformersEmbedder extends Embedder {
     return this.device;
   }
 
-  cleanup(): void {
+  async cleanup(): Promise<void> {
     this.worker.cleanup();
   }
 }

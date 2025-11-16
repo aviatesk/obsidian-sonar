@@ -9,6 +9,7 @@ import {
   llamaServerTokenize,
   llamaServerGetEmbeddings,
   llamaServerHealthCheck,
+  killServerProcess,
 } from '../llamaCppUtils';
 import {
   countTokensTransformers,
@@ -182,10 +183,10 @@ export async function setupTestEmbedders(): Promise<TestEmbedderSetupInfo[]> {
   return [await setupLlamaCppEmbedder(), await setupTransformersEmbedder()];
 }
 
-export function cleanupTestEmbedders(): void {
+export async function cleanupTestEmbedders(): Promise<void> {
   if (context.llamaServerProcess) {
     console.log('Stopping llama-server...');
-    context.llamaServerProcess.kill();
+    await killServerProcess(context.llamaServerProcess);
     context.llamaServerProcess = null;
     context.llamaServerPort = null;
   }
