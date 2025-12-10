@@ -5,12 +5,32 @@ export interface Chunk {
   headings: string[];
 }
 
+/**
+ * Creates a memoized version of countTokens for use within a single chunking session.
+ * Cache is local to the function scope and automatically cleaned up after chunking completes.
+ */
+function createMemoizedCountTokens(
+  embedder: Pick<Embedder, 'countTokens'>
+): (text: string) => Promise<number> {
+  const cache = new Map<string, number>();
+  return async (text: string): Promise<number> => {
+    const cached = cache.get(text);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const count = await embedder.countTokens(text);
+    cache.set(text, count);
+    return count;
+  };
+}
+
 export async function createChunks(
   content: string,
   maxChunkSize: number,
   chunkOverlap: number,
   embedder: Pick<Embedder, 'countTokens'>
 ): Promise<Chunk[]> {
+  const countTokens = createMemoizedCountTokens(embedder);
   let text = content.trim();
 
   const chunks: Chunk[] = [];
@@ -22,7 +42,7 @@ export async function createChunks(
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const lineTokens = await embedder.countTokens(line);
+    const lineTokens = await countTokens(line);
 
     // Check for heading and update context
     if (line.startsWith('#')) {
@@ -39,12 +59,12 @@ export async function createChunks(
     // Split long lines that exceed maxChunkSize
     const processLines =
       lineTokens > maxChunkSize
-        ? await splitLongLine(line, maxChunkSize, embedder)
+        ? await splitLongLine(line, maxChunkSize, countTokens)
         : [line];
 
     // Process each sub-line (or the original line if not split)
     for (const processLine of processLines) {
-      const processLineTokens = await embedder.countTokens(processLine);
+      const processLineTokens = await countTokens(processLine);
 
       // Assertion: splitLongLine should ensure no line exceeds maxChunkSize
       if (processLineTokens > maxChunkSize) {
@@ -76,7 +96,7 @@ export async function createChunks(
           j >= 0 && overlapTokens < chunkOverlap;
           j--
         ) {
-          const lineOverlapTokens = await embedder.countTokens(currentChunk[j]);
+          const lineOverlapTokens = await countTokens(currentChunk[j]);
           if (overlapTokens + lineOverlapTokens <= chunkOverlap) {
             overlapLines.unshift(currentChunk[j]);
             overlapTokens += lineOverlapTokens;
@@ -89,7 +109,7 @@ export async function createChunks(
           overlapTokens + processLineTokens > maxChunkSize
         ) {
           const removedLine = overlapLines.shift()!;
-          const removedTokens = await embedder.countTokens(removedLine);
+          const removedTokens = await countTokens(removedLine);
           overlapTokens -= removedTokens;
         }
 
@@ -120,6 +140,8 @@ export async function createChunks(
   return chunks;
 }
 
+type CountTokensFn = (text: string) => Promise<number>;
+
 /**
  * Splits a long line that exceeds maxChunkSize into smaller sub-lines
  * Uses sentence boundaries first, then falls back to forced subdivision
@@ -127,7 +149,7 @@ export async function createChunks(
 async function splitLongLine(
   line: string,
   maxChunkSize: number,
-  embedder: Pick<Embedder, 'countTokens'>
+  countTokens: CountTokensFn
 ): Promise<string[]> {
   // Step 1: Try splitting by sentence boundaries
   // Match sentence-ending punctuation: . ! ? 。！？
@@ -137,7 +159,7 @@ async function splitLongLine(
 
   for (const part of sentenceParts) {
     const testLine = current + part;
-    const tokens = await embedder.countTokens(testLine);
+    const tokens = await countTokens(testLine);
 
     if (tokens > maxChunkSize && current) {
       subLines.push(current.trim());
@@ -152,7 +174,7 @@ async function splitLongLine(
   }
 
   // Step 2: If any sub-line still exceeds maxChunkSize, force subdivide
-  return await forceSubdivide(subLines, maxChunkSize, embedder);
+  return await forceSubdivide(subLines, maxChunkSize, countTokens);
 }
 
 /**
@@ -162,12 +184,12 @@ async function splitLongLine(
 async function forceSubdivide(
   lines: string[],
   maxChunkSize: number,
-  embedder: Pick<Embedder, 'countTokens'>
+  countTokens: CountTokensFn
 ): Promise<string[]> {
   const result: string[] = [];
 
   for (const line of lines) {
-    const tokens = await embedder.countTokens(line);
+    const tokens = await countTokens(line);
     if (tokens <= maxChunkSize) {
       result.push(line);
       continue;
@@ -184,7 +206,7 @@ async function forceSubdivide(
       while (left < right) {
         const mid = Math.floor((left + right + 1) / 2);
         const substring = line.slice(pos, mid);
-        const subTokens = await embedder.countTokens(substring);
+        const subTokens = await countTokens(substring);
 
         if (subTokens <= maxChunkSize) {
           bestSplit = mid;
@@ -209,7 +231,7 @@ async function forceSubdivide(
       const splitLine = line.slice(pos, adjustedSplit).trim();
       if (splitLine) {
         // Assertion: Verify the split line doesn't exceed maxChunkSize
-        const splitTokens = await embedder.countTokens(splitLine);
+        const splitTokens = await countTokens(splitLine);
         if (splitTokens > maxChunkSize) {
           throw new Error(
             `Force-subdivided line exceeds maxChunkSize: ${splitTokens} > ${maxChunkSize}`
