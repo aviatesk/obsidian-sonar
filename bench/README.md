@@ -74,6 +74,44 @@ company, and finds the relevant section in the life insurance article.
 
 </details>
 
+**MIRACL Merged (long document retrieval)**:
+
+A variant of MIRACL that merges pre-chunked passages back into complete
+Wikipedia articles for article-level retrieval evaluation.
+
+- **Languages**: Japanese, English (same as MIRACL)
+- **Corpus**: Complete Wikipedia articles (merged from chunks) + distractor
+  articles from the original BM25 candidate pool
+- **Query**: Same short question sentences as MIRACL
+- **Task**: Long document retrieval: question → relevant Wikipedia article
+
+<details>
+<summary>Example data</summary>
+
+Corpus (merged article):
+
+```json
+{
+  "_id": "miracl_en_dev#4768094",
+  "title": "Abi Branning",
+  "text": "Abi Branning is a fictional character from the BBC soap opera..."
+}
+```
+
+Unlike chunked MIRACL where IDs include chunk indices
+(`miracl_en_dev#4768094#0`, `#1`, etc.), merged articles use article-level IDs
+(`miracl_en_dev#4768094`).
+
+Qrels (article-level relevance):
+
+```tsv
+query-id             corpus-id                score
+miracl_en_dev#105    miracl_en_dev#4768094    1
+miracl_ja_dev#101    miracl_ja_dev#96129      1
+```
+
+</details>
+
 **[SciDocs](https://github.com/beir-cellar/beir)**:
 
 - **Languages**: English only (25K documents)
@@ -203,6 +241,29 @@ reference, the following differences exist:
 | Weaviate      | Vector | 0.9357  | 0.9759    | 1.0000     | 0.9432 | 0.9124 |
 | Weaviate      | Hybrid | 0.8761  | 0.9316    | 1.0000     | 0.8800 | 0.8486 |
 
+### Result for MIRACL Merged (long document retrieval)
+
+> - Queries: 200
+> - Documents: 6,259 articles (394 relevant + 5,865 distractors)
+> - Embedding model:
+>   [`intfloat/multilingual-e5-small`](https://huggingface.co/intfloat/multilingual-e5-small)
+
+| Backend       | Method | nDCG@10 | Recall@10 | Recall@100 | MRR@10 | MAP    |
+| ------------- | ------ | ------- | --------- | ---------- | ------ | ------ |
+| Sonar         | BM25   | 0.8827  | 0.9552    | 0.9950     | 0.8742 | 0.8501 |
+| Sonar         | Vector | 0.9432  | 0.9735    | 0.9927     | 0.9570 | 0.9213 |
+| Sonar         | Hybrid | 0.9531  | 0.9893    | 0.9950     | 0.9497 | 0.9331 |
+| Elasticsearch | BM25   | 0.9776  | 0.9976    | 1.0000     | 0.9749 | 0.9673 |
+| Elasticsearch | Vector | 0.9756  | 0.9899    | 1.0000     | 0.9778 | 0.9683 |
+| Elasticsearch | Hybrid | 0.9873  | 0.9988    | 1.0000     | 0.9796 | 0.9809 |
+| Weaviate      | BM25   | 0.9696  | 0.9926    | 1.0000     | 0.9681 | 0.9571 |
+| Weaviate      | Vector | 0.9762  | 0.9905    | 1.0000     | 0.9778 | 0.9688 |
+| Weaviate      | Hybrid | 0.9845  | 1.0000    | 1.0000     | 0.9779 | 0.9765 |
+
+Sonar's BM25 gap (~0.88 vs ~0.97) is due to tokenization: Sonar uses BPE subword
+tokenizer while ES/Weaviate use morphological analyzers (Kuromoji/Kagome).
+Vector search compensates in hybrid mode, achieving 0.95+ nDCG@10.
+
 ### Result for SciDocs
 
 > - Queries: 100
@@ -221,10 +282,6 @@ reference, the following differences exist:
 | Weaviate      | BM25   | 0.1511  | 0.1550    | 0.3390     | 0.2598 | 0.1059 |
 | Weaviate      | Vector | 0.1576  | 0.1705    | 0.3580     | 0.2781 | 0.1007 |
 | Weaviate      | Hybrid | 0.1805  | 0.1925    | 0.3785     | 0.3064 | 0.1224 |
-
-### Accuracy characteristics
-
-TODO
 
 ### Notes
 
