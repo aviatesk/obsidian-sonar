@@ -125,6 +125,14 @@ export abstract class Embedder extends WithLogging {
    */
   abstract getTokenIds(text: string): Promise<number[]>;
 
+  /**
+   * Decodes token IDs back to their string representations.
+   *
+   * @param tokenIds - Array of token IDs to decode
+   * @returns Array of decoded token strings
+   */
+  abstract decodeTokenIds(tokenIds: number[]): Promise<string[]>;
+
   abstract getDevice(): string;
   abstract cleanup(): Promise<void>;
 }

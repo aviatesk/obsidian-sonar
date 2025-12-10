@@ -69,6 +69,10 @@ export class TransformersEmbedder extends Embedder {
     return this.worker.call('getTokenIds', { text });
   }
 
+  async decodeTokenIds(tokenIds: number[]): Promise<string[]> {
+    return this.worker.call('decodeTokenIds', { tokenIds });
+  }
+
   getDevice(): 'webgpu' | 'wasm' {
     return this.device;
   }

@@ -33,6 +33,12 @@ export interface RPCMethods {
     };
     returns: number[];
   };
+  decodeTokenIds: {
+    params: {
+      tokenIds: number[];
+    };
+    returns: string[];
+  };
 }
 
 // Auto-generate RPCRequest from RPCMethods

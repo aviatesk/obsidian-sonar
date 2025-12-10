@@ -42,6 +42,24 @@ describe('embedder backends', () => {
     }
   });
 
+  it('can decode token IDs back to strings', async () => {
+    for (const embedderInfo of embedders) {
+      const embedder = embedderInfo.embedder;
+      const text = 'hello world';
+      const tokenIds = await embedder.getTokenIds(text);
+      const decoded = await embedder.decodeTokenIds(tokenIds);
+
+      expect(Array.isArray(decoded)).toBe(true);
+      expect(decoded.length).toBe(tokenIds.length);
+      expect(decoded.every(s => typeof s === 'string')).toBe(true);
+
+      // Joining decoded tokens should roughly match the original text
+      const joined = decoded.join('').replace(/\s+/g, ' ').trim();
+      expect(joined.toLowerCase()).toContain('hello');
+      expect(joined.toLowerCase()).toContain('world');
+    }
+  });
+
   it('can handle big texts', async () => {
     for (const embedderInfo of embedders) {
       const embedder = embedderInfo.embedder;

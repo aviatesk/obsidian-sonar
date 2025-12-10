@@ -148,6 +148,12 @@ self.addEventListener('message', async (e: MessageEvent) => {
         throw new Error('Model not initialized. Call initializeModel first.');
       }
       result = getTokenIdsTransformers(tokenizer, params.text);
+    } else if (method === 'decodeTokenIds') {
+      if (!tokenizer) {
+        throw new Error('Model not initialized. Call initializeModel first.');
+      }
+      // Decode each token ID individually to get individual token strings
+      result = params.tokenIds.map(id => tokenizer!.decode([id]));
     } else {
       const exhaustiveCheck: never = method;
       throw new Error(`Unknown method: ${exhaustiveCheck}`);

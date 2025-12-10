@@ -213,6 +213,37 @@ export async function llamaServerTokenize(
 }
 
 /**
+ * Detokenize token IDs to text using llama-server API
+ *
+ * @param serverUrl - Base URL of llama-server (e.g., "http://localhost:8080")
+ * @param tokenIds - Array of token IDs to detokenize
+ * @returns Promise that resolves to the decoded text
+ */
+export async function llamaServerDetokenize(
+  serverUrl: string,
+  tokenIds: number[]
+): Promise<string> {
+  const response = await fetch(`${serverUrl}/detokenize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tokens: tokenIds }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Detokenize request failed: ${response.status} ${response.statusText}`
+    );
+  }
+
+  const data = (await response.json()) as { content: string };
+  if (typeof data.content !== 'string') {
+    throw new Error('Invalid detokenize response from llama.cpp API');
+  }
+
+  return data.content;
+}
+
+/**
  * Get embeddings using llama-server API
  *
  * @param serverUrl - Base URL of llama-server (e.g., "http://localhost:8080")

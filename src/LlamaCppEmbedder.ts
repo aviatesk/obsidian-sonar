@@ -10,6 +10,7 @@ import {
   getModelCachePath,
   findAvailablePort,
   llamaServerTokenize,
+  llamaServerDetokenize,
   llamaServerGetEmbeddings,
   llamaServerHealthCheck,
   killServerProcess,
@@ -357,6 +358,17 @@ export class LlamaCppEmbedder extends Embedder {
       throw new Error('Embedder not initialized. Call initialize() first.');
     }
     return await this.httpTokenize(text);
+  }
+
+  async decodeTokenIds(tokenIds: number[]): Promise<string[]> {
+    if (!this.port) {
+      throw new Error('Embedder not initialized. Call initialize() first.');
+    }
+    // Decode each token ID individually to get individual token strings
+    const decoded = await Promise.all(
+      tokenIds.map(id => llamaServerDetokenize(this.serverUrl, [id]))
+    );
+    return decoded;
   }
 
   getDevice(): 'llamacpp' {

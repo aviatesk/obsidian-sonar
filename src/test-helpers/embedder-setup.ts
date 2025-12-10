@@ -7,6 +7,7 @@ import {
   getModelCachePath,
   findAvailablePort,
   llamaServerTokenize,
+  llamaServerDetokenize,
   llamaServerGetEmbeddings,
   llamaServerHealthCheck,
   killServerProcess,
@@ -20,7 +21,7 @@ import { spawn, type ChildProcess } from 'child_process';
 
 export type TestEmbedder = Pick<
   Embedder,
-  'countTokens' | 'getTokenIds' | 'getEmbeddings'
+  'countTokens' | 'getTokenIds' | 'decodeTokenIds' | 'getEmbeddings'
 >;
 
 export interface TestEmbedderSetupInfo {
@@ -38,6 +39,12 @@ class LlamaServerTestEmbedder implements TestEmbedder {
 
   async getTokenIds(text: string): Promise<number[]> {
     return llamaServerTokenize(this.serverUrl, text);
+  }
+
+  async decodeTokenIds(tokenIds: number[]): Promise<string[]> {
+    return Promise.all(
+      tokenIds.map(id => llamaServerDetokenize(this.serverUrl, [id]))
+    );
   }
 
   async getEmbeddings(texts: string[]): Promise<number[][]> {
@@ -150,6 +157,10 @@ class TransformersTestEmbedder implements TestEmbedder {
 
   async getTokenIds(text: string): Promise<number[]> {
     return getTokenIdsTransformers(this.tokenizer, text);
+  }
+
+  async decodeTokenIds(tokenIds: number[]): Promise<string[]> {
+    return tokenIds.map(id => this.tokenizer.decode([id]));
   }
 
   async getEmbeddings(texts: string[]): Promise<number[][]> {
