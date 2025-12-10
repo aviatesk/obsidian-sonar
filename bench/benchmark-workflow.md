@@ -97,6 +97,29 @@ This creates:
   queries)
 - `datasets/processed/scidocs_query-100/qrels.tsv` - Relevance judgments
 
+## MIRACL merged (long document retrieval)
+
+The default MIRACL subset uses pre-chunked passages as individual documents.
+For long document retrieval evaluation (where each Wikipedia article is a single
+document), use `generate_merged_articles.py` to merge chunks back into complete
+articles:
+
+```bash
+uv run scripts/generate_merged_articles.py \
+  --raw-corpus datasets/raw/miracl_en_corpus_dev.jsonl,datasets/raw/miracl_ja_corpus_dev.jsonl \
+  --subset-dir datasets/processed/miracl-ja-en_query-200 \
+  --output-dir datasets/processed/miracl-ja-en_query-200_merged
+```
+
+This creates:
+
+- `datasets/processed/miracl-ja-en_query-200_merged/corpus.jsonl` - Complete
+  Wikipedia articles (relevant + distractors, ~6,000 articles)
+- `datasets/processed/miracl-ja-en_query-200_merged/queries.jsonl` - Same
+  queries (200 queries)
+- `datasets/processed/miracl-ja-en_query-200_merged/qrels.tsv` - Article-level
+  relevance judgments
+
 ## Step 4: Generate embeddings (for vector/hybrid search)
 
 Skip this step if you only want to run BM25 benchmarks.
