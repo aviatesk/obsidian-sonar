@@ -92,6 +92,15 @@ npm run test:ui     # Run tests with interactive browser UI
 - Use backticks for code references: When writing comments, commit messages, or
   documentation, wrap code-related terms in backticks (e.g., `functionName`,
   `variableName`, `file.ts`) to distinguish them from regular text.
+- When writing Markdown text, use _2 whitespaces_ for indentation and try to
+  keep the maximum line length under _80 characters_.
+  - Additionally, prioritize simple text style and limit unnecessary decorations
+    (e.g. `**`) to only truly necessary locations. This is a style that should
+    generally be aimed for, but pay particular attention when writing Markdown.
+  - Headers should use sentence case (only the first word capitalized), not
+    title case. For example:
+    - Good: `## Conclusion and alternative approaches`
+    - Bad: `## Conclusion And Alternative Approaches`
 - Commit messages:
   - Do not include the "Generated with
     [Claude Code](https://claude.com/claude-code)" footer in commit messages for
