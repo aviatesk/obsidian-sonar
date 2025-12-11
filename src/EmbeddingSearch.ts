@@ -5,7 +5,7 @@ import { ConfigManager } from './ConfigManager';
 import type { SearchResult, FullSearchOptions } from './SearchManager';
 import { WithLogging } from './WithLogging';
 import { aggregateChunkScores } from './ChunkAggregation';
-import { hasNaNEmbedding, countNaNValues } from './Utils';
+import { hasNaNEmbedding, countNaNValues } from './utils';
 
 interface CombinedChunk {
   id: string;

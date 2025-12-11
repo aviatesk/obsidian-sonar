@@ -1,5 +1,6 @@
 import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
+import { progressiveWait } from './utils';
 
 /**
  * Base class for embedder implementations with common initialization logic
@@ -35,38 +36,24 @@ export abstract class Embedder extends WithLogging {
       await this.startInitialization();
 
       // Wait with progressive delays
-      const maxTimeMs = 600000; // 10 minutes
-      const delaySequence = [1000, 5000, 10000, 30000, 60000]; // 1s, 5s, 10s, 30s, 60s
-      let elapsedMs = 0;
-      let attemptIndex = 0;
-
-      while (elapsedMs < maxTimeMs) {
-        if (await this.checkReady()) {
-          await this.onInitializationComplete();
-          this.updateStatus('Ready');
-          return;
-        }
-
-        // Update status for long-running downloads
-        if (attemptIndex === 3) {
+      await progressiveWait({
+        checkReady: async () => {
+          if (await this.checkReady()) {
+            await this.onInitializationComplete();
+            this.updateStatus('Ready');
+            return true;
+          }
+          return false;
+        },
+        onStillWaiting: () => {
           this.log(
             `Still waiting... (Model download may take several minutes on first run)`
           );
           if (this.shouldUpdateStatusDuringWait()) {
             this.updateStatus('Still loading...');
           }
-        }
-
-        // Get delay: use sequence values, then repeat last value (60s)
-        const delayIndex = Math.min(attemptIndex, delaySequence.length - 1);
-        const delayMs = delaySequence[delayIndex];
-
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-        elapsedMs += delayMs;
-        attemptIndex++;
-      }
-
-      throw new Error(`Initialization timeout after ${maxTimeMs / 1000}s`);
+        },
+      });
     } catch (error) {
       this.error(
         `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`

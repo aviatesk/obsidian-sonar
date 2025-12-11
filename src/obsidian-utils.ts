@@ -141,39 +141,6 @@ export function getCurrentContext(
     : getReadingModeContext(view);
 }
 
-export function formatDuration(milliseconds: number): string {
-  const seconds = milliseconds / 1000;
-
-  if (seconds < 60) {
-    return `${seconds.toFixed(2)}s`;
-  }
-
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-
-  if (minutes < 60) {
-    return remainingSeconds > 0
-      ? `${minutes}m ${remainingSeconds}s`
-      : `${minutes}m`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-
-  if (remainingMinutes > 0) {
-    return `${hours}h ${remainingMinutes}m`;
-  }
-  return `${hours}h`;
-}
-
-export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${Math.round((bytes / Math.pow(k, i)) * 100) / 100} ${sizes[i]}`;
-}
-
 export function confirmAction(
   app: App,
   title: string,
@@ -207,18 +174,4 @@ export function confirmAction(
     };
     modal.open();
   });
-}
-
-/**
- * Check if an embedding contains NaN values
- */
-export function hasNaNEmbedding(embedding: number[]): boolean {
-  return embedding.some(x => Number.isNaN(x));
-}
-
-/**
- * Count NaN values in an embedding
- */
-export function countNaNValues(embedding: number[]): number {
-  return embedding.filter(x => Number.isNaN(x)).length;
 }

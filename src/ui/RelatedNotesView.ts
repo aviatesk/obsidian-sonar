@@ -13,7 +13,7 @@ import { writable, get } from 'svelte/store';
 import type { SearchResult } from '../SearchManager';
 import { processQuery, type QueryOptions } from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';
-import { getCurrentContext } from '../Utils';
+import { getCurrentContext } from '../obsidian-utils';
 import RelatedNotesContent from './RelatedNotesContent.svelte';
 import type SonarPlugin from '../../main';
 

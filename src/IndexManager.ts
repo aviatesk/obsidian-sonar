@@ -23,7 +23,7 @@ import {
   formatDuration,
   hasNaNEmbedding,
   countNaNValues,
-} from './Utils';
+} from './utils';
 import { WithLogging } from './WithLogging';
 
 /**

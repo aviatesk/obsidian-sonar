@@ -1,6 +1,4 @@
 import type { ChildProcess } from 'child_process';
-import { spawn } from 'child_process';
-import * as path from 'path';
 import type { ConfigManager } from './ConfigManager';
 import { Embedder } from './Embedder';
 import {
@@ -13,6 +11,7 @@ import {
   llamaServerGetEmbeddings,
   llamaServerHealthCheck,
   killServerProcess,
+  startLlamaServer,
 } from './llamaCppUtils';
 
 /**
@@ -141,8 +140,6 @@ export class LlamaCppEmbedder extends Embedder {
       throw new Error('Port not selected');
     }
 
-    const resolvedServerPath = await this.resolveServerPath(this.serverPath);
-
     const modelPath = getModelCachePath(this.modelRepo, this.modelFile);
 
     const maxChunkSize = this.configManager.get('maxChunkSize');
@@ -166,162 +163,22 @@ export class LlamaCppEmbedder extends Embedder {
       '0',
     ];
 
-    return new Promise((resolve, reject) => {
-      this.serverProcess = spawn(resolvedServerPath, args, {
-        stdio: 'pipe',
-        detached: false, // Ensure child dies when parent dies
-      });
-
-      let errorHandled = false;
-      this.serverProcess.on('error', error => {
-        errorHandled = true;
-        this.error(`Failed to start server: ${error.message}`);
-        if ('code' in error && error.code === 'ENOENT') {
-          this.showNotice?.(
-            `llama-server not found at path: ${this.serverPath}\n\n` +
-              `Resolved path: ${resolvedServerPath}\n\n` +
-              `Please install llama.cpp first.\n` +
-              `See README for installation instructions.`,
-            0
-          );
-          reject(
-            new Error(
-              `llama-server executable not found at: ${resolvedServerPath}`
-            )
-          );
-        } else {
-          this.showNotice?.(
-            `Failed to start llama.cpp server: ${error.message}\n` +
-              `Check console for details.`
-          );
-          reject(error);
-        }
-      });
-
-      this.serverProcess.on('exit', (code, signal) => {
-        if (code !== null && code !== 0) {
-          this.warn(`Server exited with code ${code}`);
-        } else if (signal) {
-          this.warn(`Server killed with signal ${signal}`);
-        }
+    const result = await startLlamaServer({
+      serverPath: this.serverPath,
+      args,
+      logger: this.configManager.getLogger(),
+      showNotice: this.showNotice,
+      onExit: () => {
         if (this.healthCheckInterval) {
           clearInterval(this.healthCheckInterval);
           this.healthCheckInterval = null;
         }
-      });
-
-      this.serverProcess.stdout?.on('data', data => {
-        throw new Error(`Unexpected data on stdout: ${data}`);
-      });
-
-      // XXX llama-server seems to output ALL logs to stderr (not just errors)
-      // This is abnormal behavior. stderr typically should only be used for
-      // error-related messages, and stdout should be used for regular logs.
-      // However, this issue seems to still be unresolved, which fundamentally
-      // makes it difficult to utilize llama-server's logs:
-      // https://github.com/ggml-org/llama.cpp/discussions/6786)
-      // Therefore here we filter stderr to show error messages with `this.error`,
-      // relatively important message with `this.log`, and use `this.verbose` otherwise.
-      this.serverProcess.stderr?.on('data', data => {
-        const message = data.toString().trim();
-        if (!message) return;
-        const lower = message.toLowerCase();
-        // Log errors and exceptions
-        if (
-          lower.includes('exception') ||
-          lower.includes('error') ||
-          lower.includes('fail')
-        ) {
-          this.error(`Server: ${message}`);
-          return;
-        }
-        // Log important server events
-        if (
-          lower.includes('listening') ||
-          lower.includes('model loaded') ||
-          message.startsWith('main:')
-        ) {
-          this.log(`Server: ${message}`);
-          return;
-        }
-        this.verbose(`Server: ${message}`);
-      });
-
-      this.exitHandlerBound = this.handleParentExit.bind(this);
-      process.on('exit', this.exitHandlerBound);
-      process.on('SIGINT', this.exitHandlerBound);
-      process.on('SIGTERM', this.exitHandlerBound);
-
-      // Resolve immediately after spawn (not waiting for server to be ready)
-      // Server readiness is checked by health checks in checkReady()
-      // Small delay to ensure error event fires before we resolve if there's an immediate error
-      setTimeout(() => {
-        if (!errorHandled) {
-          resolve();
-        }
-      }, 100);
+      },
+      serverType: 'llama.cpp embedder server',
     });
-  }
 
-  private async resolveServerPath(serverPath: string): Promise<string> {
-    // If already absolute path, return as-is
-    if (path.isAbsolute(serverPath)) {
-      return serverPath;
-    }
-
-    // Use login+interactive shell to run 'command -v' to resolve command name to full path
-    // This ensures the command runs with the user's full shell environment and PATH
-    // The -l flag makes it a login shell, -i makes it interactive (sources ~/.zshrc, etc.)
-    // We use 'command -v' instead of 'which' as it's more reliable and POSIX standard
-    return new Promise(resolve => {
-      const shell = process.env.SHELL || '/bin/zsh';
-      const which = spawn(shell, [
-        '-l',
-        '-i',
-        '-c',
-        `command -v ${serverPath}`,
-      ]);
-      let output = '';
-      let errorOutput = '';
-
-      which.stdout?.on('data', data => {
-        output += data.toString();
-      });
-
-      which.stderr?.on('data', data => {
-        errorOutput += data.toString();
-      });
-
-      which.on('close', code => {
-        if (code === 0 && output.trim()) {
-          this.log(
-            `Resolved '${serverPath}' to '${output.trim()}' via login shell`
-          );
-          resolve(output.trim());
-        } else {
-          // command -v failed, log the error and return original path
-          if (errorOutput) {
-            this.log(`Failed to resolve '${serverPath}': ${errorOutput}`);
-          }
-          this.log(
-            `Could not resolve '${serverPath}' via shell, using as-is (exit code: ${code})`
-          );
-          resolve(serverPath);
-        }
-      });
-
-      which.on('error', err => {
-        // spawn itself failed
-        this.warn(`Failed to spawn shell for path resolution: ${err.message}`);
-        resolve(serverPath);
-      });
-    });
-  }
-
-  private handleParentExit(): void {
-    if (this.serverProcess && !this.serverProcess.killed) {
-      this.serverProcess.kill('SIGTERM');
-    }
+    this.serverProcess = result.process;
+    this.exitHandlerBound = result.exitHandler;
   }
 
   private startHealthCheck(): void {

@@ -4,6 +4,7 @@ import * as os from 'os';
 import { ChildProcess, spawn } from 'child_process';
 import { createServer } from 'net';
 import type { Logger } from './WithLogging';
+import { progressiveWait } from './utils';
 
 /**
  * Get the cache directory path for llama.cpp models
@@ -303,6 +304,212 @@ export async function llamaServerHealthCheck(
   } catch {
     return false;
   }
+}
+
+/**
+ * Resolve a server path to an absolute path
+ * If the path is relative (e.g., "llama-server"), resolves it via login shell
+ *
+ * @param serverPath - Path to resolve (absolute or command name)
+ * @param logger - Optional logger for debug messages
+ * @returns Promise that resolves to the full path
+ */
+export async function resolveServerPath(
+  serverPath: string,
+  logger?: Logger
+): Promise<string> {
+  if (path.isAbsolute(serverPath)) {
+    return serverPath;
+  }
+
+  return new Promise(resolve => {
+    const shell = process.env.SHELL || '/bin/zsh';
+    const which = spawn(shell, ['-l', '-i', '-c', `command -v ${serverPath}`]);
+    let output = '';
+    let errorOutput = '';
+
+    which.stdout?.on('data', data => {
+      output += data.toString();
+    });
+
+    which.stderr?.on('data', data => {
+      errorOutput += data.toString();
+    });
+
+    which.on('close', code => {
+      if (code === 0 && output.trim()) {
+        const resolved = output.trim();
+        logger?.log(
+          `Resolved '${serverPath}' to '${resolved}' via login shell`
+        );
+        resolve(resolved);
+      } else {
+        if (errorOutput) {
+          logger?.log(`Failed to resolve '${serverPath}': ${errorOutput}`);
+        }
+        logger?.log(
+          `Could not resolve '${serverPath}' via shell, using as-is (exit code: ${code})`
+        );
+        resolve(serverPath);
+      }
+    });
+
+    which.on('error', err => {
+      logger?.warn(`Failed to spawn shell for path resolution: ${err.message}`);
+      resolve(serverPath);
+    });
+  });
+}
+
+export interface StartLlamaServerOptions {
+  serverPath: string;
+  args: string[];
+  logger?: Logger;
+  showNotice?: (msg: string, duration?: number) => void;
+  onExit?: (code: number | null, signal: NodeJS.Signals | null) => void;
+  serverType?: string;
+}
+
+export interface StartLlamaServerResult {
+  process: ChildProcess;
+  exitHandler: () => void;
+}
+
+/**
+ * Start a llama.cpp server process
+ *
+ * @param options - Server startup options
+ * @returns Promise that resolves with the process and exit handler
+ */
+export async function startLlamaServer(
+  options: StartLlamaServerOptions
+): Promise<StartLlamaServerResult> {
+  const {
+    serverPath,
+    args,
+    logger,
+    showNotice,
+    onExit,
+    serverType = 'llama.cpp server',
+  } = options;
+
+  const resolvedPath = await resolveServerPath(serverPath, logger);
+
+  return new Promise((resolve, reject) => {
+    const serverProcess = spawn(resolvedPath, args, {
+      stdio: 'pipe',
+      detached: false, // Ensure child dies when parent dies
+    });
+
+    let errorHandled = false;
+
+    serverProcess.on('error', error => {
+      errorHandled = true;
+      logger?.error(`Failed to start server: ${error.message}`);
+      if ('code' in error && error.code === 'ENOENT') {
+        showNotice?.(
+          `llama-server not found at path: ${serverPath}\n\n` +
+            `Resolved path: ${resolvedPath}\n\n` +
+            `Please install llama.cpp first.\n` +
+            `See README for installation instructions.`,
+          0
+        );
+        reject(
+          new Error(`llama-server executable not found at: ${resolvedPath}`)
+        );
+      } else {
+        showNotice?.(
+          `Failed to start ${serverType}: ${error.message}\n` +
+            `Check console for details.`
+        );
+        reject(error);
+      }
+    });
+
+    serverProcess.on('exit', (code, signal) => {
+      if (code !== null && code !== 0) {
+        logger?.warn(`Server exited with code ${code}`);
+      } else if (signal) {
+        logger?.warn(`Server killed with signal ${signal}`);
+      }
+      onExit?.(code, signal);
+    });
+
+    serverProcess.stdout?.on('data', data => {
+      throw new Error(`Unexpected data on stdout: ${data}`);
+    });
+
+    // XXX llama-server seems to output ALL logs to stderr (not just errors)
+    // This is abnormal behavior. stderr typically should only be used for
+    // error-related messages, and stdout should be used for regular logs.
+    // However, this issue seems to still be unresolved, which fundamentally
+    // makes it difficult to utilize llama-server's logs:
+    // https://github.com/ggml-org/llama.cpp/discussions/6786)
+    // Therefore here we filter stderr to show error messages with `logger.error`,
+    // relatively important message with `logger.log`, and use `logger.verbose` otherwise.
+    serverProcess.stderr?.on('data', data => {
+      const message = data.toString().trim();
+      if (!message) return;
+      const lower = message.toLowerCase();
+      if (
+        lower.includes('exception') ||
+        lower.includes('error') ||
+        lower.includes('fail')
+      ) {
+        logger?.error(`Server: ${message}`);
+        return;
+      }
+      if (
+        lower.includes('listening') ||
+        lower.includes('model loaded') ||
+        message.startsWith('main:')
+      ) {
+        logger?.log(`Server: ${message}`);
+        return;
+      }
+      logger?.verbose(`Server: ${message}`);
+    });
+
+    const exitHandler = () => {
+      if (serverProcess && !serverProcess.killed) {
+        serverProcess.kill('SIGTERM');
+      }
+    };
+
+    process.on('exit', exitHandler);
+    process.on('SIGINT', exitHandler);
+    process.on('SIGTERM', exitHandler);
+
+    // Resolve immediately after spawn (not waiting for server to be ready)
+    // Server readiness is checked by health checks in checkReady()
+    // Small delay to ensure error event fires before we resolve if there's an immediate error
+    setTimeout(() => {
+      if (!errorHandled) {
+        resolve({ process: serverProcess, exitHandler });
+      }
+    }, 100);
+  });
+}
+
+/**
+ * Wait for llama server to become ready with progressive delays
+ *
+ * @param serverUrl - Base URL of the server
+ * @param logger - Optional logger
+ * @returns Promise that resolves when server is ready
+ */
+export async function waitForServerReady(
+  serverUrl: string,
+  logger?: Logger
+): Promise<void> {
+  await progressiveWait({
+    checkReady: () => llamaServerHealthCheck(serverUrl),
+    onStillWaiting: () => {
+      logger?.log(
+        `Still waiting... (Model download may take several minutes on first run)`
+      );
+    },
+  });
 }
 
 export async function killServerProcess(

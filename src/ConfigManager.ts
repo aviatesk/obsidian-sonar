@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import type { App } from 'obsidian';
 import type { SonarSettings } from './config';
 import { Logger } from './WithLogging';
-import { confirmAction } from './Utils';
+import { confirmAction } from './obsidian-utils';
 
 export type ConfigChangeListener = (
   key: keyof SonarSettings,
