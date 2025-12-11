@@ -256,7 +256,8 @@ export default class SonarPlugin extends Plugin {
         modelRepo,
         modelFile,
         this.configManager,
-        status => this.updateStatusBar(status)
+        status => this.updateStatusBar(status),
+        (msg, duration) => new Notice(msg, duration)
       ));
       const success = await this.initializeEmbedder(
         embedder,

@@ -1,6 +1,5 @@
 import type { ChildProcess } from 'child_process';
 import { spawn } from 'child_process';
-import { Notice } from 'obsidian';
 import * as path from 'path';
 import type { ConfigManager } from './ConfigManager';
 import { Embedder } from './Embedder';
@@ -33,7 +32,8 @@ export class LlamaCppEmbedder extends Embedder {
     private modelRepo: string,
     private modelFile: string,
     configManager: ConfigManager,
-    statusCallback: (status: string) => void
+    statusCallback: (status: string) => void,
+    private showNotice?: (msg: string, duration?: number) => void
   ) {
     super(configManager, statusCallback);
   }
@@ -177,19 +177,20 @@ export class LlamaCppEmbedder extends Embedder {
         errorHandled = true;
         this.error(`Failed to start server: ${error.message}`);
         if ('code' in error && error.code === 'ENOENT') {
-          const noticeMsg =
+          this.showNotice?.(
             `llama-server not found at path: ${this.serverPath}\n\n` +
-            `Resolved path: ${resolvedServerPath}\n\n` +
-            `Please install llama.cpp first.\n` +
-            `See README for installation instructions.`;
-          new Notice(noticeMsg, 0);
+              `Resolved path: ${resolvedServerPath}\n\n` +
+              `Please install llama.cpp first.\n` +
+              `See README for installation instructions.`,
+            0
+          );
           reject(
             new Error(
               `llama-server executable not found at: ${resolvedServerPath}`
             )
           );
         } else {
-          new Notice(
+          this.showNotice?.(
             `Failed to start llama.cpp server: ${error.message}\n` +
               `Check console for details.`
           );
