@@ -1,10 +1,10 @@
 import type { ConfigManager } from './ConfigManager';
-import type { Embedder } from './Embedder';
 import {
   STORE_BM25_INVERTED_INDEX,
   STORE_BM25_DOC_TOKENS,
 } from './MetadataStore';
 import { WithLogging } from './WithLogging';
+import { IntlSegmenterTokenizer } from './IntlSegmenterTokenizer';
 
 /**
  * Posting list entry for inverted index
@@ -49,22 +49,22 @@ const B = 0.75;
 export class BM25Store extends WithLogging {
   protected readonly componentName = 'BM25Store';
   private metadataCache: IndexMetadata | null = null;
+  private tokenizer: IntlSegmenterTokenizer;
 
   private constructor(
     private db: IDBDatabase,
-    protected configManager: ConfigManager,
-    private embedder: Embedder
+    protected configManager: ConfigManager
   ) {
     super();
+    this.tokenizer = new IntlSegmenterTokenizer('ja');
   }
 
   static async initialize(
     db: IDBDatabase,
-    configManager: ConfigManager,
-    embedder: Embedder
+    configManager: ConfigManager
   ): Promise<BM25Store> {
-    const store = new BM25Store(db, configManager, embedder);
-    await store.refreshMetaDataCache(); // Build initial in-memory index metadata
+    const store = new BM25Store(db, configManager);
+    await store.refreshMetaDataCache();
     return store;
   }
 
@@ -128,7 +128,7 @@ export class BM25Store extends WithLogging {
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      const tokens = await this.tokenize(chunk.content);
+      const tokens = this.tokenize(chunk.content);
       const termFreq = this.calculateTermFrequency(tokens);
 
       chunksTokenInfo.push({
@@ -321,7 +321,7 @@ export class BM25Store extends WithLogging {
     query: string,
     topK: number
   ): Promise<Array<{ docId: string; score: number }>> {
-    const queryTokens = await this.tokenize(query);
+    const queryTokens = this.tokenize(query);
     const metadata = await this.getMetaData();
 
     if (metadata.totalDocuments === 0) {
@@ -501,24 +501,10 @@ export class BM25Store extends WithLogging {
 
   /**
    * Tokenizes text for BM25 indexing and search
-   * Uses embedder tokenizer
-   * Returns token IDs as strings for efficient exact matching
+   * Uses IntlSegmenterTokenizer for word segmentation
    */
-  private async tokenize(
-    text: string,
-    toLowerCase: boolean = true
-  ): Promise<string[]> {
-    // Normalize text
-    let normalizedText = text;
-    if (toLowerCase) {
-      normalizedText = text.toLowerCase();
-    }
-
-    // Get token IDs using Embedder API (handles large texts internally)
-    const tokenIds = await this.embedder.getTokenIds(normalizedText);
-
-    // Convert to strings for BM25 matching
-    return tokenIds.map(id => String(id));
+  private tokenize(text: string): string[] {
+    return this.tokenizer.tokenize(text);
   }
 
   /**

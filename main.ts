@@ -311,11 +311,7 @@ export default class SonarPlugin extends Plugin {
 
     let bm25Store: BM25Store;
     try {
-      bm25Store = await BM25Store.initialize(
-        db,
-        this.configManager,
-        this.embedder
-      );
+      bm25Store = await BM25Store.initialize(db, this.configManager);
     } catch (error) {
       this.error(`Failed to initialize BM25 store: ${error}`);
       new Notice(
