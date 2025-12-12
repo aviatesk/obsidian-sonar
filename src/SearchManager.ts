@@ -3,7 +3,24 @@ import { BM25Search } from './BM25Search';
 import type { ChunkMetadata } from './MetadataStore';
 import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
+import { aggregateChunkScores } from './ChunkAggregation';
 
+/**
+ * Chunk-level search result returned by BM25Search/EmbeddingSearch
+ * Used as intermediate result before file-level aggregation
+ */
+export interface ChunkResult {
+  chunkId: string;
+  filePath: string;
+  chunkIndex: number;
+  content: string;
+  score: number;
+  metadata: ChunkMetadata;
+}
+
+/**
+ * Chunk info for display in SearchResult
+ */
 export interface ChunkSearchResult {
   content: string;
   score: number;
@@ -175,22 +192,10 @@ export class SearchManager extends WithLogging {
     // Perform hybrid search for title and/or content
     const [titleResults, contentResults] = await Promise.all([
       titleWeight > 0
-        ? this.hybridSearch(
-            query,
-            'title',
-            embeddingWeight,
-            bm25Weight,
-            options
-          )
+        ? this.hybridTitleSearch(query, embeddingWeight, bm25Weight, options)
         : Promise.resolve([]),
       contentWeight > 0
-        ? this.hybridSearch(
-            query,
-            'content',
-            embeddingWeight,
-            bm25Weight,
-            options
-          )
+        ? this.hybridContentSearch(query, embeddingWeight, bm25Weight, options)
         : Promise.resolve([]),
     ]);
 
@@ -261,53 +266,31 @@ export class SearchManager extends WithLogging {
   }
 
   /**
-   * Hybrid search for either title or content
-   * Returns SearchResult[] with scores normalized to [0, 1]
-   *
-   * For pure BM25/vector search (one weight is 0), returns raw aggregated scores.
-   * For hybrid search (both weights > 0), applies RRF fusion.
-   *
-   * For hybrid results, embedding's topChunk is preferred when available
-   * (semantic search typically finds more contextually relevant excerpts).
+   * Hybrid search for title (returns file-level results directly)
    */
-  private async hybridSearch(
+  private async hybridTitleSearch(
     query: string,
-    type: 'title' | 'content',
     embeddingWeight: number,
     bm25Weight: number,
     options: SearchOptionsWithTopK
   ): Promise<SearchResult[]> {
-    // Compute chunk-level limit before aggregation
     const retrievalMultiplier = this.configManager.get('retrievalMultiplier');
     const retrievalLimit = options.topK * retrievalMultiplier;
-
-    // Run searches with chunk-level limiting
     const fullOptions = { ...options, retrievalLimit };
+
     const [embeddingResults, bm25Results] = await Promise.all([
       embeddingWeight > 0
-        ? type === 'title'
-          ? this.embeddingSearch.searchTitle(query, fullOptions)
-          : this.embeddingSearch.searchContent(query, fullOptions)
+        ? this.embeddingSearch.searchTitle(query, fullOptions)
         : Promise.resolve([]),
       bm25Weight > 0
-        ? type === 'title'
-          ? this.bm25Search.searchTitle(query, fullOptions)
-          : this.bm25Search.searchContent(query, fullOptions)
+        ? this.bm25Search.searchTitle(query, fullOptions)
         : Promise.resolve([]),
     ]);
 
-    // Pure BM25 search: just return results
-    if (embeddingWeight === 0 && bm25Weight > 0) {
-      return bm25Results;
-    }
+    if (embeddingWeight === 0) return bm25Results;
+    if (bm25Weight === 0) return embeddingResults;
 
-    // Pure vector search: just return results
-    if (bm25Weight === 0 && embeddingWeight > 0) {
-      return embeddingResults;
-    }
-
-    // Hybrid search: apply RRF fusion and select best topChunk
-    return this.fuseSearchResults(
+    return this.fuseFileResults(
       embeddingResults,
       bm25Results,
       embeddingWeight,
@@ -316,10 +299,109 @@ export class SearchManager extends WithLogging {
   }
 
   /**
-   * Fuse embedding and BM25 search results using RRF
-   * Selects the best topChunk for each file based on chunk scores
+   * Hybrid search for content (aggregates chunk-level to file-level)
    */
-  private fuseSearchResults(
+  private async hybridContentSearch(
+    query: string,
+    embeddingWeight: number,
+    bm25Weight: number,
+    options: SearchOptionsWithTopK
+  ): Promise<SearchResult[]> {
+    const retrievalMultiplier = this.configManager.get('retrievalMultiplier');
+    const retrievalLimit = options.topK * retrievalMultiplier;
+    const fullOptions = { ...options, retrievalLimit };
+
+    const [embeddingChunks, bm25Chunks] = await Promise.all([
+      embeddingWeight > 0
+        ? this.embeddingSearch.searchContent(query, fullOptions)
+        : Promise.resolve([]),
+      bm25Weight > 0
+        ? this.bm25Search.searchContent(query, fullOptions)
+        : Promise.resolve([]),
+    ]);
+
+    const embeddingResults = this.aggregateChunksToFiles(
+      embeddingChunks,
+      'vector'
+    );
+    const bm25Results = this.aggregateChunksToFiles(bm25Chunks, 'bm25');
+
+    if (embeddingWeight === 0) return bm25Results;
+    if (bm25Weight === 0) return embeddingResults;
+
+    return this.fuseFileResults(
+      embeddingResults,
+      bm25Results,
+      embeddingWeight,
+      bm25Weight
+    );
+  }
+
+  /**
+   * Aggregate chunk-level results to file-level results
+   */
+  private aggregateChunksToFiles(
+    chunks: ChunkResult[],
+    aggType: 'vector' | 'bm25'
+  ): SearchResult[] {
+    if (chunks.length === 0) return [];
+
+    const chunksByFile = new Map<string, ChunkResult[]>();
+    for (const chunk of chunks) {
+      if (!chunksByFile.has(chunk.filePath)) {
+        chunksByFile.set(chunk.filePath, []);
+      }
+      chunksByFile.get(chunk.filePath)!.push(chunk);
+    }
+
+    const fileScores = new Map<string, number[]>();
+    for (const [filePath, fileChunks] of chunksByFile.entries()) {
+      fileChunks.sort((a, b) => b.score - a.score);
+      fileScores.set(
+        filePath,
+        fileChunks.map(c => c.score)
+      );
+    }
+
+    const aggMethod =
+      aggType === 'vector'
+        ? this.configManager.get('vectorAggMethod')
+        : this.configManager.get('bm25AggMethod');
+    const aggregatedScores = aggregateChunkScores(fileScores, {
+      method: aggMethod,
+      m: this.configManager.get('aggM'),
+      l: this.configManager.get('aggL'),
+      decay: this.configManager.get('aggDecay'),
+      rrfK: this.configManager.get('aggRrfK'),
+    });
+
+    const results: SearchResult[] = [];
+    for (const [filePath, aggregatedScore] of aggregatedScores.entries()) {
+      const fileChunks = chunksByFile.get(filePath)!;
+      const topChunk = fileChunks[0];
+      results.push({
+        filePath,
+        title: topChunk.metadata.title || filePath,
+        score: aggregatedScore,
+        topChunk: {
+          content: topChunk.content,
+          score: topChunk.score,
+          metadata: topChunk.metadata,
+        },
+        chunkCount: fileChunks.length,
+        fileSize: topChunk.metadata.size,
+      });
+    }
+
+    results.sort((a, b) => b.score - a.score);
+    return results;
+  }
+
+  /**
+   * Fuse embedding and BM25 file-level results using RRF
+   * Prefers embedding's topChunk (semantically relevant)
+   */
+  private fuseFileResults(
     embeddingResults: SearchResult[],
     bm25Results: SearchResult[],
     embeddingWeight: number,
