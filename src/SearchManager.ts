@@ -1,6 +1,6 @@
 import { EmbeddingSearch } from './EmbeddingSearch';
 import { BM25Search } from './BM25Search';
-import type { MetadataStore, ChunkMetadata } from './MetadataStore';
+import type { ChunkMetadata } from './MetadataStore';
 import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
 
@@ -77,7 +77,6 @@ export class SearchManager extends WithLogging {
   constructor(
     private embeddingSearch: EmbeddingSearch,
     private bm25Search: BM25Search,
-    private metadataStore: MetadataStore,
     protected configManager: ConfigManager
   ) {
     super();
@@ -174,7 +173,7 @@ export class SearchManager extends WithLogging {
     }
 
     // Perform hybrid search for title and/or content
-    const [titleHybrid, contentHybrid] = await Promise.all([
+    const [titleResults, contentResults] = await Promise.all([
       titleWeight > 0
         ? this.hybridSearch(
             query,
@@ -183,7 +182,7 @@ export class SearchManager extends WithLogging {
             bm25Weight,
             options
           )
-        : Promise.resolve(new Map<string, number>()),
+        : Promise.resolve([]),
       contentWeight > 0
         ? this.hybridSearch(
             query,
@@ -192,37 +191,84 @@ export class SearchManager extends WithLogging {
             bm25Weight,
             options
           )
-        : Promise.resolve(new Map<string, number>()),
+        : Promise.resolve([]),
     ]);
 
-    // Combine title and content scores
-    const allFilePaths = new Set([
-      ...titleHybrid.keys(),
-      ...contentHybrid.keys(),
-    ]);
+    // Combine title and content results
+    return this.combineSearchResults(
+      titleResults,
+      contentResults,
+      titleWeight,
+      contentWeight,
+      options.topK
+    );
+  }
 
-    const finalScores = new Map<string, number>();
-    const totalWeight = titleWeight + contentWeight;
-
-    for (const filePath of allFilePaths) {
-      const titleScore = titleHybrid.get(filePath) || 0;
-      const contentScore = contentHybrid.get(filePath) || 0;
-      const weightedScore =
-        titleWeight * titleScore + contentWeight * contentScore;
-      // Normalize to [0, 1] based on total weight
-      const finalScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
-      finalScores.set(filePath, finalScore);
+  /**
+   * Combine title and content search results with weighted scores
+   * Prioritizes content topChunk for excerpts, falls back to title topChunk
+   */
+  private combineSearchResults(
+    titleResults: SearchResult[],
+    contentResults: SearchResult[],
+    titleWeight: number,
+    contentWeight: number,
+    topK: number
+  ): SearchResult[] {
+    // Build maps for quick lookup
+    const titleByPath = new Map<string, SearchResult>();
+    for (const result of titleResults) {
+      titleByPath.set(result.filePath, result);
     }
 
-    return this.createSearchResults(finalScores, options);
+    const contentByPath = new Map<string, SearchResult>();
+    for (const result of contentResults) {
+      contentByPath.set(result.filePath, result);
+    }
+
+    // Collect all file paths
+    const allFilePaths = new Set([
+      ...titleByPath.keys(),
+      ...contentByPath.keys(),
+    ]);
+
+    const totalWeight = titleWeight + contentWeight;
+    const results: SearchResult[] = [];
+
+    for (const filePath of allFilePaths) {
+      const titleResult = titleByPath.get(filePath);
+      const contentResult = contentByPath.get(filePath);
+
+      // Calculate weighted score
+      const titleScore = titleResult?.score || 0;
+      const contentScore = contentResult?.score || 0;
+      const weightedScore =
+        titleWeight * titleScore + contentWeight * contentScore;
+      const finalScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
+
+      // Prioritize content result for topChunk (better for excerpts)
+      const baseResult = contentResult || titleResult;
+      if (!baseResult) continue;
+
+      results.push({
+        ...baseResult,
+        score: finalScore,
+      });
+    }
+
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, topK);
   }
 
   /**
    * Hybrid search for either title or content
-   * Returns Map<filePath, score> normalized to [0, 1]
+   * Returns SearchResult[] with scores normalized to [0, 1]
    *
    * For pure BM25/vector search (one weight is 0), returns raw aggregated scores.
    * For hybrid search (both weights > 0), applies RRF fusion.
+   *
+   * For hybrid results, embedding's topChunk is preferred when available
+   * (semantic search typically finds more contextually relevant excerpts).
    */
   private async hybridSearch(
     query: string,
@@ -230,7 +276,7 @@ export class SearchManager extends WithLogging {
     embeddingWeight: number,
     bm25Weight: number,
     options: SearchOptionsWithTopK
-  ): Promise<Map<string, number>> {
+  ): Promise<SearchResult[]> {
     // Compute chunk-level limit before aggregation
     const retrievalMultiplier = this.configManager.get('retrievalMultiplier');
     const retrievalLimit = options.topK * retrievalMultiplier;
@@ -252,23 +298,34 @@ export class SearchManager extends WithLogging {
 
     // Pure BM25 search: just return results
     if (embeddingWeight === 0 && bm25Weight > 0) {
-      const scores = new Map<string, number>();
-      for (const result of bm25Results) {
-        scores.set(result.filePath, result.score);
-      }
-      return scores;
+      return bm25Results;
     }
 
     // Pure vector search: just return results
     if (bm25Weight === 0 && embeddingWeight > 0) {
-      const scores = new Map<string, number>();
-      for (const result of embeddingResults) {
-        scores.set(result.filePath, result.score);
-      }
-      return scores;
+      return embeddingResults;
     }
 
-    // Hybrid search: apply RRF fusion
+    // Hybrid search: apply RRF fusion and select best topChunk
+    return this.fuseSearchResults(
+      embeddingResults,
+      bm25Results,
+      embeddingWeight,
+      bm25Weight
+    );
+  }
+
+  /**
+   * Fuse embedding and BM25 search results using RRF
+   * Selects the best topChunk for each file based on chunk scores
+   */
+  private fuseSearchResults(
+    embeddingResults: SearchResult[],
+    bm25Results: SearchResult[],
+    embeddingWeight: number,
+    bm25Weight: number
+  ): SearchResult[] {
+    // Calculate RRF scores
     const rrfScores = this.reciprocalRankFusion(
       embeddingResults,
       bm25Results,
@@ -277,15 +334,36 @@ export class SearchManager extends WithLogging {
     );
 
     // Normalize by theoretical maximum RRF score
-    // Max occurs when both ranks = 1: (embeddingWeight + bm25Weight) / (RRF_K + 1)
     const maxTheoreticalRRF = (embeddingWeight + bm25Weight) / (RRF_K + 1);
 
-    const normalizedScores = new Map<string, number>();
-    for (const [filePath, score] of rrfScores.entries()) {
-      normalizedScores.set(filePath, score / maxTheoreticalRRF);
+    // Build maps for quick lookup
+    const embeddingByPath = new Map<string, SearchResult>();
+    for (const result of embeddingResults) {
+      embeddingByPath.set(result.filePath, result);
     }
 
-    return normalizedScores;
+    const bm25ByPath = new Map<string, SearchResult>();
+    for (const result of bm25Results) {
+      bm25ByPath.set(result.filePath, result);
+    }
+
+    // Build fused results
+    // Prefer embedding result for topChunk (semantically relevant)
+    const results: SearchResult[] = [];
+    for (const [filePath, rrfScore] of rrfScores.entries()) {
+      const normalizedScore = rrfScore / maxTheoreticalRRF;
+      const baseResult =
+        embeddingByPath.get(filePath) || bm25ByPath.get(filePath);
+      if (!baseResult) continue;
+
+      results.push({
+        ...baseResult,
+        score: normalizedScore,
+      });
+    }
+
+    results.sort((a, b) => b.score - a.score);
+    return results;
   }
 
   /**
@@ -330,54 +408,5 @@ export class SearchManager extends WithLogging {
     }
 
     return rrfScores;
-  }
-
-  /**
-   * Create SearchResults from score map
-   */
-  private async createSearchResults(
-    scoreMap: Map<string, number>,
-    options: SearchOptionsWithTopK
-  ): Promise<SearchResult[]> {
-    const chunks = await this.metadataStore.getAllChunks();
-
-    let filteredChunks = chunks;
-    if (options.excludeFilePath) {
-      filteredChunks = chunks.filter(
-        chunk => chunk.filePath !== options.excludeFilePath
-      );
-    }
-
-    const chunksByFilePath = new Map<string, typeof filteredChunks>();
-    for (const chunk of filteredChunks) {
-      const filePath = chunk.filePath;
-      if (!chunksByFilePath.has(filePath)) {
-        chunksByFilePath.set(filePath, []);
-      }
-      chunksByFilePath.get(filePath)!.push(chunk);
-    }
-
-    const results: SearchResult[] = [];
-    for (const [filePath, score] of scoreMap.entries()) {
-      const fileChunks = chunksByFilePath.get(filePath);
-      if (!fileChunks || fileChunks.length === 0) continue;
-
-      const topChunk = fileChunks[0];
-      results.push({
-        filePath,
-        title: topChunk.title || filePath,
-        score,
-        topChunk: {
-          content: topChunk.content,
-          score,
-          metadata: topChunk,
-        },
-        chunkCount: fileChunks.length,
-        fileSize: topChunk.size,
-      });
-    }
-
-    results.sort((a, b) => b.score - a.score);
-    return results.slice(0, options.topK);
   }
 }

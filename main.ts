@@ -340,7 +340,6 @@ export default class SonarPlugin extends Plugin {
     this.searchManager = new SearchManager(
       embeddingSearch,
       bm25Search,
-      this.metadataStore,
       this.configManager
     );
 
