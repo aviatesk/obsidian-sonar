@@ -2,9 +2,12 @@ import { EmbeddingStore } from './EmbeddingStore';
 import { MetadataStore, type ChunkMetadata } from './MetadataStore';
 import type { Embedder } from './Embedder';
 import { ConfigManager } from './ConfigManager';
-import type { SearchResult, FullSearchOptions } from './SearchManager';
+import type {
+  ChunkResult,
+  SearchResult,
+  FullSearchOptions,
+} from './SearchManager';
 import { WithLogging } from './WithLogging';
-import { aggregateChunkScores } from './ChunkAggregation';
 import { hasNaNEmbedding, countNaNValues } from './utils';
 import { ChunkId } from './chunkId';
 
@@ -104,35 +107,54 @@ export class EmbeddingSearch extends WithLogging {
 
   /**
    * Search title only (searches title embeddings: path#title entries)
-   * Computes similarity for all title embeddings, returns all results sorted by score
    */
   async searchTitle(
     query: string,
     options: FullSearchOptions
   ): Promise<SearchResult[]> {
-    return this.searchByType(query, 'title', options);
+    const scored = await this.searchChunks(query, 'title', options);
+
+    return scored.slice(0, options.retrievalLimit).map(result => ({
+      filePath: result.chunk.metadata.filePath,
+      title: result.chunk.metadata.title || result.chunk.metadata.filePath,
+      score: result.score,
+      topChunk: {
+        content: result.chunk.content,
+        score: result.score,
+        metadata: result.chunk.metadata,
+      },
+      chunkCount: 1,
+      fileSize: result.chunk.metadata.size,
+    }));
   }
 
   /**
    * Search content only (searches chunk embeddings: path#0, path#1, ... entries)
-   * Computes similarity for all chunks, aggregates by file, returns all documents sorted by score
    */
   async searchContent(
     query: string,
     options: FullSearchOptions
-  ): Promise<SearchResult[]> {
-    return this.searchByType(query, 'content', options);
+  ): Promise<ChunkResult[]> {
+    const scored = await this.searchChunks(query, 'content', options);
+
+    return scored.slice(0, options.retrievalLimit).map(result => ({
+      chunkId: result.chunk.id,
+      filePath: result.chunk.metadata.filePath,
+      chunkIndex: ChunkId.getChunkIndex(result.chunk.id),
+      content: result.chunk.content,
+      score: result.score,
+      metadata: result.chunk.metadata,
+    }));
   }
 
   /**
-   * Core search implementation for a specific type (title or content)
-   * Computes similarity for all chunks, aggregates, and returns all results
+   * Core search: compute similarity scores for chunks of given type
    */
-  private async searchByType(
+  private async searchChunks(
     query: string,
     type: 'title' | 'content',
     options: FullSearchOptions
-  ): Promise<SearchResult[]> {
+  ): Promise<Array<{ chunk: CombinedChunk; score: number }>> {
     const queryEmbeddings = await this.embedder.getEmbeddings([query]);
     const queryEmbedding = queryEmbeddings[0];
 
@@ -165,89 +187,12 @@ export class EmbeddingSearch extends WithLogging {
       );
     }
 
-    const results = filteredChunks.map(chunk => {
-      const similarity = cosineSimilarity(queryEmbedding, chunk.embedding);
-      return {
-        chunk: chunk,
-        score: similarity,
-      };
-    });
+    const results = filteredChunks.map(chunk => ({
+      chunk,
+      score: cosineSimilarity(queryEmbedding, chunk.embedding),
+    }));
 
     results.sort((a, b) => b.score - a.score);
-
-    const chunksToAggregate = results.slice(0, options.retrievalLimit);
-
-    if (type === 'title') {
-      // For title search, return all results (one per file, no aggregation needed)
-      return chunksToAggregate.map(result => ({
-        filePath: result.chunk.metadata.filePath,
-        title: result.chunk.metadata.title || result.chunk.metadata.filePath,
-        score: result.score,
-        topChunk: {
-          content: result.chunk.content,
-          score: result.score,
-          metadata: result.chunk.metadata,
-        },
-        chunkCount: 1,
-        fileSize: result.chunk.metadata.size,
-      }));
-    } else {
-      // For content search, aggregate chunks by file (after chunk-level limiting)
-      const groupedByFile = new Map<string, typeof results>();
-      for (const result of chunksToAggregate) {
-        const filePath = result.chunk.metadata.filePath;
-        if (!groupedByFile.has(filePath)) {
-          groupedByFile.set(filePath, []);
-        }
-        groupedByFile.get(filePath)!.push(result);
-      }
-
-      const fileScores = new Map<string, number[]>();
-      for (const [filePath, chunkResults] of groupedByFile.entries()) {
-        chunkResults.sort((a, b) => b.score - a.score);
-        fileScores.set(
-          filePath,
-          chunkResults.map(c => c.score)
-        );
-      }
-
-      const vectorAggMethod = this.configManager.get('vectorAggMethod');
-      const aggM = this.configManager.get('aggM');
-      const aggL = this.configManager.get('aggL');
-      const aggDecay = this.configManager.get('aggDecay');
-      const aggRrfK = this.configManager.get('aggRrfK');
-
-      const aggregatedScores = aggregateChunkScores(fileScores, {
-        method: vectorAggMethod,
-        m: aggM,
-        l: aggL,
-        decay: aggDecay,
-        rrfK: aggRrfK,
-      });
-
-      const aggregated: SearchResult[] = [];
-      for (const [filePath, aggregatedScore] of aggregatedScores.entries()) {
-        const chunkResults = groupedByFile.get(filePath)!;
-        const topChunkResult = chunkResults[0];
-
-        aggregated.push({
-          filePath,
-          title: topChunkResult.chunk.metadata.title || filePath,
-          score: aggregatedScore,
-          topChunk: {
-            content: topChunkResult.chunk.content,
-            score: topChunkResult.score,
-            metadata: topChunkResult.chunk.metadata,
-          },
-          chunkCount: chunkResults.length,
-          fileSize: topChunkResult.chunk.metadata.size,
-        });
-      }
-
-      aggregated.sort((a, b) => b.score - a.score);
-
-      // Return all aggregated files (no topK limit)
-      return aggregated;
-    }
+    return results;
   }
 }
