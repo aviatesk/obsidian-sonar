@@ -1,6 +1,7 @@
 <script lang="ts">
   import { App, Notice } from 'obsidian';
   import type { ConfigManager } from '../ConfigManager';
+  import { STATUS_DISPLAY_TEXT, type RelatedNotesStatus } from './RelatedNotesView';
   import SearchResults from './SearchResults.svelte';
   import KnowledgeGraph from './KnowledgeGraph.svelte';
   import { RefreshCw, Eye, EyeOff, FileText, ChartNetwork, createElement } from 'lucide';
@@ -19,7 +20,8 @@
   const query = $derived(storeState.query);
   const results = $derived(storeState.results);
   const tokenCount = $derived(storeState.tokenCount);
-  const status = $derived(storeState.status);
+  const status = $derived(storeState.status as RelatedNotesStatus);
+  const statusText = $derived(STATUS_DISPLAY_TEXT[status]);
   const activeFile = $derived(storeState.activeFile);
   const hasQuery = $derived(query && query.trim().length > 0);
   let showQuery = $state(configManager.get('showRelatedNotesQuery'));
@@ -69,7 +71,7 @@
   });
 
   function handleRefresh() {
-    if (status === 'Processing...') {
+    if (status === 'processing') {
       new Notice('Processing in progress. Please wait.');
       return;
     }
@@ -96,10 +98,10 @@
   <div class="related-notes-header">
     <div class="status-container">
       <div class="status-indicator">
-        {#if status === 'Processing...'}
+        {#if status === 'processing'}
           <span class="spinner"></span>
         {/if}
-        <span>{status}</span>
+        <span>{statusText}</span>
       </div>
 
       <div class="controls-container">
@@ -178,7 +180,7 @@
       </div>
     {:else}
       <div class="empty-state">
-        <span>{status}</span>
+        <span>{statusText}</span>
       </div>
     {/if}
   </div>

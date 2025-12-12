@@ -19,6 +19,14 @@ export interface SearchResult {
   fileSize: number;
 }
 
+interface QueuedSearchRequest {
+  componentId: string;
+  query: string;
+  options: SearchOptionsWithTopK;
+  resolve: (value: SearchResult[] | null) => void;
+  reject: (error: unknown) => void;
+}
+
 /**
  * Search options for both UI and benchmark searches
  *
@@ -51,9 +59,20 @@ const RRF_K = 60;
 /**
  * High-level search manager that orchestrates hybrid search
  * combining embedding-based and BM25 full-text search
+ *
+ * This manager uses a processing queue to handle concurrent requests from
+ * multiple UI components (SemanticNoteFinder, RelatedNotesView). When a new
+ * request arrives from the same component, any pending request is superseded and
+ * resolved with null. This avoids sending stale requests to server.
+ *
+ * Note: Current queue implementation enforces sequential processing on client side.
+ * If `--parallel > 1` is used on the server, the queue should track inFlightCount
+ * and allow up to N concurrent requests. For `--parallel 1`, sequential is correct.
  */
 export class SearchManager extends WithLogging {
   protected readonly componentName = 'SearchManager';
+  private searchQueue: QueuedSearchRequest[] = [];
+  private isProcessingSearch = false;
 
   constructor(
     private embeddingSearch: EmbeddingSearch,
@@ -66,6 +85,65 @@ export class SearchManager extends WithLogging {
   }
 
   /**
+   * Search with queue management for handling concurrent requests.
+   *
+   * When a new request arrives from the same component, any pending (not yet
+   * processing) request from that component is removed from the queue and
+   * resolved with `null`. This prevents stale results from updating the UI.
+   *
+   * @param componentId Identifier for the calling component (e.g., 'SemanticNoteFinder')
+   * @param query Search query text
+   * @param options Search weights and filters
+   * @returns Search results, or null if superseded by a newer request
+   */
+  async search(
+    componentId: string,
+    query: string,
+    options: SearchOptionsWithTopK
+  ): Promise<SearchResult[] | null> {
+    // Remove pending requests from the same component (resolve with null)
+    const newQueue: QueuedSearchRequest[] = [];
+    for (const request of this.searchQueue) {
+      if (request.componentId === componentId) {
+        request.resolve(null);
+      } else {
+        newQueue.push(request);
+      }
+    }
+    this.searchQueue = newQueue;
+
+    return new Promise((resolve, reject) => {
+      this.searchQueue.push({
+        componentId,
+        query,
+        options,
+        resolve,
+        reject,
+      });
+      this.processSearchQueue();
+    });
+  }
+
+  private async processSearchQueue(): Promise<void> {
+    if (this.isProcessingSearch || this.searchQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessingSearch = true;
+    const request = this.searchQueue.shift()!;
+
+    try {
+      const results = await this.executeSearch(request.query, request.options);
+      request.resolve(results);
+    } catch (error) {
+      request.reject(error);
+    }
+
+    this.isProcessingSearch = false;
+    this.processSearchQueue();
+  }
+
+  /**
    * Core search implementation (flat search - all chunks processed)
    *
    * Unlike Elasticsearch/Weaviate which use ANN indexes (HNSW) to efficiently
@@ -73,12 +151,8 @@ export class SearchManager extends WithLogging {
    * 1. Aggregate all chunks to documents
    * 2. Apply RRF fusion on all aggregated documents
    * 3. Return all documents sorted by score (caller slices to desired count)
-   *
-   * @param query Search query text
-   * @param options Search weights and filters
-   * @returns All aggregated documents sorted by score (no limit)
    */
-  async search(
+  private async executeSearch(
     query: string,
     options: SearchOptionsWithTopK
   ): Promise<SearchResult[]> {

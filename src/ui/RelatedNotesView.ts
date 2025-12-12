@@ -19,12 +19,30 @@ import type SonarPlugin from '../../main';
 
 export const RELATED_NOTES_VIEW_TYPE = 'related-notes-view';
 
+export type RelatedNotesStatus =
+  | 'initializing'
+  | 'no-active-note'
+  | 'processing'
+  | 'unable-to-determine-position'
+  | 'ready'
+  | 'no-content'
+  | 'error';
+
+export const STATUS_DISPLAY_TEXT: Record<RelatedNotesStatus, string> = {
+  initializing: 'Initializing...',
+  'no-active-note': 'No active note',
+  processing: 'Processing...',
+  'unable-to-determine-position': 'Unable to determine position',
+  ready: 'Ready to search',
+  'no-content': 'No content to search',
+  error: 'Failed to search',
+};
+
 interface RelatedNotesState {
   query: string;
   results: SearchResult[];
   tokenCount: number;
-  status: string;
-  isProcessing: boolean;
+  status: RelatedNotesStatus;
   activeFile: string | null;
 }
 
@@ -32,7 +50,6 @@ const EMPTY_STATE_BASE: Omit<RelatedNotesState, 'status'> = {
   query: '',
   results: [],
   tokenCount: 0,
-  isProcessing: false,
   activeFile: null,
 };
 
@@ -41,6 +58,7 @@ export class RelatedNotesView extends ItemView {
   private configManager: ConfigManager;
   private lastActiveFile: TFile | null = null;
   private lastQuery: string = '';
+  private searchAbortController: AbortController | null = null;
   private debouncedRefresh: () => void;
   private debouncedCursorRefresh: () => void;
   private debouncedScrollRefresh: () => void;
@@ -48,7 +66,7 @@ export class RelatedNotesView extends ItemView {
   private scrollUnsubscribe: (() => void) | null = null;
   private relatedNotesStore = writable<RelatedNotesState>({
     ...EMPTY_STATE_BASE,
-    status: 'Initializing...',
+    status: 'initializing',
   });
 
   constructor(
@@ -203,7 +221,7 @@ export class RelatedNotesView extends ItemView {
       this.lastQuery = '';
       this.updateStore({
         ...EMPTY_STATE_BASE,
-        status: 'No active note',
+        status: 'no-active-note',
       });
     }
   }
@@ -229,12 +247,15 @@ export class RelatedNotesView extends ItemView {
   }
 
   private async refresh(preferCursor: boolean = false): Promise<void> {
-    if (get(this.relatedNotesStore).isProcessing) return;
+    if (this.searchAbortController) {
+      this.searchAbortController.abort();
+      this.searchAbortController = null;
+    }
 
     if (!this.plugin.searchManager || !this.plugin.embedder) {
       this.updateStore({
         ...EMPTY_STATE_BASE,
-        status: 'Initializing...',
+        status: 'initializing',
       });
       return;
     }
@@ -243,14 +264,16 @@ export class RelatedNotesView extends ItemView {
     if (!activeFile || !(activeFile instanceof TFile)) {
       this.updateStore({
         ...EMPTY_STATE_BASE,
-        status: 'No active note',
+        status: 'no-active-note',
       });
       return;
     }
 
+    this.searchAbortController = new AbortController();
+    const searchAbortSignal = this.searchAbortController.signal;
+
     this.updateStore({
-      status: 'Processing...',
-      isProcessing: true,
+      status: 'processing',
     });
 
     let activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -268,7 +291,7 @@ export class RelatedNotesView extends ItemView {
     if (!context) {
       this.updateStore({
         ...EMPTY_STATE_BASE,
-        status: 'Unable to determine position',
+        status: 'unable-to-determine-position',
         activeFile: activeFile.path,
       });
       return;
@@ -289,8 +312,7 @@ export class RelatedNotesView extends ItemView {
 
       if (query === this.lastQuery) {
         this.updateStore({
-          status: 'Ready to search',
-          isProcessing: false,
+          status: 'ready',
         });
         return;
       }
@@ -299,52 +321,60 @@ export class RelatedNotesView extends ItemView {
 
       if (query) {
         const tokenCount = await this.plugin.embedder.countTokens(query);
-        const searchResults = await this.plugin.searchManager.search(query, {
-          topK: this.configManager.get('searchResultsCount'),
-          excludeFilePath: activeFile.path,
-        });
+        const searchResults = await this.plugin.searchManager.search(
+          'RelatedNotesView',
+          query,
+          {
+            topK: this.configManager.get('searchResultsCount'),
+            excludeFilePath: activeFile.path,
+          }
+        );
+
+        // Skip if superseded (null from queue) or aborted (new refresh started)
+        if (searchResults === null || searchAbortSignal.aborted) {
+          return;
+        }
+
         this.updateStore({
           query: query,
           results: searchResults,
           tokenCount: tokenCount,
-          status: 'Ready to search',
-          isProcessing: false,
+          status: 'ready',
           activeFile: activeFile.path,
         });
       } else {
         this.updateStore({
           ...EMPTY_STATE_BASE,
-          status: 'No content to search',
+          status: 'no-content',
           activeFile: activeFile.path,
         });
       }
     } catch (err) {
+      if (searchAbortSignal.aborted) {
+        return;
+      }
       this.configManager
         .getLogger()
         .error(`Error refreshing related notes: ${err}`);
       new Notice('Failed to retrieve related notes');
       this.updateStore({
         ...EMPTY_STATE_BASE,
-        status: 'Failed to search',
+        status: 'error',
         activeFile: activeFile.path,
       });
     }
   }
 
   private manualRefresh(): void {
-    if (get(this.relatedNotesStore).isProcessing) {
-      new Notice('Processing in progress. Please wait.');
-      return;
-    }
     this.lastQuery = '';
     this.refresh(true);
   }
 
   onSonarInitialized(): void {
     const currentState = get(this.relatedNotesStore);
-    if (currentState.status === 'Initializing...') {
+    if (currentState.status === 'initializing') {
       this.updateStore({
-        status: 'Ready to search',
+        status: 'ready',
       });
       // Trigger initial search if there's an active file
       this.refresh(true);

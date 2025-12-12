@@ -230,10 +230,19 @@ export class BenchmarkRunner extends WithLogging {
     const results: TrecResult[] = [];
 
     for (const query of queries) {
-      const searchResults = await this.searchManager.search(query.text, {
-        topK,
-        ...weights,
-      });
+      const searchResults = await this.searchManager.search(
+        'BenchmarkRunner',
+        query.text,
+        {
+          topK,
+          ...weights,
+        }
+      );
+
+      // Benchmark runs sequentially, so null (superseded) shouldn't occur
+      if (searchResults === null) {
+        continue;
+      }
 
       for (let i = 0; i < searchResults.length; i++) {
         const result = searchResults[i];

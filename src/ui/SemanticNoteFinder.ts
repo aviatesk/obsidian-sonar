@@ -25,6 +25,7 @@ export class SemanticNoteFinder extends Modal {
     isSearching: false,
     hasSearched: false,
   });
+  private searchAbortController: AbortController | null = null;
 
   constructor(
     app: App,
@@ -50,14 +51,23 @@ export class SemanticNoteFinder extends Modal {
   }
 
   private async handleSearch(query: string): Promise<void> {
+    if (this.searchAbortController) {
+      this.searchAbortController.abort();
+      this.searchAbortController = null;
+    }
+
     if (!query.trim()) {
       this.updateStore({
         query: '',
         results: [],
+        isSearching: false,
         hasSearched: false,
       });
       return;
     }
+
+    this.searchAbortController = new AbortController();
+    const searchAbortSignal = this.searchAbortController.signal;
 
     this.updateStore({
       query,
@@ -66,16 +76,29 @@ export class SemanticNoteFinder extends Modal {
     });
 
     try {
-      const results = await this.searchManager.search(query, {
-        topK: this.configManager.get('searchResultsCount'),
-        titleWeight: 0.25,
-        contentWeight: 0.75,
-      });
+      const results = await this.searchManager.search(
+        'SemanticNoteFinder',
+        query,
+        {
+          topK: this.configManager.get('searchResultsCount'),
+          titleWeight: 0.25,
+          contentWeight: 0.75,
+        }
+      );
+
+      // Skip if superseded (null from queue) or aborted (new search started)
+      if (results === null || searchAbortSignal.aborted) {
+        return;
+      }
+
       this.updateStore({
         results,
         isSearching: false,
       });
     } catch (err) {
+      if (searchAbortSignal.aborted) {
+        return;
+      }
       this.configManager.getLogger().error(`Search failed: ${err}`);
       new Notice('Search failed. Please check your settings.');
       this.updateStore({
