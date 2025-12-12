@@ -4,6 +4,7 @@ import type { SearchResult, FullSearchOptions } from './SearchManager';
 import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
 import { aggregateChunkScores } from './ChunkAggregation';
+import { ChunkId } from './chunkId';
 
 /**
  * BM25 full-text search interface
@@ -24,7 +25,6 @@ export class BM25Search extends WithLogging {
 
   /**
    * Search title only
-   * ChunkId format: "filePath#title"
    * Computes BM25 for all titles, returns all results sorted by score
    */
   async searchTitle(
@@ -43,9 +43,8 @@ export class BM25Search extends WithLogging {
     // Filter only title results and extract filePath
     const titleScores = new Map<string, number>();
     for (const result of bm25Results) {
-      const chunkId = result.docId;
-      if (chunkId.endsWith('#title')) {
-        const filePath = this.extractFilePathFromChunkId(chunkId);
+      if (ChunkId.isTitle(result.docId)) {
+        const filePath = ChunkId.getFilePath(result.docId);
         if (options?.excludeFilePath && filePath === options.excludeFilePath) {
           continue;
         }
@@ -76,7 +75,7 @@ export class BM25Search extends WithLogging {
 
     // Filter only content chunks
     const contentChunks = bm25Results.filter(
-      result => !result.docId.endsWith('#title')
+      result => !ChunkId.isTitle(result.docId)
     );
 
     // Apply chunk-level limit before aggregation
@@ -85,7 +84,7 @@ export class BM25Search extends WithLogging {
     // Aggregate by filePath
     const fileScores = new Map<string, number[]>();
     for (const result of chunksToAggregate) {
-      const filePath = this.extractFilePathFromChunkId(result.docId);
+      const filePath = ChunkId.getFilePath(result.docId);
       if (options?.excludeFilePath && filePath === options.excludeFilePath) {
         continue;
       }
@@ -162,14 +161,5 @@ export class BM25Search extends WithLogging {
     searchResults.sort((a, b) => b.score - a.score);
 
     return searchResults;
-  }
-
-  /**
-   * Extract filePath from chunkId
-   * Format: "filePath#title" or "filePath#chunkIndex"
-   */
-  private extractFilePathFromChunkId(chunkId: string): string {
-    const lastHashIndex = chunkId.lastIndexOf('#');
-    return chunkId.substring(0, lastHashIndex);
   }
 }

@@ -6,6 +6,7 @@ import type { SearchResult, FullSearchOptions } from './SearchManager';
 import { WithLogging } from './WithLogging';
 import { aggregateChunkScores } from './ChunkAggregation';
 import { hasNaNEmbedding, countNaNValues } from './utils';
+import { ChunkId } from './chunkId';
 
 interface CombinedChunk {
   id: string;
@@ -62,7 +63,7 @@ export class EmbeddingSearch extends WithLogging {
     const combined: CombinedChunk[] = [];
 
     const filteredEmbeddings = embeddings.filter(emb => {
-      const isTitle = emb.id.endsWith('#title');
+      const isTitle = ChunkId.isTitle(emb.id);
       if (type === 'title') return isTitle;
       if (type === 'content') return !isTitle;
       return true;
@@ -81,8 +82,8 @@ export class EmbeddingSearch extends WithLogging {
       // For title entries, find the first chunk metadata of the file
       // For content entries, use the exact metadata match
       let meta: ChunkMetadata | undefined;
-      if (emb.id.endsWith('#title')) {
-        const filePath = emb.id.replace(/#title$/, '');
+      if (ChunkId.isTitle(emb.id)) {
+        const filePath = ChunkId.getFilePath(emb.id);
         meta = metadataByFilePath.get(filePath);
       } else {
         meta = metadataById.get(emb.id);
@@ -91,7 +92,7 @@ export class EmbeddingSearch extends WithLogging {
       if (meta) {
         combined.push({
           id: emb.id,
-          content: emb.id.endsWith('#title') ? meta.title : meta.content,
+          content: ChunkId.isTitle(emb.id) ? meta.title : meta.content,
           embedding: emb.embedding,
           metadata: meta,
         });

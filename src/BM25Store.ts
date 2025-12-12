@@ -6,6 +6,8 @@ import {
 import { WithLogging } from './WithLogging';
 import { IntlSegmenterTokenizer } from './IntlSegmenterTokenizer';
 
+// TODO: Rename 'docId' to 'chunkId' in interfaces below (requires DB rebuild)
+
 /**
  * Posting list entry for inverted index
  */
