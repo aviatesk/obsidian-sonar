@@ -157,6 +157,12 @@ export class LlamaCppEmbedder extends Embedder {
       '--port',
       this.port.toString(),
       '--embedding',
+      // --parallel 1: Process one request at a time (client already batches texts)
+      // -kvu: Disable auto n_parallel=4 detection, use explicit --parallel value
+      '--parallel',
+      '1',
+      '-kvu',
+      // --ubatch-size: Max tokens per batch (controls actual batch processing performance)
       '--ubatch-size',
       ubatchSize.toString(),
       '-lv',
