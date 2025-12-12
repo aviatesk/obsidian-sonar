@@ -467,7 +467,7 @@ export default class SonarPlugin extends Plugin {
 
     this.addCommand({
       id: 'rebuild-index',
-      name: 'Rebuild entire search index',
+      name: 'Rebuild current search index',
       callback: async () => {
         if (!this.checkInitialized()) return;
         const confirmed = await this.configManager.confirmRebuildIndex(

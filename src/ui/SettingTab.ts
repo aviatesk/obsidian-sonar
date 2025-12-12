@@ -107,7 +107,7 @@ export class SettingTab extends PluginSettingTab {
     );
 
     const syncSetting = new Setting(actionsContainer).setName(
-      'Sync index with vault'
+      'Sync search index with vault'
     );
     this.renderMarkdownDesc(
       syncSetting.descEl,
@@ -125,11 +125,11 @@ export class SettingTab extends PluginSettingTab {
     );
 
     const rebuildSetting = new Setting(actionsContainer).setName(
-      'Rebuild entire index'
+      'Rebuild current search index'
     );
     this.renderMarkdownDesc(
       rebuildSetting.descEl,
-      `Rebuild index for all files in: ${indexPath}`
+      `Rebuild search index for all files in: ${indexPath}`
     );
     rebuildSetting.addButton(button =>
       button

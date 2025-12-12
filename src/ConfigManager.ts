@@ -79,7 +79,7 @@ export class ConfigManager extends EventEmitter {
   async confirmClearCurrentIndex(app: App): Promise<boolean> {
     return confirmAction(
       app,
-      'Clear current index',
+      'Clear current search index',
       `Clear current search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear the index for the current configuration. This cannot be undone.`,
       'Clear'
     );
@@ -91,8 +91,8 @@ export class ConfigManager extends EventEmitter {
   async confirmRebuildIndex(app: App): Promise<boolean> {
     return confirmAction(
       app,
-      'Rebuild index',
-      `Rebuild entire search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear and rebuild the index for the current configuration. This cannot be undone.`,
+      'Rebuild current search index',
+      `Rebuild current search index?\n\n${this.getCurrentConfigInfo()}\n\nThis will clear and rebuild the index for the current configuration. This cannot be undone.`,
       'Rebuild'
     );
   }

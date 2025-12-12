@@ -141,7 +141,7 @@ export class EmbeddingSearch extends WithLogging {
       hasNaNEmbedding(chunk.embedding)
     );
     if (chunksWithNaN.length > 0) {
-      const errorMsg = `Found ${chunksWithNaN.length} chunk(s) with NaN embeddings in database. Rebuild index to fix this issue.`;
+      const errorMsg = `Found ${chunksWithNaN.length} chunk(s) with NaN embeddings in database. Rebuild search index to fix this issue.`;
       const chunkList = chunksWithNaN
         .slice(0, 5)
         .map(
