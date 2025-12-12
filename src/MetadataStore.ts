@@ -105,6 +105,7 @@ export class MetadataStore extends WithLogging {
           db.createObjectStore(STORE_BM25_INVERTED_INDEX, { keyPath: 'token' });
         }
         if (!db.objectStoreNames.contains(STORE_BM25_DOC_TOKENS)) {
+          // TODO: Rename keyPath from 'docId' to 'chunkId' (requires DB rebuild)
           db.createObjectStore(STORE_BM25_DOC_TOKENS, { keyPath: 'docId' });
         }
 

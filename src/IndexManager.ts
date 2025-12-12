@@ -25,6 +25,7 @@ import {
   countNaNValues,
 } from './utils';
 import { WithLogging } from './WithLogging';
+import { ChunkId } from './chunkId';
 
 /**
  * Debounce delay for batching file operations
@@ -688,12 +689,12 @@ export class IndexManager extends WithLogging {
 
       const { file, chunks } = fileChunkDataList[fileIndex];
       allBM25Chunks.push({
-        docId: `${file.path}#title`,
+        docId: ChunkId.forTitle(file.path),
         content: file.basename,
       });
       for (let i = 0; i < chunks.length; i++) {
         allBM25Chunks.push({
-          docId: `${file.path}#${i}`,
+          docId: ChunkId.forContent(file.path, i),
           content: chunks[i].content,
         });
       }
@@ -767,11 +768,10 @@ export class IndexManager extends WithLogging {
 
     if (chunks.length === 0) {
       // Empty file: index only title
-      const docId = `${file.path}#0`;
       return {
         metadata: [
           {
-            id: docId,
+            id: ChunkId.forContent(file.path, 0),
             filePath: file.path,
             title: file.basename,
             content: '',
@@ -782,7 +782,7 @@ export class IndexManager extends WithLogging {
           },
         ],
         embeddingData: [
-          { id: `${file.path}#title`, embedding: titleEmbedding },
+          { id: ChunkId.forTitle(file.path), embedding: titleEmbedding },
         ],
       };
     }
@@ -795,7 +795,7 @@ export class IndexManager extends WithLogging {
     // Add metadata for each chunk
     for (let i = 0; i < chunks.length; i++) {
       metadata.push({
-        id: `${file.path}#${i}`,
+        id: ChunkId.forContent(file.path, i),
         filePath: file.path,
         title: file.basename,
         content: chunkContents[i],
@@ -807,13 +807,16 @@ export class IndexManager extends WithLogging {
     }
 
     // Add title to embeddings
-    embeddingData.push({ id: `${file.path}#title`, embedding: titleEmbedding });
+    embeddingData.push({
+      id: ChunkId.forTitle(file.path),
+      embedding: titleEmbedding,
+    });
 
     // Add chunk embeddings
     for (const emb of embeddings) {
       if (emb.type === 'chunk' && emb.chunkIndex !== undefined) {
         embeddingData.push({
-          id: `${file.path}#${emb.chunkIndex}`,
+          id: ChunkId.forContent(file.path, emb.chunkIndex),
           embedding: emb.embedding,
         });
       }
@@ -879,7 +882,7 @@ export class IndexManager extends WithLogging {
     const metadataChunks: ChunkMetadata[] = [];
     for (let i = 0; i < chunkContents.length; i++) {
       metadataChunks.push({
-        id: `${file.path}#${i}`,
+        id: ChunkId.forContent(file.path, i),
         filePath: file.path,
         title: file.basename,
         content: chunkContents[i],
@@ -894,19 +897,19 @@ export class IndexManager extends WithLogging {
     const contentEmbeddings = await this.embedder.getEmbeddings(chunkContents);
 
     const bm25Chunks = [
-      { docId: `${file.path}#title`, content: file.basename },
+      { docId: ChunkId.forTitle(file.path), content: file.basename },
     ];
     const embeddingData = [
-      { id: `${file.path}#title`, embedding: titleEmbeddings[0] },
+      { id: ChunkId.forTitle(file.path), embedding: titleEmbeddings[0] },
     ];
 
     for (let i = 0; i < chunkContents.length; i++) {
       bm25Chunks.push({
-        docId: `${file.path}#${i}`,
+        docId: ChunkId.forContent(file.path, i),
         content: chunkContents[i],
       });
       embeddingData.push({
-        id: `${file.path}#${i}`,
+        id: ChunkId.forContent(file.path, i),
         embedding: contentEmbeddings[i],
       });
     }
