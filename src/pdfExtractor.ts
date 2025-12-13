@@ -1,4 +1,3 @@
-import type { Vault, TFile } from 'obsidian';
 import type { PdfjsLib, PDFDocumentProxy } from './pdfjs.d';
 
 export interface PdfPage {
@@ -14,15 +13,6 @@ export interface PdfExtractResult {
   rawFullText: string;
 }
 
-// Obsidian-specific entry point
-export async function extractTextFromPdf(
-  vault: Vault,
-  file: TFile
-): Promise<PdfExtractResult> {
-  const buffer = await vault.readBinary(file);
-  return extractTextFromBuffer(buffer, window.pdfjsLib);
-}
-
 // Testable entry point - accepts dependencies
 export async function extractTextFromBuffer(
   buffer: ArrayBuffer,
@@ -31,6 +21,7 @@ export async function extractTextFromBuffer(
 ): Promise<PdfExtractResult> {
   const loadingTask = pdfjsLib.getDocument({
     data: buffer,
+    verbosity: 0, // Suppress warnings (0 = errors only)
     cMapPacked: true,
     cMapUrl: options?.cMapUrl ?? '/lib/pdfjs/cmaps/',
     standardFontDataUrl:

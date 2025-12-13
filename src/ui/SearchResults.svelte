@@ -50,11 +50,19 @@
     };
   }
 
+  function isPdf(filePath: string): boolean {
+    return filePath.toLowerCase().endsWith('.pdf');
+  }
+
   async function handleTitleClick(result: SearchResult) {
     const file = app.vault.getAbstractFileByPath(result.filePath);
     if (file instanceof TFile) {
       if (onFileClick) {
         onFileClick(file);
+      } else if (isPdf(result.filePath) && result.topChunk.metadata.pageNumber) {
+        // Open PDF at specific page using link text with #page=N fragment
+        const linkText = `${result.filePath}#page=${result.topChunk.metadata.pageNumber}`;
+        await app.workspace.openLinkText(linkText, '', false);
       } else {
         await app.workspace.getLeaf(false).openFile(file);
       }

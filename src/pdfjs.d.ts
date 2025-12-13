@@ -13,6 +13,7 @@ export interface PdfjsLib {
 export interface DocumentInitParameters {
   data?: ArrayBuffer | Uint8Array;
   url?: string;
+  verbosity?: number; // 0 = errors only, 1 = warnings, 5 = all
   cMapPacked?: boolean;
   cMapUrl?: string;
   standardFontDataUrl?: string;

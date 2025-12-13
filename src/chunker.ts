@@ -3,6 +3,7 @@ import type { Embedder } from './Embedder';
 export interface Chunk {
   content: string;
   headings: string[];
+  startOffset: number;
 }
 
 /**
@@ -24,6 +25,11 @@ function createMemoizedCountTokens(
   };
 }
 
+interface LineWithOffset {
+  text: string;
+  offset: number;
+}
+
 export async function createChunks(
   content: string,
   maxChunkSize: number,
@@ -31,17 +37,30 @@ export async function createChunks(
   embedder: Pick<Embedder, 'countTokens'>
 ): Promise<Chunk[]> {
   const countTokens = createMemoizedCountTokens(embedder);
-  let text = content.trim();
+
+  // Calculate trim offset (leading whitespace removed)
+  const trimmedContent = content.trim();
+  const trimOffset = content.indexOf(trimmedContent);
 
   const chunks: Chunk[] = [];
-  const lines = text.split('\n');
-  let currentChunk: string[] = [];
+  const lines = trimmedContent.split('\n');
+
+  // Pre-calculate offset for each line (relative to original content)
+  const lineOffsets: number[] = [];
+  let offset = trimOffset;
+  for (const line of lines) {
+    lineOffsets.push(offset);
+    offset += line.length + 1; // +1 for '\n'
+  }
+
+  let currentChunk: LineWithOffset[] = [];
   let currentTokens = 0;
   let currentHeadings: string[] = [];
   let chunkHeadings: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const lineOffset = lineOffsets[i];
     const lineTokens = await countTokens(line);
 
     // Check for heading and update context
@@ -57,14 +76,19 @@ export async function createChunks(
     }
 
     // Split long lines that exceed maxChunkSize
-    const processLines =
+    const processLines: LineWithOffset[] =
       lineTokens > maxChunkSize
-        ? await splitLongLine(line, maxChunkSize, countTokens)
-        : [line];
+        ? await splitLongLineWithOffset(
+            line,
+            lineOffset,
+            maxChunkSize,
+            countTokens
+          )
+        : [{ text: line, offset: lineOffset }];
 
     // Process each sub-line (or the original line if not split)
     for (const processLine of processLines) {
-      const processLineTokens = await countTokens(processLine);
+      const processLineTokens = await countTokens(processLine.text);
 
       // Assertion: splitLongLine should ensure no line exceeds maxChunkSize
       if (processLineTokens > maxChunkSize) {
@@ -85,18 +109,19 @@ export async function createChunks(
         }
 
         chunks.push({
-          content: currentChunk.join('\n'),
+          content: currentChunk.map(l => l.text).join('\n'),
           headings: chunkHeadings,
+          startOffset: currentChunk[0].offset,
         });
 
-        const overlapLines: string[] = [];
+        const overlapLines: LineWithOffset[] = [];
         let overlapTokens = 0;
         for (
           let j = currentChunk.length - 1;
           j >= 0 && overlapTokens < chunkOverlap;
           j--
         ) {
-          const lineOverlapTokens = await countTokens(currentChunk[j]);
+          const lineOverlapTokens = await countTokens(currentChunk[j].text);
           if (overlapTokens + lineOverlapTokens <= chunkOverlap) {
             overlapLines.unshift(currentChunk[j]);
             overlapTokens += lineOverlapTokens;
@@ -113,7 +138,7 @@ export async function createChunks(
           overlapTokens + processLineTokens > maxChunkSize
         ) {
           const removedLine = overlapLines.shift()!;
-          const removedTokens = await countTokens(removedLine);
+          const removedTokens = await countTokens(removedLine.text);
           overlapTokens -= removedTokens;
         }
 
@@ -126,7 +151,10 @@ export async function createChunks(
     }
   }
 
-  const finalChunkContent = currentChunk.join('\n').trim();
+  const finalChunkContent = currentChunk
+    .map(l => l.text)
+    .join('\n')
+    .trim();
   if (finalChunkContent) {
     // Assertion: Ensure final chunk doesn't exceed maxChunkSize
     if (currentTokens > maxChunkSize) {
@@ -135,9 +163,15 @@ export async function createChunks(
       );
     }
 
+    // Calculate the actual start offset after trim
+    const untrimmedContent = currentChunk.map(l => l.text).join('\n');
+    const trimmedStart = untrimmedContent.indexOf(finalChunkContent);
+    const startOffset = currentChunk[0].offset + trimmedStart;
+
     chunks.push({
       content: finalChunkContent,
       headings: chunkHeadings,
+      startOffset,
     });
   }
 
@@ -147,26 +181,34 @@ export async function createChunks(
 type CountTokensFn = (text: string) => Promise<number>;
 
 /**
- * Splits a long line that exceeds maxChunkSize into smaller sub-lines
+ * Splits a long line that exceeds maxChunkSize into smaller sub-lines with offset tracking
  * Uses sentence boundaries first, then falls back to forced subdivision
  */
-async function splitLongLine(
+async function splitLongLineWithOffset(
   line: string,
+  lineOffset: number,
   maxChunkSize: number,
   countTokens: CountTokensFn
-): Promise<string[]> {
+): Promise<LineWithOffset[]> {
   // Step 1: Try splitting by sentence boundaries
   // Match sentence-ending punctuation: . ! ? 。！？
   const sentenceParts = line.split(/([。.!?！？]+)/);
-  const subLines: string[] = [];
+  const subLines: LineWithOffset[] = [];
   let current = '';
+  let currentOffset = lineOffset;
 
   for (const part of sentenceParts) {
     const testLine = current + part;
     const tokens = await countTokens(testLine);
 
     if (tokens > maxChunkSize && current) {
-      subLines.push(current.trim());
+      const trimmed = current.trim();
+      const trimStart = current.indexOf(trimmed);
+      subLines.push({
+        text: trimmed,
+        offset: currentOffset + trimStart,
+      });
+      currentOffset += current.length;
       current = part;
     } else {
       current = testLine;
@@ -174,28 +216,33 @@ async function splitLongLine(
   }
 
   if (current) {
-    subLines.push(current.trim());
+    const trimmed = current.trim();
+    const trimStart = current.indexOf(trimmed);
+    subLines.push({
+      text: trimmed,
+      offset: currentOffset + trimStart,
+    });
   }
 
   // Step 2: If any sub-line still exceeds maxChunkSize, force subdivide
-  return await forceSubdivide(subLines, maxChunkSize, countTokens);
+  return await forceSubdivideWithOffset(subLines, maxChunkSize, countTokens);
 }
 
 /**
  * Force subdivides lines that still exceed maxChunkSize after sentence splitting
  * Uses binary search to find approximate split position, then adjusts to word boundaries
  */
-async function forceSubdivide(
-  lines: string[],
+async function forceSubdivideWithOffset(
+  lines: LineWithOffset[],
   maxChunkSize: number,
   countTokens: CountTokensFn
-): Promise<string[]> {
-  const result: string[] = [];
+): Promise<LineWithOffset[]> {
+  const result: LineWithOffset[] = [];
 
-  for (const line of lines) {
+  for (const { text: line, offset: lineOffset } of lines) {
     const tokens = await countTokens(line);
     if (tokens <= maxChunkSize) {
-      result.push(line);
+      result.push({ text: line, offset: lineOffset });
       continue;
     }
 
@@ -241,7 +288,13 @@ async function forceSubdivide(
             `Force-subdivided line exceeds maxChunkSize: ${splitTokens} > ${maxChunkSize}`
           );
         }
-        result.push(splitLine);
+        // Calculate offset: pos is relative to line start, add trim adjustment
+        const untrimmed = line.slice(pos, adjustedSplit);
+        const trimStart = untrimmed.indexOf(splitLine);
+        result.push({
+          text: splitLine,
+          offset: lineOffset + pos + trimStart,
+        });
       }
       pos = adjustedSplit;
 
