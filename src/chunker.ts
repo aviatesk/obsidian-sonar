@@ -100,6 +100,10 @@ export async function createChunks(
           if (overlapTokens + lineOverlapTokens <= chunkOverlap) {
             overlapLines.unshift(currentChunk[j]);
             overlapTokens += lineOverlapTokens;
+          } else {
+            // Stop if a line doesn't fit - don't skip to earlier lines
+            // This ensures overlap remains contiguous
+            break;
           }
         }
 

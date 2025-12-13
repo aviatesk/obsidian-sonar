@@ -230,6 +230,38 @@ line five here with content`;
           // because overlap was reduced to fit maxChunkSize
           expect(actualOverlapTokens).toBeLessThan(chunkOverlap);
         });
+
+        it('ensures overlap is contiguous (does not skip lines)', async () => {
+          const embedder = getEmbedder();
+
+          // Pattern: [small, big, small] lines
+          // If overlap selection skipped non-fitting lines, it would select
+          // line1 and line3 (non-contiguous). Correct behavior: only line3.
+          const line1 = 'a b'; // ~2 tokens
+          const line2 = 'x '.repeat(20).trim(); // ~20 tokens (large)
+          const line3 = 'c d'; // ~2 tokens
+          const line4 = 'e f g h i j k'; // triggers chunk split
+          const content = `${line1}\n${line2}\n${line3}\n${line4}`;
+
+          const maxChunkSize = 25;
+          const chunkOverlap = 5; // line1 + line3 would fit, but line2 is between
+          const chunks = await createChunks(
+            content,
+            maxChunkSize,
+            chunkOverlap,
+            embedder
+          );
+
+          expect(chunks.length).toBeGreaterThan(1);
+
+          // Second chunk should NOT contain line1 (would indicate non-contiguous overlap)
+          const secondChunk = chunks[1];
+          expect(secondChunk.content).not.toContain('a b');
+
+          // // Verify startOffset is correct (contiguous overlap ensures this works)
+          // const sliced = content.slice(secondChunk.startOffset);
+          // expect(sliced.startsWith(secondChunk.content)).toBe(true);
+        });
       });
 
       describe('edge cases', () => {
