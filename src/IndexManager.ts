@@ -33,6 +33,12 @@ import { ChunkId } from './chunkId';
  */
 const AUTO_INDEX_DEBOUNCE_MS = 1000;
 
+/**
+ * Delay before checking if a file needs reindexing after tab switch
+ * Gives Obsidian time to save the file and update mtime
+ */
+const LEAF_CHANGE_CHECK_DELAY_MS = 250;
+
 interface FileOperation {
   type: 'create' | 'modify' | 'delete' | 'rename';
   file: TFile | null;
@@ -232,19 +238,30 @@ export class IndexManager extends WithLogging {
   private registerEventHandlers(): void {
     this.eventRefs.push(
       this.workspace.on('active-leaf-change', () => {
+        const previousFile = this.previousActiveFile;
         const activeFile = this.workspace.getActiveFile();
-        if (
-          this.previousActiveFile &&
-          this.previousActiveFile !== activeFile &&
-          shouldIndexFile(this.previousActiveFile, this.configManager)
-        ) {
-          this.scheduleOperation({
-            type: 'modify',
-            file: this.previousActiveFile,
-          });
-        }
         this.previousActiveFile =
           activeFile instanceof TFile ? activeFile : null;
+
+        // Re-index the previous file if it was modified
+        if (
+          previousFile &&
+          previousFile !== activeFile &&
+          shouldIndexFile(previousFile, this.configManager)
+        ) {
+          // Delay to allow Obsidian to save the file and update mtime
+          setTimeout(async () => {
+            const meta = await this.metadataStore.getFileMetadata(
+              previousFile.path
+            );
+            if (this.needsReindex(previousFile, meta)) {
+              this.scheduleOperation({
+                type: 'modify',
+                file: previousFile,
+              });
+            }
+          }, LEAF_CHANGE_CHECK_DELAY_MS);
+        }
       })
     );
 

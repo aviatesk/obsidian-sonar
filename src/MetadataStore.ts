@@ -1,3 +1,8 @@
+// TODO: File-level metadata (mtime, size, indexedAt) is currently duplicated
+// across all chunks of the same file. Consider separating into:
+// - FileMetadata store: filePath, mtime, size, indexedAt
+// - ChunkMetadata store: chunk-specific data only (id, filePath, content, headings)
+
 /**
  * Metadata for a chunk
  */
@@ -339,6 +344,11 @@ export class MetadataStore extends WithLogging {
   async hasFile(filePath: string): Promise<boolean> {
     const chunks = await this.getChunksByFile(filePath);
     return chunks.length > 0;
+  }
+
+  async getFileMetadata(filePath: string): Promise<ChunkMetadata | undefined> {
+    const chunks = await this.getChunksByFile(filePath);
+    return chunks[0];
   }
 
   private invalidateCache(): void {
