@@ -1,4 +1,4 @@
-import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import { Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import { SearchManager } from './src/SearchManager';
 import { EmbeddingSearch } from './src/EmbeddingSearch';
 import { BM25Store } from './src/BM25Store';
@@ -22,6 +22,7 @@ import type { Reranker } from './src/Reranker';
 import { NoopReranker } from './src/Reranker';
 import { LlamaCppReranker } from './src/LlamaCppReranker';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
+import { isAudioExtension } from './src/audio';
 
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
@@ -225,6 +226,7 @@ export default class SonarPlugin extends Plugin {
 
     // Register commands immediately (lightweight)
     this.registerCommands();
+    this.registerFileMenuHandlers();
     const settingTab = new SettingTab(this.app, this);
     this.addSettingTab(settingTab);
 
@@ -612,6 +614,60 @@ export default class SonarPlugin extends Plugin {
         }
       },
     });
+  }
+
+  private registerFileMenuHandlers(): void {
+    this.registerEvent(
+      this.app.workspace.on('file-menu', (menu, file) => {
+        if (!(file instanceof TFile)) return;
+        if (!file.extension || !isAudioExtension(file.extension)) return;
+
+        menu.addItem(item => {
+          item
+            .setTitle('Create transcription note')
+            .setIcon('file-text')
+            .onClick(() => this.createTranscriptionNote(file));
+        });
+      })
+    );
+  }
+
+  private async createTranscriptionNote(audioFile: TFile): Promise<void> {
+    if (!this.checkInitialized()) return;
+
+    const chunks = await this.metadataStore!.getChunksByFile(audioFile.path);
+    if (chunks.length === 0) {
+      new Notice(
+        `No transcription found for ${audioFile.name}.\n\n` +
+          'Please index this file first.'
+      );
+      return;
+    }
+
+    // Sort chunks by id (which includes chunk index) and join content
+    chunks.sort((a, b) => a.id.localeCompare(b.id));
+    const transcriptionText = chunks.map(c => c.content).join('\n\n');
+
+    const audioFolder = audioFile.parent?.path || '';
+    const noteName = audioFile.basename;
+    const notePath = audioFolder
+      ? `${audioFolder}/${noteName}.md`
+      : `${noteName}.md`;
+
+    const existingFile = this.app.vault.getAbstractFileByPath(notePath);
+    if (existingFile) {
+      new Notice(`Note already exists: ${notePath}`);
+      const leaf = this.app.workspace.getLeaf();
+      await leaf.openFile(existingFile as TFile);
+      return;
+    }
+
+    const content = `![[${audioFile.name}]]\n\n${transcriptionText}`;
+    const newFile = await this.app.vault.create(notePath, content);
+    new Notice(`Created transcription note: ${notePath}`);
+
+    const leaf = this.app.workspace.getLeaf();
+    await leaf.openFile(newFile);
   }
 
   async activateRelatedNotesView() {

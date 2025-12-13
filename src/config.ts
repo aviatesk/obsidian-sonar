@@ -61,6 +61,13 @@ export interface SonarSettings {
   aggRrfK: number; // RRF k parameter for rrf_per_doc (default: 60)
   retrievalMultiplier: number; // Multiplier for candidate retrieval (hybrid search fusion & reranking)
 
+  // Audio transcription configuration
+  // ==================================
+  audioWhisperCliPath: string; // Path to whisper-cli binary (e.g., 'whisper-cli')
+  audioWhisperModelPath: string; // Path to whisper.cpp model file (e.g., '~/whisper-models/ggml-large-v3-turbo-q5_0.bin')
+  audioFfmpegPath: string; // Path to ffmpeg binary (e.g., 'ffmpeg')
+  audioTranscriptionLanguage: string; // Language code for transcription (e.g., 'ja', 'en')
+
   // Logging configuration
   // =====================
   statusBarMaxLength: number; // Maximum characters in status bar (0 = no limit)
@@ -119,6 +126,13 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   aggDecay: 0.95,
   aggRrfK: 60,
   retrievalMultiplier: 10,
+
+  // Audio transcription configuration
+  // ==================================
+  audioWhisperCliPath: 'whisper-cli',
+  audioWhisperModelPath: '',
+  audioFfmpegPath: 'ffmpeg',
+  audioTranscriptionLanguage: 'auto',
 
   // Logging configuration
   // =====================

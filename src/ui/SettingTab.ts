@@ -36,6 +36,7 @@ export class SettingTab extends PluginSettingTab {
     this.createChunkingConfigSection(containerEl);
     this.createEmbedderConfigSection(containerEl);
     this.createSearchParamsSection(containerEl);
+    this.createAudioConfigSection(containerEl);
     this.createLoggingConfigSection(containerEl);
     this.createBenchmarkConfigSection(containerEl);
   }
@@ -839,6 +840,80 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
         .setValue(this.configManager.get('debugMode'))
         .onChange(async value => {
           await this.configManager.set('debugMode', value as LogLevel);
+        })
+    );
+  }
+
+  private createAudioConfigSection(containerEl: HTMLElement): void {
+    const audioDetails = containerEl.createEl('details', {
+      cls: 'sonar-settings-section',
+    });
+    audioDetails.createEl('summary', {
+      text: 'Audio transcription configuration',
+    });
+    const audioContainer = audioDetails.createDiv();
+
+    const whisperPathSetting = new Setting(audioContainer).setName(
+      'Whisper CLI path'
+    );
+    this.renderMarkdownDesc(
+      whisperPathSetting.descEl,
+      'Path to `whisper-cli` binary from whisper.cpp (e.g., `whisper-cli` or `/opt/homebrew/bin/whisper-cli`).'
+    );
+    whisperPathSetting.addText(text =>
+      text
+        .setPlaceholder('whisper-cli')
+        .setValue(this.configManager.get('audioWhisperCliPath'))
+        .onChange(async value => {
+          await this.configManager.set('audioWhisperCliPath', value);
+        })
+    );
+
+    const modelPathSetting = new Setting(audioContainer).setName(
+      'Whisper model path'
+    );
+    this.renderMarkdownDesc(
+      modelPathSetting.descEl,
+      'Path to whisper.cpp model file. Supports `~` for home directory (e.g., `~/whisper-models/ggml-large-v3-turbo-q5_0.bin`).'
+    );
+    modelPathSetting.addText(text =>
+      text
+        .setPlaceholder('~/whisper-models/ggml-large-v3-turbo-q5_0.bin')
+        .setValue(this.configManager.get('audioWhisperModelPath'))
+        .onChange(async value => {
+          await this.configManager.set('audioWhisperModelPath', value);
+        })
+    );
+
+    const ffmpegPathSetting = new Setting(audioContainer).setName(
+      'ffmpeg path'
+    );
+    this.renderMarkdownDesc(
+      ffmpegPathSetting.descEl,
+      'Path to `ffmpeg` binary (e.g., `ffmpeg` or `/opt/homebrew/bin/ffmpeg`).'
+    );
+    ffmpegPathSetting.addText(text =>
+      text
+        .setPlaceholder('ffmpeg')
+        .setValue(this.configManager.get('audioFfmpegPath'))
+        .onChange(async value => {
+          await this.configManager.set('audioFfmpegPath', value);
+        })
+    );
+
+    const languageSetting = new Setting(audioContainer).setName(
+      'Transcription language'
+    );
+    this.renderMarkdownDesc(
+      languageSetting.descEl,
+      'Language code for audio transcription (e.g., `auto` for auto-detection, `ja` for Japanese, `en` for English).'
+    );
+    languageSetting.addText(text =>
+      text
+        .setPlaceholder('auto')
+        .setValue(this.configManager.get('audioTranscriptionLanguage'))
+        .onChange(async value => {
+          await this.configManager.set('audioTranscriptionLanguage', value);
         })
     );
   }
