@@ -3,7 +3,11 @@ import { BM25Search } from './BM25Search';
 import type { ChunkMetadata } from './MetadataStore';
 import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
-import { aggregateChunkScores } from './ChunkAggregation';
+import {
+  fuseFileResults,
+  combineSearchResults,
+  aggregateChunksToFiles,
+} from './SearchResultFusion';
 
 /**
  * Chunk-level search result returned by BM25Search/EmbeddingSearch
@@ -67,11 +71,6 @@ export interface SearchOptionsWithTopK extends SearchOptions {
 export interface FullSearchOptions extends SearchOptionsWithTopK {
   retrievalLimit: number; // Number of chunks to compare (before file level aggregation)
 }
-
-/**
- * Reciprocal Rank Fusion constant
- */
-const RRF_K = 60;
 
 /**
  * High-level search manager that orchestrates hybrid search
@@ -200,69 +199,13 @@ export class SearchManager extends WithLogging {
     ]);
 
     // Combine title and content results
-    return this.combineSearchResults(
+    return combineSearchResults(
       titleResults,
       contentResults,
       titleWeight,
       contentWeight,
       options.topK
     );
-  }
-
-  /**
-   * Combine title and content search results with weighted scores
-   * Prioritizes content topChunk for excerpts, falls back to title topChunk
-   */
-  private combineSearchResults(
-    titleResults: SearchResult[],
-    contentResults: SearchResult[],
-    titleWeight: number,
-    contentWeight: number,
-    topK: number
-  ): SearchResult[] {
-    // Build maps for quick lookup
-    const titleByPath = new Map<string, SearchResult>();
-    for (const result of titleResults) {
-      titleByPath.set(result.filePath, result);
-    }
-
-    const contentByPath = new Map<string, SearchResult>();
-    for (const result of contentResults) {
-      contentByPath.set(result.filePath, result);
-    }
-
-    // Collect all file paths
-    const allFilePaths = new Set([
-      ...titleByPath.keys(),
-      ...contentByPath.keys(),
-    ]);
-
-    const totalWeight = titleWeight + contentWeight;
-    const results: SearchResult[] = [];
-
-    for (const filePath of allFilePaths) {
-      const titleResult = titleByPath.get(filePath);
-      const contentResult = contentByPath.get(filePath);
-
-      // Calculate weighted score
-      const titleScore = titleResult?.score || 0;
-      const contentScore = contentResult?.score || 0;
-      const weightedScore =
-        titleWeight * titleScore + contentWeight * contentScore;
-      const finalScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
-
-      // Prioritize content result for topChunk (better for excerpts)
-      const baseResult = contentResult || titleResult;
-      if (!baseResult) continue;
-
-      results.push({
-        ...baseResult,
-        score: finalScore,
-      });
-    }
-
-    results.sort((a, b) => b.score - a.score);
-    return results.slice(0, topK);
   }
 
   /**
@@ -290,7 +233,7 @@ export class SearchManager extends WithLogging {
     if (embeddingWeight === 0) return bm25Results;
     if (bm25Weight === 0) return embeddingResults;
 
-    return this.fuseFileResults(
+    return fuseFileResults(
       embeddingResults,
       bm25Results,
       embeddingWeight,
@@ -320,175 +263,32 @@ export class SearchManager extends WithLogging {
         : Promise.resolve([]),
     ]);
 
-    const embeddingResults = this.aggregateChunksToFiles(
-      embeddingChunks,
-      'vector'
-    );
-    const bm25Results = this.aggregateChunksToFiles(bm25Chunks, 'bm25');
-
-    if (embeddingWeight === 0) return bm25Results;
-    if (bm25Weight === 0) return embeddingResults;
-
-    return this.fuseFileResults(
-      embeddingResults,
-      bm25Results,
-      embeddingWeight,
-      bm25Weight
-    );
-  }
-
-  /**
-   * Aggregate chunk-level results to file-level results
-   */
-  private aggregateChunksToFiles(
-    chunks: ChunkResult[],
-    aggType: 'vector' | 'bm25'
-  ): SearchResult[] {
-    if (chunks.length === 0) return [];
-
-    const chunksByFile = new Map<string, ChunkResult[]>();
-    for (const chunk of chunks) {
-      if (!chunksByFile.has(chunk.filePath)) {
-        chunksByFile.set(chunk.filePath, []);
-      }
-      chunksByFile.get(chunk.filePath)!.push(chunk);
-    }
-
-    const fileScores = new Map<string, number[]>();
-    for (const [filePath, fileChunks] of chunksByFile.entries()) {
-      fileChunks.sort((a, b) => b.score - a.score);
-      fileScores.set(
-        filePath,
-        fileChunks.map(c => c.score)
-      );
-    }
-
-    const aggMethod =
-      aggType === 'vector'
-        ? this.configManager.get('vectorAggMethod')
-        : this.configManager.get('bm25AggMethod');
-    const aggregatedScores = aggregateChunkScores(fileScores, {
-      method: aggMethod,
+    const aggOptions = {
+      method: this.configManager.get('vectorAggMethod'),
       m: this.configManager.get('aggM'),
       l: this.configManager.get('aggL'),
       decay: this.configManager.get('aggDecay'),
       rrfK: this.configManager.get('aggRrfK'),
-    });
+    };
+    const bm25AggOptions = {
+      ...aggOptions,
+      method: this.configManager.get('bm25AggMethod'),
+    };
 
-    const results: SearchResult[] = [];
-    for (const [filePath, aggregatedScore] of aggregatedScores.entries()) {
-      const fileChunks = chunksByFile.get(filePath)!;
-      const topChunk = fileChunks[0];
-      results.push({
-        filePath,
-        title: topChunk.metadata.title || filePath,
-        score: aggregatedScore,
-        topChunk: {
-          content: topChunk.content,
-          score: topChunk.score,
-          metadata: topChunk.metadata,
-        },
-        chunkCount: fileChunks.length,
-        fileSize: topChunk.metadata.size,
-      });
-    }
+    const embeddingResults = aggregateChunksToFiles(
+      embeddingChunks,
+      aggOptions
+    );
+    const bm25Results = aggregateChunksToFiles(bm25Chunks, bm25AggOptions);
 
-    results.sort((a, b) => b.score - a.score);
-    return results;
-  }
+    if (embeddingWeight === 0) return bm25Results;
+    if (bm25Weight === 0) return embeddingResults;
 
-  /**
-   * Fuse embedding and BM25 file-level results using RRF
-   * Prefers embedding's topChunk (semantically relevant)
-   */
-  private fuseFileResults(
-    embeddingResults: SearchResult[],
-    bm25Results: SearchResult[],
-    embeddingWeight: number,
-    bm25Weight: number
-  ): SearchResult[] {
-    // Calculate RRF scores
-    const rrfScores = this.reciprocalRankFusion(
+    return fuseFileResults(
       embeddingResults,
       bm25Results,
       embeddingWeight,
       bm25Weight
     );
-
-    // Normalize by theoretical maximum RRF score
-    const maxTheoreticalRRF = (embeddingWeight + bm25Weight) / (RRF_K + 1);
-
-    // Build maps for quick lookup
-    const embeddingByPath = new Map<string, SearchResult>();
-    for (const result of embeddingResults) {
-      embeddingByPath.set(result.filePath, result);
-    }
-
-    const bm25ByPath = new Map<string, SearchResult>();
-    for (const result of bm25Results) {
-      bm25ByPath.set(result.filePath, result);
-    }
-
-    // Build fused results
-    // Prefer embedding result for topChunk (semantically relevant)
-    const results: SearchResult[] = [];
-    for (const [filePath, rrfScore] of rrfScores.entries()) {
-      const normalizedScore = rrfScore / maxTheoreticalRRF;
-      const baseResult =
-        embeddingByPath.get(filePath) || bm25ByPath.get(filePath);
-      if (!baseResult) continue;
-
-      results.push({
-        ...baseResult,
-        score: normalizedScore,
-      });
-    }
-
-    results.sort((a, b) => b.score - a.score);
-    return results;
-  }
-
-  /**
-   * Reciprocal Rank Fusion algorithm
-   */
-  private reciprocalRankFusion(
-    embeddingResults: SearchResult[],
-    bm25Results: SearchResult[],
-    embeddingWeight: number,
-    bm25Weight: number
-  ): Map<string, number> {
-    const embeddingRanks = new Map<string, number>();
-    embeddingResults.forEach((result, index) => {
-      embeddingRanks.set(result.filePath, index + 1);
-    });
-
-    const bm25Ranks = new Map<string, number>();
-    bm25Results.forEach((result, index) => {
-      bm25Ranks.set(result.filePath, index + 1);
-    });
-
-    const allFilePaths = new Set([
-      ...embeddingRanks.keys(),
-      ...bm25Ranks.keys(),
-    ]);
-
-    const rrfScores = new Map<string, number>();
-    for (const filePath of allFilePaths) {
-      let rrfScore = 0;
-
-      const embeddingRank = embeddingRanks.get(filePath);
-      if (embeddingRank !== undefined) {
-        rrfScore += embeddingWeight * (1 / (RRF_K + embeddingRank));
-      }
-
-      const bm25Rank = bm25Ranks.get(filePath);
-      if (bm25Rank !== undefined) {
-        rrfScore += bm25Weight * (1 / (RRF_K + bm25Rank));
-      }
-
-      rrfScores.set(filePath, rrfScore);
-    }
-
-    return rrfScores;
   }
 }
