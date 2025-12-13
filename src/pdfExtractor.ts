@@ -1,4 +1,11 @@
 import type { PdfjsLib, PDFDocumentProxy } from './pdfjs.d';
+import { formatDuration } from './utils';
+
+interface PdfLogger {
+  log(msg: string, ...data: unknown[]): void;
+}
+
+const LOG_PREFIX = '[Sonar.PDF]';
 
 export interface PdfPage {
   pageNumber: number;
@@ -17,8 +24,17 @@ export interface PdfExtractResult {
 export async function extractTextFromBuffer(
   buffer: ArrayBuffer,
   pdfjsLib: PdfjsLib,
-  options?: { cMapUrl?: string; standardFontDataUrl?: string }
+  options?: {
+    cMapUrl?: string;
+    standardFontDataUrl?: string;
+    logger?: PdfLogger;
+  }
 ): Promise<PdfExtractResult> {
+  const startTime = Date.now();
+  const logger = options?.logger;
+
+  logger?.log(`${LOG_PREFIX} Extracting text...`);
+
   const loadingTask = pdfjsLib.getDocument({
     data: buffer,
     verbosity: 0, // Suppress warnings (0 = errors only)
@@ -31,7 +47,12 @@ export async function extractTextFromBuffer(
   const doc = await loadingTask.promise;
 
   try {
-    return await extractTextFromDocument(doc);
+    const result = await extractTextFromDocument(doc);
+    const duration = formatDuration(Date.now() - startTime);
+    logger?.log(
+      `${LOG_PREFIX} Extracted ${result.fullText.length} characters from ${result.pages.length} pages in ${duration}`
+    );
+    return result;
   } finally {
     await doc.destroy();
   }
