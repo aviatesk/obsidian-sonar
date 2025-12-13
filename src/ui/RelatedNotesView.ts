@@ -53,6 +53,8 @@ const EMPTY_STATE_BASE: Omit<RelatedNotesState, 'status'> = {
   activeFile: null,
 };
 
+const COMPONENT_ID = 'RelatedNotesView';
+
 export class RelatedNotesView extends ItemView {
   private plugin: SonarPlugin;
   private configManager: ConfigManager;
@@ -322,7 +324,7 @@ export class RelatedNotesView extends ItemView {
       if (query) {
         const tokenCount = await this.plugin.embedder.countTokens(query);
         const searchResults = await this.plugin.searchManager.search(
-          'RelatedNotesView',
+          COMPONENT_ID,
           query,
           {
             topK: this.configManager.get('searchResultsCount'),
@@ -382,6 +384,10 @@ export class RelatedNotesView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    // Cancel pending requests to prevent sending to server
+    if (this.plugin.searchManager)
+      this.plugin.searchManager.cancelPendingRequests(COMPONENT_ID);
+
     if (this.scrollUnsubscribe) {
       this.scrollUnsubscribe();
       this.scrollUnsubscribe = null;

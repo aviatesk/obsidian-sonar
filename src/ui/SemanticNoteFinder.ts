@@ -12,6 +12,8 @@ interface SemanticSearchState {
   hasSearched: boolean;
 }
 
+const COMPONENT_ID = 'SemanticNoteFinder';
+
 export class SemanticNoteFinder extends Modal {
   private searchManager: SearchManager;
   private configManager: ConfigManager;
@@ -76,15 +78,11 @@ export class SemanticNoteFinder extends Modal {
     });
 
     try {
-      const results = await this.searchManager.search(
-        'SemanticNoteFinder',
-        query,
-        {
-          topK: this.configManager.get('searchResultsCount'),
-          titleWeight: 0.25,
-          contentWeight: 0.75,
-        }
-      );
+      const results = await this.searchManager.search(COMPONENT_ID, query, {
+        topK: this.configManager.get('searchResultsCount'),
+        titleWeight: 0.25,
+        contentWeight: 0.75,
+      });
 
       // Skip if superseded (null from queue) or aborted (new search started)
       if (results === null || searchAbortSignal.aborted) {
@@ -147,6 +145,9 @@ export class SemanticNoteFinder extends Modal {
   }
 
   onClose(): void {
+    // Cancel pending requests to prevent sending to server
+    this.searchManager.cancelPendingRequests(COMPONENT_ID);
+
     const { contentEl } = this;
     if (this.svelteComponent) {
       unmount(this.svelteComponent);

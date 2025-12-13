@@ -291,4 +291,20 @@ export class SearchManager extends WithLogging {
       bm25Weight
     );
   }
+
+  /**
+   * Cancel all pending requests from a component.
+   * Use this when a component is being destroyed (e.g., modal closing).
+   */
+  cancelPendingRequests(componentId: string): void {
+    const newSearchQueue: QueuedSearchRequest[] = [];
+    for (const request of this.searchQueue) {
+      if (request.componentId === componentId) {
+        request.resolve(null);
+      } else {
+        newSearchQueue.push(request);
+      }
+    }
+    this.searchQueue = newSearchQueue;
+  }
 }
