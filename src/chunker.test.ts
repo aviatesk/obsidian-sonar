@@ -508,6 +508,126 @@ content two`;
           expect(combined).toContain('content two');
         });
       });
+
+      describe('startOffset tracking', () => {
+        /**
+         * Helper: Assert chunk content starts at its startOffset in original content
+         */
+        function assertStartOffset(
+          content: string,
+          chunk: { content: string; startOffset: number }
+        ): void {
+          const sliced = content.slice(chunk.startOffset);
+          expect(sliced.startsWith(chunk.content)).toBe(true);
+        }
+
+        it('returns correct startOffset for single chunk', async () => {
+          const embedder = getEmbedder();
+          const content = 'Hello world';
+          const chunks = await createChunks(content, 50, 10, embedder);
+
+          expect(chunks).toHaveLength(1);
+          expect(chunks[0].startOffset).toBe(0);
+          assertStartOffset(content, chunks[0]);
+        });
+
+        it('returns correct startOffset with leading whitespace', async () => {
+          const embedder = getEmbedder();
+          const content = '   Hello world';
+          const chunks = await createChunks(content, 50, 10, embedder);
+
+          expect(chunks).toHaveLength(1);
+          expect(chunks[0].startOffset).toBe(3); // After leading spaces
+          assertStartOffset(content, chunks[0]);
+        });
+
+        it('returns correct startOffset for multiple chunks', async () => {
+          const embedder = getEmbedder();
+          const content = `line one
+line two
+line three
+line four
+line five
+line six`;
+
+          const chunks = await createChunks(content, 10, 0, embedder);
+
+          expect(chunks.length).toBeGreaterThan(1);
+
+          // Each chunk's content should be found at its startOffset
+          for (const chunk of chunks) {
+            assertStartOffset(content, chunk);
+          }
+        });
+
+        it('returns correct startOffset with chunk overlap', async () => {
+          const embedder = getEmbedder();
+          const content = `alpha beta gamma
+delta epsilon zeta
+eta theta iota
+kappa lambda mu`;
+
+          const chunks = await createChunks(content, 12, 5, embedder);
+
+          expect(chunks.length).toBeGreaterThan(1);
+
+          // Each chunk's content should be found at its startOffset
+          for (const chunk of chunks) {
+            assertStartOffset(content, chunk);
+          }
+        });
+
+        it('returns correct startOffset when splitLongLine occurs', async () => {
+          const embedder = getEmbedder();
+          // Long sentence that will be split by sentence boundaries
+          const content =
+            'First sentence here. Second sentence follows. Third sentence continues. Fourth sentence ends.';
+
+          const maxChunkSize = 10;
+          const chunks = await createChunks(content, maxChunkSize, 0, embedder);
+
+          expect(chunks.length).toBeGreaterThan(1);
+
+          // Each chunk's content should be found at its startOffset
+          for (const chunk of chunks) {
+            assertStartOffset(content, chunk);
+          }
+        });
+
+        it('returns correct startOffset when forceSubdivide occurs', async () => {
+          const embedder = getEmbedder();
+          // Very long word that will trigger force subdivision
+          const longWord = 'x'.repeat(200);
+          const content = `before ${longWord} after`;
+
+          const maxChunkSize = 10;
+          const chunks = await createChunks(content, maxChunkSize, 0, embedder);
+
+          expect(chunks.length).toBeGreaterThan(2);
+
+          // Each chunk's content should be found at its startOffset
+          for (const chunk of chunks) {
+            assertStartOffset(content, chunk);
+          }
+        });
+
+        it('returns correct startOffset for multiline content with splitLongLine', async () => {
+          const embedder = getEmbedder();
+          const content = `Short line here.
+This is a very long sentence that needs to be split into multiple parts. It continues and continues.
+Another short line.`;
+
+          const maxChunkSize = 15;
+          const chunks = await createChunks(content, maxChunkSize, 3, embedder);
+
+          expect(chunks.length).toBeGreaterThan(1);
+
+          // Each chunk's content should be found at its startOffset
+          for (const chunk of chunks) {
+            assertStartOffset(content, chunk);
+          }
+        });
+      });
     });
   });
 }

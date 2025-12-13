@@ -7,7 +7,7 @@ import {
   extractTextFromBuffer,
   normalizeText,
   findPageForOffset,
-  type PdfExtractResult
+  type PdfExtractResult,
 } from './pdfExtractor';
 import type { PdfjsLib } from './pdfjs.d';
 

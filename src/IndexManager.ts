@@ -6,6 +6,7 @@ import {
   Notice,
   debounce,
   Workspace,
+  loadPdfJs,
 } from 'obsidian';
 import { ConfigManager } from './ConfigManager';
 import {
@@ -15,7 +16,7 @@ import {
 } from './fileFilters';
 import { type ChunkMetadata, MetadataStore } from './MetadataStore';
 import { EmbeddingStore } from './EmbeddingStore';
-import { createChunks } from './chunker';
+import { createChunks, type Chunk } from './chunker';
 import type { Embedder } from './Embedder';
 import { BM25Store } from './BM25Store';
 import {
@@ -26,6 +27,12 @@ import {
 } from './utils';
 import { WithLogging } from './WithLogging';
 import { ChunkId } from './chunkId';
+import {
+  extractTextFromBuffer,
+  findPageForOffset,
+  type PdfPage,
+} from './pdfExtractor';
+import type { PdfjsLib } from './pdfjs.d';
 
 /**
  * Debounce delay for batching file operations
@@ -43,6 +50,11 @@ interface FileOperation {
   type: 'create' | 'modify' | 'delete' | 'rename';
   file: TFile | null;
   oldPath?: string;
+}
+
+interface FileContent {
+  text: string;
+  pdfPages?: PdfPage[]; // Only set for PDF files
 }
 
 interface SyncStats {
@@ -65,6 +77,7 @@ export class IndexManager extends WithLogging {
   private previousActiveFile: TFile | null = null;
   private debouncedProcess: () => void;
   private statusBarCallback: (text: string, tooltip?: string) => void;
+  private pdfjsLib: PdfjsLib | null = null;
 
   constructor(
     private metadataStore: MetadataStore,
@@ -150,6 +163,24 @@ export class IndexManager extends WithLogging {
     return (
       file.stat.mtime !== metadata.mtime || file.stat.size !== metadata.size
     );
+  }
+
+  private async readFileContent(file: TFile): Promise<FileContent> {
+    if (file.extension === 'pdf') {
+      // Load PDF.js if not already loaded
+      if (!this.pdfjsLib) {
+        this.pdfjsLib = await loadPdfJs();
+      }
+      const buffer = await this.vault.readBinary(file);
+      const result = await extractTextFromBuffer(buffer, this.pdfjsLib!);
+      return {
+        text: result.fullText,
+        pdfPages: result.pages,
+      };
+    }
+    // Default: markdown or other text files
+    const text = await this.vault.cachedRead(file);
+    return { text };
   }
 
   private async performSync(
@@ -458,8 +489,9 @@ export class IndexManager extends WithLogging {
     interface FileChunkData {
       operation: FileOperation;
       file: TFile;
-      chunks: Array<{ content: string; headings: string[] }>;
+      chunks: Chunk[];
       indexedAt: number;
+      pdfPages?: PdfPage[];
     }
 
     const fileChunkDataList: FileChunkData[] = [];
@@ -470,9 +502,9 @@ export class IndexManager extends WithLogging {
       const file = operation.file!;
 
       const readStart = Date.now();
-      let content;
+      let fileContent: FileContent;
       try {
-        content = await this.vault.cachedRead(file);
+        fileContent = await this.readFileContent(file);
       } catch (error) {
         this.warn(`Failed to read ${file.path}: ${error}`);
         errorCount++;
@@ -482,7 +514,7 @@ export class IndexManager extends WithLogging {
 
       const chunkStart = Date.now();
       const chunks = await createChunks(
-        content,
+        fileContent.text,
         this.configManager.get('maxChunkSize'),
         this.configManager.get('chunkOverlap'),
         this.embedder
@@ -494,6 +526,7 @@ export class IndexManager extends WithLogging {
         file,
         chunks,
         indexedAt: Date.now(),
+        pdfPages: fileContent.pdfPages,
       });
 
       if (opIndex % 10 === 0 || opIndex === indexOperations.length - 1) {
@@ -621,7 +654,7 @@ export class IndexManager extends WithLogging {
           [];
 
         for (const fileIndex of completedFileIndices) {
-          const { operation, file, chunks, indexedAt } =
+          const { operation, file, chunks, indexedAt, pdfPages } =
             fileChunkDataList[fileIndex];
           const fileEmbeddings = fileEmbeddingsMap.get(fileIndex)!;
 
@@ -629,7 +662,8 @@ export class IndexManager extends WithLogging {
             file,
             chunks,
             fileEmbeddings,
-            indexedAt
+            indexedAt,
+            pdfPages
           );
 
           batchMetadata.push(...indexData.metadata);
@@ -767,13 +801,14 @@ export class IndexManager extends WithLogging {
 
   private prepareFileIndexData(
     file: TFile,
-    chunks: Array<{ content: string; headings: string[] }>,
+    chunks: Chunk[],
     embeddings: Array<{
       type: 'title' | 'chunk';
       chunkIndex?: number;
       embedding: number[];
     }>,
-    indexedAt: number
+    indexedAt: number,
+    pdfPages?: PdfPage[]
   ): {
     metadata: ChunkMetadata[];
     embeddingData: Array<{ id: string; embedding: number[] }>;
@@ -796,6 +831,7 @@ export class IndexManager extends WithLogging {
             mtime: file.stat.mtime,
             size: file.stat.size,
             indexedAt,
+            pageNumber: pdfPages ? 1 : undefined,
           },
         ],
         embeddingData: [
@@ -811,6 +847,12 @@ export class IndexManager extends WithLogging {
 
     // Add metadata for each chunk
     for (let i = 0; i < chunks.length; i++) {
+      // Calculate page number for PDF files using chunk's startOffset
+      let pageNumber: number | undefined;
+      if (pdfPages) {
+        pageNumber = findPageForOffset(pdfPages, chunks[i].startOffset);
+      }
+
       metadata.push({
         id: ChunkId.forContent(file.path, i),
         filePath: file.path,
@@ -820,6 +862,7 @@ export class IndexManager extends WithLogging {
         mtime: file.stat.mtime,
         size: file.stat.size,
         indexedAt,
+        pageNumber,
       });
     }
 

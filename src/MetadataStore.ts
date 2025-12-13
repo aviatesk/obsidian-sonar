@@ -15,6 +15,7 @@ export interface ChunkMetadata {
   mtime: number;
   size: number;
   indexedAt: number;
+  pageNumber?: number; // PDF page number (1-indexed)
 }
 
 /**

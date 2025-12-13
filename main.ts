@@ -20,7 +20,6 @@ import { TransformersEmbedder } from './src/TransformersEmbedder';
 import { LlamaCppEmbedder } from './src/LlamaCppEmbedder';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { DebugRunner } from './src/EmbeddingDebugger';
-import { extractTextFromPdf } from './src/pdfExtractor';
 
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
@@ -550,58 +549,6 @@ export default class SonarPlugin extends Plugin {
       callback: () => {
         if (!this.checkInitialized()) return;
         this.debugRunner!.generateSampleEmbeddings();
-      },
-    });
-
-    this.addCommand({
-      id: 'debug-extract-pdf-text',
-      name: 'Debug: Extract text from active PDF',
-      callback: async () => {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (!activeFile) {
-          new Notice('No active file');
-          return;
-        }
-        if (activeFile.extension !== 'pdf') {
-          new Notice('Active file is not a PDF');
-          return;
-        }
-
-        this.log(`Extracting text from PDF: ${activeFile.path}`);
-        try {
-          const result = await extractTextFromPdf(this.app.vault, activeFile);
-
-          console.group(`[Sonar] PDF Text Extraction: ${activeFile.name}`);
-          console.log('=== EXTRACTION SUMMARY ===');
-          console.log(`Pages: ${result.pages.length}`);
-          console.log(`Total characters (raw): ${result.rawFullText.length}`);
-          console.log(
-            `Total characters (normalized): ${result.fullText.length}`
-          );
-
-          console.log('\n=== RAW TEXT (first 2000 chars) ===');
-          console.log(result.rawFullText.slice(0, 2000));
-
-          console.log('\n=== NORMALIZED TEXT (first 2000 chars) ===');
-          console.log(result.fullText.slice(0, 2000));
-
-          console.log('\n=== PER-PAGE INFO ===');
-          for (const page of result.pages) {
-            console.log(
-              `Page ${page.pageNumber}: offset=${page.startOffset}, ` +
-                `rawLen=${page.rawText.length}, normLen=${page.normalizedText.length}`
-            );
-          }
-          console.groupEnd();
-
-          new Notice(
-            `Extracted ${result.pages.length} pages, ` +
-              `${result.fullText.length} chars. Check console for details.`
-          );
-        } catch (error) {
-          this.error(`Failed to extract PDF text: ${error}`);
-          new Notice(`Failed to extract PDF text: ${error}`);
-        }
       },
     });
   }

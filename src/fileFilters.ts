@@ -42,6 +42,8 @@ function matchesExclusionPattern(filePath: string, pattern: string): boolean {
   );
 }
 
+const INDEXABLE_EXTENSIONS = ['md', 'pdf'];
+
 /**
  * Check if a file should be indexed based on configuration
  */
@@ -49,8 +51,8 @@ export function shouldIndexFile(
   file: TFile,
   configManager: ConfigManager
 ): boolean {
-  // Only index markdown files
-  if (!file.extension || file.extension !== 'md') {
+  // Only index supported file types (markdown, PDF)
+  if (!file.extension || !INDEXABLE_EXTENSIONS.includes(file.extension)) {
     return false;
   }
 
@@ -83,13 +85,13 @@ function getIndexableFiles(
 }
 
 /**
- * Get all markdown files that should be indexed
+ * Get all files that should be indexed (markdown and PDF)
  */
 export function getFilesToIndex(
   vault: Vault,
   configManager: ConfigManager
 ): TFile[] {
-  const allFiles = vault.getMarkdownFiles();
+  const allFiles = vault.getFiles();
   return getIndexableFiles(allFiles, configManager);
 }
 
