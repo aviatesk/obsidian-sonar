@@ -29,8 +29,10 @@ export default class SonarPlugin extends Plugin {
   metadataStore: MetadataStore | null = null;
   embedder: Embedder | null = null;
   debugRunner: DebugRunner | null = null;
+  private semanticNoteFinder: SemanticNoteFinder | null = null;
   private reinitializing = false;
   private configListeners: Array<() => void> = [];
+  private indexUpdateUnsubscribe: (() => void) | null = null;
 
   private log(msg: string): void {
     this.configManager.getLogger().log(`[Sonar.Plugin] ${msg}`);
@@ -148,6 +150,12 @@ export default class SonarPlugin extends Plugin {
 
     try {
       this.log('Reinitializing Sonar...');
+
+      if (this.indexUpdateUnsubscribe) {
+        this.indexUpdateUnsubscribe();
+        this.indexUpdateUnsubscribe = null;
+      }
+      this.semanticNoteFinder = null;
 
       if (this.indexManager) {
         this.indexManager.cleanup();
@@ -370,6 +378,10 @@ export default class SonarPlugin extends Plugin {
       return;
     }
     this.notifyRelatedNotesViewsInitialized();
+
+    this.indexUpdateUnsubscribe = this.indexManager.onIndexUpdated(() => {
+      this.semanticNoteFinder?.invalidateCache();
+    });
   }
 
   private notifyRelatedNotesViewsInitialized(): void {
@@ -579,12 +591,11 @@ export default class SonarPlugin extends Plugin {
 
   openSemanticNoteFinder(): void {
     if (!this.checkInitialized()) return;
-    const modal = new SemanticNoteFinder(
+    (this.semanticNoteFinder ??= new SemanticNoteFinder(
       this.app,
       this.searchManager!,
       this.configManager
-    );
-    modal.open();
+    )).open();
   }
 
   private async probeGPU() {
@@ -688,6 +699,11 @@ export default class SonarPlugin extends Plugin {
   private async performCleanup(): Promise<void> {
     this.configListeners.forEach(unsubscribe => unsubscribe());
     this.configListeners = [];
+    if (this.indexUpdateUnsubscribe) {
+      this.indexUpdateUnsubscribe();
+      this.indexUpdateUnsubscribe = null;
+    }
+    this.semanticNoteFinder = null;
     if (this.indexManager) {
       this.indexManager.cleanup();
     }

@@ -28,6 +28,10 @@ export class SemanticNoteFinder extends Modal {
     hasSearched: false,
   });
   private searchAbortController: AbortController | null = null;
+  private cache = {
+    lastQuery: '',
+    results: new Map<string, SearchResult[]>(),
+  };
 
   constructor(
     app: App,
@@ -58,12 +62,28 @@ export class SemanticNoteFinder extends Modal {
       this.searchAbortController = null;
     }
 
-    if (!query.trim()) {
+    const trimmedQuery = query.trim();
+
+    this.cache.lastQuery = trimmedQuery;
+
+    if (!trimmedQuery) {
       this.updateStore({
         query: '',
         results: [],
         isSearching: false,
         hasSearched: false,
+      });
+      return;
+    }
+
+    const cachedResults = this.cache.results.get(trimmedQuery);
+    if (cachedResults) {
+      const topK = this.configManager.get('searchResultsCount');
+      this.updateStore({
+        query,
+        results: cachedResults.slice(0, topK),
+        isSearching: false,
+        hasSearched: true,
       });
       return;
     }
@@ -78,16 +98,22 @@ export class SemanticNoteFinder extends Modal {
     });
 
     try {
-      const results = await this.searchManager.search(COMPONENT_ID, query, {
-        topK: this.configManager.get('searchResultsCount'),
-        titleWeight: 0.25,
-        contentWeight: 0.75,
-      });
+      const results = await this.searchManager.search(
+        COMPONENT_ID,
+        trimmedQuery,
+        {
+          topK: this.configManager.get('searchResultsCount'),
+          titleWeight: 0.25,
+          contentWeight: 0.75,
+        }
+      );
 
       // Skip if superseded (null from queue) or aborted (new search started)
       if (results === null || searchAbortSignal.aborted) {
         return;
       }
+
+      this.cache.results.set(trimmedQuery, results);
 
       this.updateStore({
         results,
@@ -115,6 +141,18 @@ export class SemanticNoteFinder extends Modal {
     this.modalEl.style.width = '800px';
     this.modalEl.style.height = '600px';
 
+    // Restore last query from cache if available
+    if (this.cache.lastQuery) {
+      const cachedResults = this.cache.results.get(this.cache.lastQuery);
+      const topK = this.configManager.get('searchResultsCount');
+      this.updateStore({
+        query: this.cache.lastQuery,
+        results: cachedResults?.slice(0, topK) ?? [],
+        hasSearched: !!cachedResults,
+        isSearching: false,
+      });
+    }
+
     this.svelteComponent = mount(SemanticNoteFinderComponent, {
       target: contentEl,
       props: {
@@ -125,14 +163,7 @@ export class SemanticNoteFinder extends Modal {
         titleEl: titleEl,
         onQueryChange: (query: string) => {
           this.updateStore({ query });
-          if (query) {
-            this.debouncedSearch(query);
-          } else {
-            this.updateStore({
-              results: [],
-              hasSearched: false,
-            });
-          }
+          this.debouncedSearch(query);
         },
         onSearchImmediate: (query: string) => {
           this.handleSearch(query);
@@ -145,7 +176,7 @@ export class SemanticNoteFinder extends Modal {
   }
 
   onClose(): void {
-    // Cancel pending requests to prevent sending to server
+    // Cancel queued requests (in-flight search continues to populate cache)
     this.searchManager.cancelPendingRequests(COMPONENT_ID);
 
     const { contentEl } = this;
@@ -154,12 +185,16 @@ export class SemanticNoteFinder extends Modal {
     }
     contentEl.empty();
 
-    // Reset store on close
+    // Reset store on close (cachedState is preserved for next open)
     this.updateStore({
       query: '',
       results: [],
       isSearching: false,
       hasSearched: false,
     });
+  }
+
+  invalidateCache(): void {
+    this.cache.results.clear();
   }
 }

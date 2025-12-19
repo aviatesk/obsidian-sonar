@@ -67,6 +67,8 @@ interface SyncStats {
   skippedFilePaths: string[];
 }
 
+export type IndexUpdateListener = () => void;
+
 export class IndexManager extends WithLogging {
   protected readonly componentName = 'IndexManager';
   private pendingOperations: Map<string, FileOperation> = new Map();
@@ -78,6 +80,7 @@ export class IndexManager extends WithLogging {
   private debouncedProcess: () => void;
   private statusBarCallback: (text: string, tooltip?: string) => void;
   private pdfjsLib: PdfjsLib | null = null;
+  private indexUpdateListeners: Set<IndexUpdateListener> = new Set();
 
   constructor(
     private metadataStore: MetadataStore,
@@ -403,6 +406,7 @@ export class IndexManager extends WithLogging {
     this.isProcessing = false;
 
     await this.updateStatus();
+    this.notifyIndexUpdated();
   }
 
   /**
@@ -993,6 +997,7 @@ export class IndexManager extends WithLogging {
     await this.indexFileInternal(file);
     await this.updateStatus();
     new Notice(`Indexed: ${file.path}`);
+    this.notifyIndexUpdated();
   }
 
   async indexFile(file: TFile): Promise<void> {
@@ -1041,6 +1046,7 @@ export class IndexManager extends WithLogging {
     new Notice(message, 0);
     this.log(message);
     await this.updateStatus();
+    this.notifyIndexUpdated();
   }
 
   async rebuildIndex(
@@ -1073,6 +1079,7 @@ export class IndexManager extends WithLogging {
     new Notice(message, onload ? 10000 : 0);
     this.log(message);
     await this.updateStatus();
+    this.notifyIndexUpdated();
     return stats;
   }
 
@@ -1100,6 +1107,18 @@ export class IndexManager extends WithLogging {
       unsubscribe();
     }
     this.configSubscribers = [];
+    this.indexUpdateListeners.clear();
+  }
+
+  onIndexUpdated(listener: IndexUpdateListener): () => void {
+    this.indexUpdateListeners.add(listener);
+    return () => this.indexUpdateListeners.delete(listener);
+  }
+
+  private notifyIndexUpdated(): void {
+    for (const listener of this.indexUpdateListeners) {
+      listener();
+    }
   }
 
   private ensureReady(): void {
@@ -1142,6 +1161,7 @@ And then reinitialize Sonar via "Reinitialize Sonar" action/command`,
     await this.embeddingStore.clearAll();
     await this.bm25Store.clearAll();
     await this.updateStatus();
+    this.notifyIndexUpdated();
   }
 
   private async updateStatus(text?: string, tooltip?: string): Promise<void> {
