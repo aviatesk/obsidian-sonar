@@ -115,6 +115,55 @@ echo 'YOUR_TOKEN_HERE' > ~/.huggingface/token
 chmod 600 ~/.huggingface/token
 ```
 
+## Audio transcription (experimental)
+
+Sonar supports indexing audio files (`.m4a`, `.mp3`, `.wav`, `.webm`, `.ogg`,
+`.flac`) by transcribing them locally using
+[whisper.cpp](https://github.com/ggerganov/whisper.cpp). This feature is
+experimental and requires external dependencies.
+
+### Requirements
+
+1. **whisper.cpp**: Install via Homebrew or build from source:
+
+   ```bash
+   # macOS (Homebrew)
+   brew install whisper-cpp
+   ```
+
+2. **ffmpeg**: Required for audio format conversion:
+
+   ```bash
+   # macOS (Homebrew)
+   brew install ffmpeg
+   ```
+
+3. **Whisper model**: Download a GGML-format model from HuggingFace:
+
+   ```bash
+   # Create models directory
+   mkdir -p ~/whisper-models
+
+   # Download model (using Hugging Face CLI)
+   huggingface-cli download ggerganov/whisper.cpp \
+     ggml-large-v3-turbo-q5_0.bin \
+     --local-dir ~/whisper-models/
+   ```
+
+   For alternative models, see:
+   https://huggingface.co/ggerganov/whisper.cpp/tree/main
+
+### Configuration
+
+Configure audio transcription in Sonar settings:
+
+- **whisper-cli path**: Path to `whisper-cli` binary (default: `whisper-cli`)
+- **Whisper model path**: Path to the model file (e.g.,
+  `~/whisper-models/ggml-large-v3-turbo-q5_0.bin`)
+- **ffmpeg path**: Path to `ffmpeg` binary (default: `ffmpeg`)
+- **Transcription language**: Language code for transcription (default: `auto`
+  for auto-detection)
+
 ## Development
 
 See [CLAUDE.md](./CLAUDE.md) for detailed development guidelines.

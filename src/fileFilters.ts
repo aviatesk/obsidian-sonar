@@ -1,5 +1,6 @@
 import { TFile, Vault, normalizePath } from 'obsidian';
 import { ConfigManager } from './ConfigManager';
+import { getAudioExtensions } from './audio';
 
 /**
  * Utility functions for filtering files based on index path and excluded paths
@@ -42,7 +43,7 @@ function matchesExclusionPattern(filePath: string, pattern: string): boolean {
   );
 }
 
-const INDEXABLE_EXTENSIONS = ['md', 'pdf'];
+const INDEXABLE_EXTENSIONS = ['md', 'pdf', ...getAudioExtensions()];
 
 /**
  * Check if a file should be indexed based on configuration

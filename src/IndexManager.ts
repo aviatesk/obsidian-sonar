@@ -33,6 +33,11 @@ import {
   type PdfPage,
 } from './pdfExtractor';
 import type { PdfjsLib } from './pdfjs.d';
+import {
+  isAudioExtension,
+  transcribeAudio,
+  type AudioTranscriptionConfig,
+} from './audio';
 
 /**
  * Debounce delay for batching file operations
@@ -175,12 +180,38 @@ export class IndexManager extends WithLogging {
         this.pdfjsLib = await loadPdfJs();
       }
       const buffer = await this.vault.readBinary(file);
-      const result = await extractTextFromBuffer(buffer, this.pdfjsLib!);
+      const logger = this.configManager.getLogger();
+      const result = await extractTextFromBuffer(buffer, this.pdfjsLib!, {
+        logger,
+      });
       return {
         text: result.fullText,
         pdfPages: result.pages,
       };
     }
+
+    if (file.extension && isAudioExtension(file.extension)) {
+      const basePath = (
+        this.vault.adapter as { getBasePath?: () => string }
+      ).getBasePath?.();
+      if (!basePath) {
+        throw new Error('Cannot get vault base path for audio transcription');
+      }
+      const audioPath = `${basePath}/${file.path}`;
+      const logger = this.configManager.getLogger();
+      const audioConfig: AudioTranscriptionConfig = {
+        whisperCliPath: this.configManager.get('audioWhisperCliPath'),
+        whisperModelPath: this.configManager.get('audioWhisperModelPath'),
+        ffmpegPath: this.configManager.get('audioFfmpegPath'),
+        language: this.configManager.get('audioTranscriptionLanguage'),
+      };
+      const result = await transcribeAudio(audioPath, {
+        config: audioConfig,
+        logger,
+      });
+      return { text: result.text };
+    }
+
     // Default: markdown or other text files
     const text = await this.vault.cachedRead(file);
     return { text };

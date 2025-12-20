@@ -16,6 +16,7 @@ import { ConfigManager } from '../ConfigManager';
 import { getCurrentContext } from '../obsidian-utils';
 import RelatedNotesContent from './RelatedNotesContent.svelte';
 import type SonarPlugin from '../../main';
+import { isAudioExtension } from '../audio';
 
 export const RELATED_NOTES_VIEW_TYPE = 'related-notes-view';
 
@@ -278,6 +279,13 @@ export class RelatedNotesView extends ItemView {
       status: 'processing',
     });
 
+    // Handle PDF and Audio files differently
+    const ext = activeFile.extension;
+    if (ext === 'pdf' || (ext && isAudioExtension(ext))) {
+      await this.refreshFromMetadata(activeFile, searchAbortSignal);
+      return;
+    }
+
     let activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!activeView) {
       const leaves = this.app.workspace.getLeavesOfType('markdown');
@@ -365,6 +373,143 @@ export class RelatedNotesView extends ItemView {
         activeFile: activeFile.path,
       });
     }
+  }
+
+  private async refreshFromMetadata(
+    file: TFile,
+    abortSignal: AbortSignal
+  ): Promise<void> {
+    if (!this.plugin.metadataStore || !this.plugin.embedder) {
+      this.updateStore({
+        ...EMPTY_STATE_BASE,
+        status: 'initializing',
+      });
+      return;
+    }
+
+    const chunks = await this.plugin.metadataStore.getChunksByFile(file.path);
+    if (chunks.length === 0) {
+      this.updateStore({
+        ...EMPTY_STATE_BASE,
+        status: 'no-content',
+        activeFile: file.path,
+      });
+      return;
+    }
+
+    // Sort chunks by id to get proper order
+    chunks.sort((a, b) => a.id.localeCompare(b.id));
+
+    let query: string;
+
+    try {
+      if (file.extension === 'pdf') {
+        // For PDF: try to detect current page from viewer
+        const currentPage = this.detectPdfCurrentPage();
+        if (currentPage !== null) {
+          // Find chunks for current page
+          const pageChunks = chunks.filter(c => c.pageNumber === currentPage);
+          query =
+            pageChunks.length > 0
+              ? pageChunks.map(c => c.content).join('\n')
+              : chunks[0].content;
+        } else {
+          // Fallback to first chunk
+          query = chunks[0].content;
+        }
+      } else {
+        // For Audio: use first chunk (beginning of transcription)
+        // TODO Use chunk corresponding to current timestamp
+        query = chunks[0].content;
+      }
+
+      // Truncate query if too long
+      const maxTokens = this.configManager.get('maxQueryTokens');
+      let tokenCount = await this.plugin.embedder.countTokens(query);
+      while (tokenCount > maxTokens && query.length > 100) {
+        query = query.slice(0, Math.floor(query.length * 0.8));
+        tokenCount = await this.plugin.embedder.countTokens(query);
+      }
+
+      if (query === this.lastQuery) {
+        this.updateStore({
+          status: 'ready',
+        });
+        return;
+      }
+
+      this.lastQuery = query;
+
+      const searchResults = await this.plugin.searchManager!.search(
+        COMPONENT_ID,
+        query,
+        {
+          topK: this.configManager.get('searchResultsCount'),
+          excludeFilePath: file.path,
+        }
+      );
+
+      if (searchResults === null || abortSignal.aborted) {
+        return;
+      }
+
+      this.updateStore({
+        query: query,
+        results: searchResults,
+        tokenCount: tokenCount,
+        status: 'ready',
+        activeFile: file.path,
+      });
+    } catch (err) {
+      if (abortSignal.aborted) {
+        return;
+      }
+      this.configManager
+        .getLogger()
+        .error(`Error refreshing related notes from metadata: ${err}`);
+      this.updateStore({
+        ...EMPTY_STATE_BASE,
+        status: 'error',
+        activeFile: file.path,
+      });
+    }
+  }
+
+  private detectPdfCurrentPage(): number | null {
+    // Try to detect current page from Obsidian's PDF viewer
+    // Look for the page indicator in the PDF viewer toolbar
+    const activeLeaf = this.app.workspace.activeLeaf;
+    if (!activeLeaf) return null;
+
+    const viewEl = activeLeaf.view.containerEl;
+
+    // Obsidian's PDF viewer has a page input showing current page
+    const pageInput = viewEl.querySelector(
+      '.pdf-toolbar input[type="number"]'
+    ) as HTMLInputElement;
+    if (pageInput && pageInput.value) {
+      const page = parseInt(pageInput.value, 10);
+      if (!isNaN(page) && page > 0) {
+        return page;
+      }
+    }
+
+    // Alternative: look for visible page in the viewer
+    const pdfViewer = viewEl.querySelector('.pdf-viewer');
+    if (pdfViewer) {
+      // pdf.js typically marks the current page with data attributes
+      const visiblePage = pdfViewer.querySelector(
+        '.page[data-page-number]:not([hidden])'
+      ) as HTMLElement;
+      if (visiblePage?.dataset.pageNumber) {
+        const page = parseInt(visiblePage.dataset.pageNumber, 10);
+        if (!isNaN(page) && page > 0) {
+          return page;
+        }
+      }
+    }
+
+    return null;
   }
 
   private manualRefresh(): void {
