@@ -13,4 +13,5 @@ main.js
 src/generated/
 
 # Claude
+!.claude/skills/
 CLAUDE.local.md

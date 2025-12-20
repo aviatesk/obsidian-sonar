@@ -105,12 +105,13 @@ npm run test:ui     # Run tests with interactive browser UI
   - Do not include the "Generated with
     [Claude Code](https://claude.com/claude-code)" footer in commit messages for
     this project. Keep commit messages focused and concise.
-  - When writing commit messages, follow the format `component: Brief summary`
+  - When writing commit messages, follow the format "component: Brief summary"
     for the title. In the body of the commit message, provide a brief prose
-    summary of the purpose of the changes made. Also, ensure that the maximum
-    line length never exceeds 72 characters. When referencing external GitHub
-    PRs or issues, use proper GitHub interlinking format (e.g., `owner/repo#123`
-    for PRs/issues).
+    summary of the purpose of the changes made. Use backticks for code elements
+    (function names, variables, file paths, etc.) to improve readability. Also,
+    ensure that the maximum line length never exceeds 72 characters. When
+    referencing external GitHub PRs or issues, use proper GitHub interlinking
+    format (e.g., "owner/repo#123" for PRs/issues).
 - Keep `main.ts` minimal: Focus only on plugin lifecycle (onload, onunload,
   addCommand calls). Delegate all feature logic to separate modules.
 - Split large files: If any file exceeds ~200-300 lines, consider breaking it
@@ -232,13 +233,16 @@ Follow Obsidian's Developer Policies and Plugin Guidelines. In particular:
 - Register and clean up all DOM, app, and interval listeners using the provided
   `register*` helpers so the plugin unloads safely.
 
-### Mobile
+# Git operations
 
-- Where feasible, test on iOS and Android.
-- Don't assume desktop-only behavior unless `isDesktopOnly` in `manifest.json`
-  is `true`.
-- Avoid large in-memory structures; be mindful of memory and storage
-  constraints.
+Only perform Git operations when the user explicitly requests them. After
+completing a Git operation, do not perform additional operations based on
+conversational context alone. Wait for explicit instructions.
+
+When the user provides feedback or points out issues with a commit:
+
+- Do NOT automatically amend the commit or create a fixup commit
+- Explain what could be changed, then wait for explicit instruction
 
 ## References
 
