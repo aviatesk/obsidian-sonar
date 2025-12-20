@@ -4,7 +4,6 @@ import { EmbeddingSearch } from './src/EmbeddingSearch';
 import { BM25Store } from './src/BM25Store';
 import { BM25Search } from './src/BM25Search';
 import { DEFAULT_SETTINGS } from './src/config';
-import { probeGPU } from './src/GPUProbe';
 import {
   RelatedNotesView,
   RELATED_NOTES_VIEW_TYPE,
@@ -16,7 +15,6 @@ import { SettingTab } from './src/ui/SettingTab';
 import { getDBName, MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
 import type { Embedder } from './src/Embedder';
-import { TransformersEmbedder } from './src/TransformersEmbedder';
 import { LlamaCppEmbedder } from './src/LlamaCppEmbedder';
 import type { Reranker } from './src/Reranker';
 import { NoopReranker } from './src/Reranker';
@@ -50,12 +48,7 @@ export default class SonarPlugin extends Plugin {
   }
 
   private formatStatusBarText(status: string): string {
-    if (!this.configManager.get('showBackendInStatusBar')) {
-      return `Sonar: ${status}`;
-    }
-    const backend = this.configManager.get('embedderBackend');
-    const shortName = backend === 'llamacpp' ? 'llama' : 'tfjs';
-    return `Sonar [${shortName}]: ${status}`;
+    return `Sonar: ${status}`;
   }
 
   private updateStatusBar(text: string, tooltip?: string): void {
@@ -137,12 +130,6 @@ export default class SonarPlugin extends Plugin {
       await this.reinitializeSonar();
     };
 
-    this.configListeners.push(
-      this.configManager.subscribe('embedderBackend', handleBackendChange)
-    );
-    this.configListeners.push(
-      this.configManager.subscribe('tfjsEmbedderModel', handleBackendChange)
-    );
     this.configListeners.push(
       this.configManager.subscribe('llamacppServerPath', handleBackendChange)
     );
@@ -260,90 +247,40 @@ export default class SonarPlugin extends Plugin {
   }
 
   private async initializeAsync(): Promise<void> {
-    const result = await probeGPU();
-    if (result.webgpu.available) {
-      this.log(
-        `Detected WebGPU (fallback: ${result.webgpu.isFallbackAdapter}, ` +
-          `features: ${result.webgpu.features?.length ?? 0})`
-      );
-    } else {
-      this.warn(`WebGPU not detected - ${result.webgpu.reason}`);
-    }
-    if (result.webgl.available) {
-      this.log(
-        `Detected WebGL (${result.webgl.version}, ${result.webgl.renderer ?? 'unknown'})`
-      );
-    } else {
-      this.warn(`WebGL not detected - ${result.webgl.reason}`);
-    }
+    const serverPath = this.configManager.get('llamacppServerPath');
+    const modelRepo = this.configManager.get('llamaEmbedderModelRepo');
+    const modelFile = this.configManager.get('llamaEmbedderModelFile');
+    const modelIdentifier = `${modelRepo}/${modelFile}`;
 
-    const embedderBackend = this.configManager.get('embedderBackend');
+    const embedder = (this.embedder = new LlamaCppEmbedder(
+      serverPath,
+      modelRepo,
+      modelFile,
+      this.configManager,
+      status => this.updateStatusBar(status),
+      (msg, duration) => new Notice(msg, duration)
+    ));
 
-    let modelIdentifier: string;
+    const rerankerModelRepo = this.configManager.get('llamaRerankerModelRepo');
+    const rerankerModelFile = this.configManager.get('llamaRerankerModelFile');
+    const rerankerModelIdentifier = `${rerankerModelRepo}/${rerankerModelFile}`;
+    const reranker = (this.reranker = new LlamaCppReranker(
+      serverPath,
+      rerankerModelRepo,
+      rerankerModelFile,
+      this.configManager,
+      (msg, duration) => new Notice(msg, duration)
+    ));
 
-    if (embedderBackend === 'llamacpp') {
-      const serverPath = this.configManager.get('llamacppServerPath');
-      const modelRepo = this.configManager.get('llamaEmbedderModelRepo');
-      const modelFile = this.configManager.get('llamaEmbedderModelFile');
-      modelIdentifier = `${modelRepo}/${modelFile}`;
-
-      const embedder = (this.embedder = new LlamaCppEmbedder(
-        serverPath,
-        modelRepo,
-        modelFile,
-        this.configManager,
-        status => this.updateStatusBar(status),
-        (msg, duration) => new Notice(msg, duration)
-      ));
-
-      const rerankerModelRepo = this.configManager.get(
-        'llamaRerankerModelRepo'
-      );
-      const rerankerModelFile = this.configManager.get(
-        'llamaRerankerModelFile'
-      );
-      const rerankerModelIdentifier = `${rerankerModelRepo}/${rerankerModelFile}`;
-      const reranker = (this.reranker = new LlamaCppReranker(
-        serverPath,
-        rerankerModelRepo,
-        rerankerModelFile,
-        this.configManager,
-        (msg, duration) => new Notice(msg, duration)
-      ));
-
-      const [embedderSuccess] = await Promise.all([
-        this.initializeEmbedder(embedder, 'llama.cpp', modelIdentifier),
-        this.initializeReranker(reranker, rerankerModelIdentifier),
-      ]);
-      if (!embedderSuccess) return;
-    } else {
-      const tfjsModel = this.configManager.get('tfjsEmbedderModel');
-      modelIdentifier = tfjsModel;
-
-      // Uses Blob URL Worker with inlined code to make Transformers.js think this Electron environment is a browser environment
-      const device = result.webgpu.available ? 'webgpu' : 'wasm';
-      this.log(`Using Transformers.js with device: ${device}`);
-
-      const embedder = (this.embedder = new TransformersEmbedder(
-        tfjsModel,
-        device,
-        'fp32',
-        this.configManager,
-        status => this.updateStatusBar(status)
-      ));
-      const reranker = (this.reranker = new NoopReranker());
-
-      const [embedderSuccess] = await Promise.all([
-        this.initializeEmbedder(embedder, 'Transformers.js', tfjsModel),
-        this.initializeReranker(reranker, 'NoopReranker'),
-      ]);
-      if (!embedderSuccess) return;
-    }
+    const [embedderSuccess] = await Promise.all([
+      this.initializeEmbedder(embedder, 'llama.cpp', modelIdentifier),
+      this.initializeReranker(reranker, rerankerModelIdentifier),
+    ]);
+    if (!embedderSuccess) return;
 
     try {
       this.metadataStore = await MetadataStore.initialize(
         this.app.vault.getName(),
-        embedderBackend,
         modelIdentifier,
         this.configManager
       );
@@ -565,12 +502,6 @@ export default class SonarPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: 'probe-gpu-capabilities',
-      name: 'Probe GPU capabilities (WebGPU/WebGL)',
-      callback: this.probeGPU,
-    });
-
-    this.addCommand({
       id: 'show-indexable-files-stats',
       name: 'Show indexable files statistics',
       callback: async () => {
@@ -705,33 +636,6 @@ export default class SonarPlugin extends Plugin {
     )).open();
   }
 
-  private async probeGPU() {
-    const result = await probeGPU();
-    const webgpuStatus = result.webgpu.available
-      ? `Available${result.webgpu.isFallbackAdapter ? ' (fallback adapter)' : ''}`
-      : `Not available - ${result.webgpu.reason}`;
-    const webglStatus = result.webgl.available
-      ? `Available (${result.webgl.version}${result.webgl.renderer ? `, ${result.webgl.renderer}` : ''})`
-      : `Not available - ${result.webgl.reason}`;
-    const message = [
-      'Graphics Capabilities:',
-      '',
-      `- WebGPU: ${webgpuStatus}`,
-      result.webgpu.available && result.webgpu.features
-        ? `  * Features: ${result.webgpu.features.length} available`
-        : '',
-      '',
-      `- WebGL: ${webglStatus}`,
-      '',
-      `- Electron: ${(window as any).process?.versions?.electron ?? 'N/A'}`,
-      `- Chrome: ${(window as any).process?.versions?.chrome ?? 'N/A'}`,
-    ]
-      .filter(l => l !== '')
-      .join('\n');
-    new Notice(message, 0);
-    this.log('GPU probe result: ' + JSON.stringify(result, null, 2));
-  }
-
   async deleteAllVaultDatabases(): Promise<void> {
     const vaultName = this.app.vault.getName();
     const databases = await MetadataStore.listDatabasesForVault(vaultName);
@@ -756,20 +660,10 @@ export default class SonarPlugin extends Plugin {
 
     // Close current database connections if they're in the list to be deleted
     if (this.metadataStore) {
-      const embedderBackend = this.configManager.get('embedderBackend');
-      let modelIdentifier: string;
-      if (embedderBackend === 'llamacpp') {
-        const modelRepo = this.configManager.get('llamaEmbedderModelRepo');
-        const modelFile = this.configManager.get('llamaEmbedderModelFile');
-        modelIdentifier = `${modelRepo}/${modelFile}`;
-      } else {
-        modelIdentifier = this.configManager.get('tfjsEmbedderModel');
-      }
-      const currentDbName = getDBName(
-        vaultName,
-        embedderBackend,
-        modelIdentifier
-      );
+      const modelRepo = this.configManager.get('llamaEmbedderModelRepo');
+      const modelFile = this.configManager.get('llamaEmbedderModelFile');
+      const modelIdentifier = `${modelRepo}/${modelFile}`;
+      const currentDbName = getDBName(vaultName, modelIdentifier);
 
       if (databases.includes(currentDbName)) {
         this.log(`Closing current database before deletion: ${currentDbName}`);

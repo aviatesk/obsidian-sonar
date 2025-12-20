@@ -235,10 +235,6 @@ export class LlamaCppEmbedder extends Embedder {
     return decoded;
   }
 
-  getDevice(): 'llamacpp' {
-    return 'llamacpp';
-  }
-
   async cleanup(): Promise<void> {
     this.log(`Cleaning up...`);
 

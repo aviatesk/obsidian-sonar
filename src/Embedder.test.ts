@@ -17,10 +17,9 @@ afterAll(async () => {
 });
 
 describe('embedder backends', () => {
-  it('are LlamaCpp and Transformers.js', () => {
-    expect(embedders).toHaveLength(2);
+  it('is LlamaCpp', () => {
+    expect(embedders).toHaveLength(1);
     expect(embedders[0].name).toBe('llama.cpp');
-    expect(embedders[1].name).toBe('Transformers.js');
   });
 
   it('can count tokens', async () => {

@@ -7,8 +7,6 @@ export const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
   verbose: 3,
 } as const;
 
-export type EmbedderBackend = 'transformers' | 'llamacpp';
-
 export type AggregationMethod =
   | 'max_p'
   | 'top_m_sum'
@@ -41,10 +39,8 @@ export interface SonarSettings {
   chunkOverlap: number; // Overlapping tokens between chunks
   maxQueryTokens: number; // Maximum tokens for search queries
 
-  // Embedder configuration
-  // ======================
-  embedderBackend: EmbedderBackend; // Embedder backend: 'transformers' or 'llamacpp'
-  tfjsEmbedderModel: string; // HuggingFace model ID for Transformers.js (e.g., 'Xenova/multilingual-e5-small')
+  // Embedder configuration (llama.cpp)
+  // ===================================
   llamacppServerPath: string; // Path to llama.cpp server binary (e.g., 'llama-server')
   llamaEmbedderModelRepo: string; // HuggingFace repository for llama.cpp (e.g., 'BAAI/bge-m3-gguf')
   llamaEmbedderModelFile: string; // GGUF filename in the repository (e.g., 'bge-m3-q8_0.gguf')
@@ -71,7 +67,6 @@ export interface SonarSettings {
   // Logging configuration
   // =====================
   statusBarMaxLength: number; // Maximum characters in status bar (0 = no limit)
-  showBackendInStatusBar: boolean; // Show embedder backend in status bar
   debugMode: LogLevel; // Logging verbosity level
 
   // Benchmark configuration
@@ -107,10 +102,8 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   chunkOverlap: 64,
   maxQueryTokens: 128,
 
-  // Embedder configuration
-  // ======================
-  embedderBackend: 'transformers',
-  tfjsEmbedderModel: 'Xenova/multilingual-e5-small',
+  // Embedder configuration (llama.cpp)
+  // ===================================
   llamacppServerPath: 'llama-server',
   llamaEmbedderModelRepo: 'ggml-org/bge-m3-Q8_0-GGUF',
   llamaEmbedderModelFile: 'bge-m3-q8_0.gguf',
@@ -137,7 +130,6 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   // Logging configuration
   // =====================
   statusBarMaxLength: 40,
-  showBackendInStatusBar: true,
   debugMode: 'error',
 
   // Benchmark configuration

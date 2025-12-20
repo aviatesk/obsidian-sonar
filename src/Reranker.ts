@@ -22,7 +22,7 @@ export interface Reranker {
 
 /**
  * No-op reranker that returns documents in their original order
- * Used when reranking is not available (e.g., Transformers.js backend)
+ * Used when reranking is not available.
  */
 export class NoopReranker implements Reranker {
   initialize(): Promise<void> {
