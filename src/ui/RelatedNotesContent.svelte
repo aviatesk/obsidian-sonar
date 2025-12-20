@@ -173,7 +173,6 @@
           {app}
           {results}
           {configManager}
-          noResultsMessage="No related notes found"
           maxHeight="200px"
           showExcerpts={showExcerpts}
         />

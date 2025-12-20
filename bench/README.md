@@ -241,6 +241,35 @@ reference, the following differences exist:
 | Weaviate      | Vector | 0.9357  | 0.9759    | 1.0000     | 0.9432 | 0.9124 |
 | Weaviate      | Hybrid | 0.8761  | 0.9316    | 1.0000     | 0.8800 | 0.8486 |
 
+#### With reranking
+
+> - Queries: 200
+> - Documents: 24754 (JA:EN = 1:1)
+> - Embedding model: [`BAAI/bge-m3`](https://huggingface.co/BAAI/bge-m3)
+>   (llama.cpp backend)
+> - Reranking model:
+>   [`BAAI/bge-reranker-v2-m3`](https://huggingface.co/BAAI/bge-reranker-v2-m3)
+>   (llama.cpp backend)
+
+| Method        | nDCG@10 | Recall@10 | Recall@100 | MRR@10 | MAP    |
+| ------------- | ------- | --------- | ---------- | ------ | ------ |
+| BM25          | 0.7788  | 0.8654    | 0.9625     | 0.7896 | 0.7337 |
+| Vector        | 0.9568  | 0.9793    | 1.0000     | 0.9632 | 0.9420 |
+| Hybrid        | 0.9035  | 0.9568    | 1.0000     | 0.8954 | 0.8770 |
+| Hybrid+Rerank | 0.9657  | 0.9856    | 0.9856     | 0.9665 | 0.9511 |
+
+> [!note] The improvement in BM25 scores (`0.7624` -> `0.7788` in `nDCG@10`) is
+> likely due to the recent use of `IntlSegmenter`.
+
+Timing (retrieval of 100 documents per query, then rerank):
+
+| Method        | Total Time | Queries | Avg per Query |
+| ------------- | ---------- | ------- | ------------- |
+| BM25          | 4.1s       | 200     | 20ms          |
+| Vector        | 26.1s      | 200     | 130ms         |
+| Hybrid        | 26.4s      | 200     | 132ms         |
+| Hybrid+Rerank | 553.8s     | 200     | 2769ms        |
+
 ### Result for MIRACL Merged (long document retrieval)
 
 > - Queries: 200
@@ -264,6 +293,23 @@ Sonar's BM25 gap (~0.88 vs ~0.97) is due to tokenization: Sonar uses BPE subword
 tokenizer while ES/Weaviate use morphological analyzers (Kuromoji/Kagome).
 Vector search compensates in hybrid mode, achieving 0.95+ nDCG@10.
 
+#### With reranking
+
+> - Queries: 200
+> - Documents: 6,259 articles (394 relevant + 5,865 distractors)
+> - Embedding model: [`BAAI/bge-m3`](https://huggingface.co/BAAI/bge-m3)
+>   (llama.cpp backend)
+> - Reranking model:
+>   [`BAAI/bge-reranker-v2-m3`](https://huggingface.co/BAAI/bge-reranker-v2-m3)
+>   (llama.cpp backend)
+
+| Method        | nDCG@10 | Recall@10 | Recall@100 | MRR@10 | MAP    |
+| ------------- | ------- | --------- | ---------- | ------ | ------ |
+| BM25          | 0.9028  | 0.9637    | 0.9933     | 0.8995 | 0.8727 |
+| Vector        | 0.9432  | 0.9735    | 0.9927     | 0.9570 | 0.9213 |
+| Hybrid        | 0.9530  | 0.9893    | 1.0000     | 0.9556 | 0.9315 |
+| Hybrid+Rerank | 0.9638  | 0.9902    | 0.9902     | 0.9683 | 0.9446 |
+
 ### Result for SciDocs
 
 > - Queries: 100
@@ -282,6 +328,32 @@ Vector search compensates in hybrid mode, achieving 0.95+ nDCG@10.
 | Weaviate      | BM25   | 0.1511  | 0.1550    | 0.3390     | 0.2598 | 0.1059 |
 | Weaviate      | Vector | 0.1576  | 0.1705    | 0.3580     | 0.2781 | 0.1007 |
 | Weaviate      | Hybrid | 0.1805  | 0.1925    | 0.3785     | 0.3064 | 0.1224 |
+
+#### With reranking
+
+> - Queries: 100
+> - Documents: 12426
+> - Embedding model: [`BAAI/bge-m3`](https://huggingface.co/BAAI/bge-m3)
+>   (llama.cpp backend)
+> - Reranking model:
+>   [`BAAI/bge-reranker-v2-m3`](https://huggingface.co/BAAI/bge-reranker-v2-m3)
+>   (llama.cpp backend)
+
+| Method        | nDCG@10 | Recall@10 | Recall@100 | MRR@10 | MAP    |
+| ------------- | ------- | --------- | ---------- | ------ | ------ |
+| BM25          | 0.1516  | 0.1580    | 0.3390     | 0.2623 | 0.1039 |
+| Vector        | 0.1699  | 0.1835    | 0.3775     | 0.2802 | 0.1159 |
+| Hybrid        | 0.1755  | 0.1825    | 0.3950     | 0.3038 | 0.1248 |
+| Hybrid+Rerank | 0.1636  | 0.1720    | 0.1720     | 0.2836 | 0.0961 |
+
+Timing (retrieval of 100 documents per query, then rerank):
+
+| Method        | Total Time | Queries | Avg per Query |
+| ------------- | ---------- | ------- | ------------- |
+| BM25          | 2.4s       | 100     | 24ms          |
+| Vector        | 9.9s       | 100     | 99ms          |
+| Hybrid        | 8.9s       | 100     | 89ms          |
+| Hybrid+Rerank | 486.7s     | 100     | 4867ms        |
 
 ### Notes
 

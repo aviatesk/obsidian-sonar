@@ -9,8 +9,11 @@ interface SemanticSearchState {
   query: string;
   results: SearchResult[];
   isSearching: boolean;
-  hasSearched: boolean;
+  isReranking: boolean;
 }
+
+const SEARCH_DEBOUNCE_MS = 750;
+const MAX_INITIAL_K = 100;
 
 const COMPONENT_ID = 'SemanticNoteFinder';
 
@@ -25,12 +28,13 @@ export class SemanticNoteFinder extends Modal {
     query: '',
     results: [],
     isSearching: false,
-    hasSearched: false,
+    isReranking: false,
   });
   private searchAbortController: AbortController | null = null;
   private cache = {
     lastQuery: '',
-    results: new Map<string, SearchResult[]>(),
+    default: new Map<string, SearchResult[]>(),
+    reranked: new Map<string, SearchResult[]>(),
   };
 
   constructor(
@@ -44,7 +48,7 @@ export class SemanticNoteFinder extends Modal {
 
     this.debouncedSearch = debounce(
       this.handleSearch.bind(this),
-      800, // Fixed debounce time for search
+      SEARCH_DEBOUNCE_MS,
       true
     );
   }
@@ -71,19 +75,21 @@ export class SemanticNoteFinder extends Modal {
         query: '',
         results: [],
         isSearching: false,
-        hasSearched: false,
+        isReranking: false,
       });
       return;
     }
 
-    const cachedResults = this.cache.results.get(trimmedQuery);
+    const enableReranking = this.configManager.get('enableSearchReranking');
+    const cacheMap = enableReranking ? this.cache.reranked : this.cache.default;
+    const cachedResults = cacheMap.get(trimmedQuery);
     if (cachedResults) {
       const topK = this.configManager.get('searchResultsCount');
       this.updateStore({
         query,
         results: cachedResults.slice(0, topK),
         isSearching: false,
-        hasSearched: true,
+        isReranking: false,
       });
       return;
     }
@@ -94,40 +100,100 @@ export class SemanticNoteFinder extends Modal {
     this.updateStore({
       query,
       isSearching: true,
-      hasSearched: true,
+      isReranking: false,
     });
 
+    const topK = this.configManager.get('searchResultsCount');
+    const retrievalMultiplier = this.configManager.get('retrievalMultiplier');
+    const initialK = enableReranking
+      ? Math.min(topK * retrievalMultiplier, MAX_INITIAL_K)
+      : topK;
+
     try {
-      const results = await this.searchManager.search(
+      // Initial retrieval (larger K if reranking enabled)
+      const initialResults = await this.searchManager.search(
         COMPONENT_ID,
         trimmedQuery,
         {
-          topK: this.configManager.get('searchResultsCount'),
+          topK: initialK,
           titleWeight: 0.25,
           contentWeight: 0.75,
         }
       );
 
       // Skip if superseded (null from queue) or aborted (new search started)
-      if (results === null || searchAbortSignal.aborted) {
+      if (initialResults === null || searchAbortSignal.aborted) {
         return;
       }
 
-      this.cache.results.set(trimmedQuery, results);
-
-      this.updateStore({
-        results,
-        isSearching: false,
-      });
+      if (enableReranking && initialResults.length > 0) {
+        const showIntermediate = this.configManager.get(
+          'showIntermediateResults'
+        );
+        this.updateStore({
+          results: showIntermediate ? initialResults.slice(0, topK) : [],
+          isSearching: false,
+          isReranking: true,
+        });
+        await this.executeReranking(
+          query,
+          trimmedQuery,
+          initialResults,
+          topK,
+          searchAbortSignal
+        );
+      } else {
+        // No reranking: show initial results immediately
+        this.cache.default.set(trimmedQuery, initialResults);
+        this.updateStore({
+          results: initialResults.slice(0, topK),
+          isSearching: false,
+        });
+      }
     } catch (err) {
-      if (searchAbortSignal.aborted) {
-        return;
-      }
       this.configManager.getLogger().error(`Search failed: ${err}`);
       new Notice('Search failed. Please check your settings.');
+      if (searchAbortSignal.aborted) return;
       this.updateStore({
         results: [],
         isSearching: false,
+        isReranking: false,
+      });
+    }
+  }
+
+  private async executeReranking(
+    query: string,
+    cacheKey: string,
+    initialResults: SearchResult[],
+    topK: number,
+    searchAbortSignal: AbortSignal
+  ): Promise<void> {
+    try {
+      const rerankedResults = await this.searchManager.rerank(
+        COMPONENT_ID,
+        query,
+        initialResults,
+        topK
+      );
+
+      const finalResults = rerankedResults ?? initialResults.slice(0, topK);
+      this.cache.reranked.set(cacheKey, finalResults);
+
+      if (searchAbortSignal.aborted) return;
+      this.updateStore({
+        results: finalResults,
+        isReranking: false,
+      });
+    } catch (err) {
+      this.configManager.getLogger().error(`Reranking failed: ${err}`);
+      // On failure, show initial results
+      const fallbackResults = initialResults.slice(0, topK);
+      this.cache.reranked.set(cacheKey, fallbackResults);
+      if (searchAbortSignal.aborted) return;
+      this.updateStore({
+        results: fallbackResults,
+        isReranking: false,
       });
     }
   }
@@ -143,14 +209,23 @@ export class SemanticNoteFinder extends Modal {
 
     // Restore last query from cache if available
     if (this.cache.lastQuery) {
-      const cachedResults = this.cache.results.get(this.cache.lastQuery);
-      const topK = this.configManager.get('searchResultsCount');
-      this.updateStore({
-        query: this.cache.lastQuery,
-        results: cachedResults?.slice(0, topK) ?? [],
-        hasSearched: !!cachedResults,
-        isSearching: false,
-      });
+      const enableReranking = this.configManager.get('enableSearchReranking');
+      const cacheMap = enableReranking
+        ? this.cache.reranked
+        : this.cache.default;
+      const cachedResults = cacheMap.get(this.cache.lastQuery);
+      if (cachedResults) {
+        const topK = this.configManager.get('searchResultsCount');
+        this.updateStore({
+          query: this.cache.lastQuery,
+          results: cachedResults.slice(0, topK),
+          isSearching: false,
+          isReranking: false,
+        });
+      } else {
+        // Cache invalidated: trigger auto-search
+        this.debouncedSearch(this.cache.lastQuery);
+      }
     }
 
     this.svelteComponent = mount(SemanticNoteFinderComponent, {
@@ -167,6 +242,12 @@ export class SemanticNoteFinder extends Modal {
         },
         onSearchImmediate: (query: string) => {
           this.handleSearch(query);
+        },
+        onRerankingToggle: () => {
+          const currentQuery = this.cache.lastQuery;
+          if (currentQuery) {
+            this.handleSearch(currentQuery);
+          }
         },
         onClose: () => {
           this.close();
@@ -190,11 +271,12 @@ export class SemanticNoteFinder extends Modal {
       query: '',
       results: [],
       isSearching: false,
-      hasSearched: false,
+      isReranking: false,
     });
   }
 
   invalidateCache(): void {
-    this.cache.results.clear();
+    this.cache.default.clear();
+    this.cache.reranked.clear();
   }
 }

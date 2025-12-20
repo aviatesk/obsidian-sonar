@@ -30,6 +30,8 @@ export interface SonarSettings {
   showRelatedNotesQuery: boolean; // Show search query in related notes view
   showRelatedNotesExcerpts: boolean; // Show text excerpts in related notes view
   showKnowledgeGraph: boolean; // Show knowledge graph visualization
+  enableSearchReranking: boolean; // Enable reranking in SemanticNoteFinder
+  showIntermediateResults: boolean; // Show initial results while reranking (only when reranking enabled)
   searchResultsCount: number; // Number of final documents to return to user
   relatedNotesDebounceMs: number; // Delay before updating related notes view
 
@@ -46,6 +48,8 @@ export interface SonarSettings {
   llamacppServerPath: string; // Path to llama.cpp server binary (e.g., 'llama-server')
   llamaEmbedderModelRepo: string; // HuggingFace repository for llama.cpp (e.g., 'BAAI/bge-m3-gguf')
   llamaEmbedderModelFile: string; // GGUF filename in the repository (e.g., 'bge-m3-q8_0.gguf')
+  llamaRerankerModelRepo: string; // HuggingFace repository for reranker (e.g., 'gpustack/bge-reranker-v2-m3-GGUF')
+  llamaRerankerModelFile: string; // GGUF filename for reranker (e.g., 'bge-reranker-v2-m3-Q8_0.gguf')
 
   // Search parameters
   // =================
@@ -55,7 +59,7 @@ export interface SonarSettings {
   aggL: number; // Number of top chunks for weighted_top_l_sum (default: 3)
   aggDecay: number; // Decay factor for weighted_top_l_sum (default: 0.95)
   aggRrfK: number; // RRF k parameter for rrf_per_doc (default: 60)
-  retrievalMultiplier: number; // Multiplier for hybrid search pre-fusion limit (default: 10, limit = top_k * multiplier)
+  retrievalMultiplier: number; // Multiplier for candidate retrieval (hybrid search fusion & reranking)
 
   // Logging configuration
   // =====================
@@ -89,6 +93,8 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   showRelatedNotesQuery: true,
   showRelatedNotesExcerpts: true,
   showKnowledgeGraph: true,
+  enableSearchReranking: false,
+  showIntermediateResults: false,
   searchResultsCount: 10,
   relatedNotesDebounceMs: 5000,
 
@@ -105,6 +111,8 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   llamacppServerPath: 'llama-server',
   llamaEmbedderModelRepo: 'ggml-org/bge-m3-Q8_0-GGUF',
   llamaEmbedderModelFile: 'bge-m3-q8_0.gguf',
+  llamaRerankerModelRepo: 'gpustack/bge-reranker-v2-m3-GGUF',
+  llamaRerankerModelFile: 'bge-reranker-v2-m3-Q8_0.gguf',
 
   // Search parameters
   // =================
