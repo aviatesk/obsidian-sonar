@@ -38,7 +38,6 @@ export class SettingTab extends PluginSettingTab {
     this.createSearchParamsSection(containerEl);
     this.createLoggingConfigSection(containerEl);
     this.createBenchmarkConfigSection(containerEl);
-    this.createDebugConfigSection(containerEl);
   }
 
   hide(): void {
@@ -915,30 +914,6 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
         .setDynamicTooltip()
         .onChange(async value => {
           await this.configManager.set('benchmarkTopK', value);
-        })
-    );
-  }
-
-  private createDebugConfigSection(containerEl: HTMLElement): void {
-    const debugDetails = containerEl.createEl('details', {
-      cls: 'sonar-settings-section',
-    });
-    debugDetails.createEl('summary', { text: 'Debug configuration' });
-    const debugContainer = debugDetails.createDiv();
-
-    const debugPathSetting = new Setting(debugContainer).setName(
-      'Debug samples path'
-    );
-    this.renderMarkdownDesc(
-      debugPathSetting.descEl,
-      'Absolute path to debug samples directory (default: `bench/debug`).'
-    );
-    debugPathSetting.addText(text =>
-      text
-        .setPlaceholder('/path/to/debug')
-        .setValue(this.configManager.get('debugSamplesPath'))
-        .onChange(async value => {
-          await this.configManager.set('debugSamplesPath', value);
         })
     );
   }

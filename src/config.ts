@@ -73,10 +73,6 @@ export interface SonarSettings {
   benchmarkQrelsPath: string; // Path to qrels.tsv file (absolute or vault-relative)
   benchmarkOutputDir: string; // Path to directory for TREC output files (absolute or vault-relative)
   benchmarkTopK: number; // Number of documents to return for benchmarks (default: 100)
-
-  // Debug configuration
-  // ===================
-  debugSamplesPath: string; // Absolute path to debug samples directory (default: bench/debug)
 }
 
 export const DEFAULT_SETTINGS: SonarSettings = {
@@ -136,8 +132,4 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   benchmarkQrelsPath: '',
   benchmarkOutputDir: '',
   benchmarkTopK: 100,
-
-  // Debug configuration
-  // ===================
-  debugSamplesPath: '',
 };

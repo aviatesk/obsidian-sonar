@@ -22,7 +22,6 @@ import type { Reranker } from './src/Reranker';
 import { NoopReranker } from './src/Reranker';
 import { LlamaCppReranker } from './src/LlamaCppReranker';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
-import { DebugRunner } from './src/EmbeddingDebugger';
 
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
@@ -32,7 +31,6 @@ export default class SonarPlugin extends Plugin {
   metadataStore: MetadataStore | null = null;
   embedder: Embedder | null = null;
   reranker: Reranker | null = null;
-  debugRunner: DebugRunner | null = null;
   private semanticNoteFinder: SemanticNoteFinder | null = null;
   private reinitializing = false;
   private configListeners: Array<() => void> = [];
@@ -405,8 +403,6 @@ export default class SonarPlugin extends Plugin {
       (text: string, tooltip?: string) => this.updateStatusBar(text, tooltip)
     );
 
-    this.debugRunner = new DebugRunner(this.configManager, this.embedder);
-
     try {
       await this.indexManager.onLayoutReady();
     } catch (error) {
@@ -614,15 +610,6 @@ export default class SonarPlugin extends Plugin {
         } catch (error) {
           this.error(`Benchmark failed: ${error}`);
         }
-      },
-    });
-
-    this.addCommand({
-      id: 'debug-generate-sample-embeddings',
-      name: 'Debug: Generate sample embeddings',
-      callback: () => {
-        if (!this.checkInitialized()) return;
-        this.debugRunner!.generateSampleEmbeddings();
       },
     });
   }
