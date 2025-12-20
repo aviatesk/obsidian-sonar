@@ -18,6 +18,9 @@ import { EmbeddingStore } from './src/EmbeddingStore';
 import type { Embedder } from './src/Embedder';
 import { TransformersEmbedder } from './src/TransformersEmbedder';
 import { LlamaCppEmbedder } from './src/LlamaCppEmbedder';
+import type { Reranker } from './src/Reranker';
+import { NoopReranker } from './src/Reranker';
+import { LlamaCppReranker } from './src/LlamaCppReranker';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { DebugRunner } from './src/EmbeddingDebugger';
 
@@ -28,6 +31,7 @@ export default class SonarPlugin extends Plugin {
   indexManager: IndexManager | null = null;
   metadataStore: MetadataStore | null = null;
   embedder: Embedder | null = null;
+  reranker: Reranker | null = null;
   debugRunner: DebugRunner | null = null;
   private semanticNoteFinder: SemanticNoteFinder | null = null;
   private reinitializing = false;
@@ -105,6 +109,22 @@ export default class SonarPlugin extends Plugin {
     }
   }
 
+  private async initializeReranker(
+    reranker: Reranker,
+    modelDescription: string
+  ): Promise<boolean> {
+    try {
+      await reranker.initialize();
+      this.log(`Reranker initialized: ${modelDescription}`);
+      return true;
+    } catch (error) {
+      this.warn(`Failed to initialize reranker: ${error}`);
+      await reranker.cleanup();
+      this.reranker = new NoopReranker();
+      return false;
+    }
+  }
+
   private setupConfigListeners(): void {
     const handleBackendChange = async (
       _key: keyof typeof DEFAULT_SETTINGS,
@@ -167,6 +187,12 @@ export default class SonarPlugin extends Plugin {
         this.log('Cleaning up old embedder...');
         await this.embedder.cleanup();
         this.embedder = null;
+      }
+
+      if (this.reranker) {
+        this.log('Cleaning up old reranker...');
+        await this.reranker.cleanup();
+        this.reranker = null;
       }
 
       if (this.metadataStore) {
@@ -267,12 +293,27 @@ export default class SonarPlugin extends Plugin {
         status => this.updateStatusBar(status),
         (msg, duration) => new Notice(msg, duration)
       ));
-      const success = await this.initializeEmbedder(
-        embedder,
-        'llama.cpp',
-        modelIdentifier
+
+      const rerankerModelRepo = this.configManager.get(
+        'llamaRerankerModelRepo'
       );
-      if (!success) return;
+      const rerankerModelFile = this.configManager.get(
+        'llamaRerankerModelFile'
+      );
+      const rerankerModelIdentifier = `${rerankerModelRepo}/${rerankerModelFile}`;
+      const reranker = (this.reranker = new LlamaCppReranker(
+        serverPath,
+        rerankerModelRepo,
+        rerankerModelFile,
+        this.configManager,
+        (msg, duration) => new Notice(msg, duration)
+      ));
+
+      const [embedderSuccess] = await Promise.all([
+        this.initializeEmbedder(embedder, 'llama.cpp', modelIdentifier),
+        this.initializeReranker(reranker, rerankerModelIdentifier),
+      ]);
+      if (!embedderSuccess) return;
     } else {
       const tfjsModel = this.configManager.get('tfjsEmbedderModel');
       modelIdentifier = tfjsModel;
@@ -288,12 +329,13 @@ export default class SonarPlugin extends Plugin {
         this.configManager,
         status => this.updateStatusBar(status)
       ));
-      const success = await this.initializeEmbedder(
-        embedder,
-        'Transformers.js',
-        tfjsModel
-      );
-      if (!success) return;
+      const reranker = (this.reranker = new NoopReranker());
+
+      const [embedderSuccess] = await Promise.all([
+        this.initializeEmbedder(embedder, 'Transformers.js', tfjsModel),
+        this.initializeReranker(reranker, 'NoopReranker'),
+      ]);
+      if (!embedderSuccess) return;
     }
 
     try {
@@ -348,6 +390,7 @@ export default class SonarPlugin extends Plugin {
     this.searchManager = new SearchManager(
       embeddingSearch,
       bm25Search,
+      this.reranker!,
       this.configManager
     );
 
@@ -548,7 +591,26 @@ export default class SonarPlugin extends Plugin {
           this.indexManager!
         );
         try {
-          await benchmarkRunner.runBenchmark();
+          await benchmarkRunner.runBenchmark(false);
+        } catch (error) {
+          this.error(`Benchmark failed: ${error}`);
+        }
+      },
+    });
+
+    this.addCommand({
+      id: 'run-benchmark-with-reranking',
+      name: 'Run benchmark with reranking (BM25, Vector, Hybrid, Hybrid+Rerank)',
+      callback: async () => {
+        if (!this.checkInitialized()) return;
+        const benchmarkRunner = new BenchmarkRunner(
+          this.app,
+          this.configManager,
+          this.searchManager!,
+          this.indexManager!
+        );
+        try {
+          await benchmarkRunner.runBenchmark(true);
         } catch (error) {
           this.error(`Benchmark failed: ${error}`);
         }
@@ -710,9 +772,9 @@ export default class SonarPlugin extends Plugin {
     if (this.metadataStore) {
       await this.metadataStore.close();
     }
-    if (this.embedder) {
-      await this.embedder.cleanup();
-    }
+    // Run server cleanups in parallel to maximize chance of completion
+    // before quit event terminates the process
+    await Promise.all([this.embedder?.cleanup(), this.reranker?.cleanup()]);
   }
 
   async onunload() {

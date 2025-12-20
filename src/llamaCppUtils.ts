@@ -516,7 +516,8 @@ export async function killServerProcess(
   process: ChildProcess,
   logger?: Logger
 ): Promise<void> {
-  if (process.killed) {
+  // Check if process has actually exited (not just if kill was called)
+  if (process.exitCode !== null || process.signalCode !== null) {
     return;
   }
 

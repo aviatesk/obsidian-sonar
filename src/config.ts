@@ -46,6 +46,8 @@ export interface SonarSettings {
   llamacppServerPath: string; // Path to llama.cpp server binary (e.g., 'llama-server')
   llamaEmbedderModelRepo: string; // HuggingFace repository for llama.cpp (e.g., 'BAAI/bge-m3-gguf')
   llamaEmbedderModelFile: string; // GGUF filename in the repository (e.g., 'bge-m3-q8_0.gguf')
+  llamaRerankerModelRepo: string; // HuggingFace repository for reranker (e.g., 'gpustack/bge-reranker-v2-m3-GGUF')
+  llamaRerankerModelFile: string; // GGUF filename for reranker (e.g., 'bge-reranker-v2-m3-Q8_0.gguf')
 
   // Search parameters
   // =================
@@ -105,6 +107,8 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   llamacppServerPath: 'llama-server',
   llamaEmbedderModelRepo: 'ggml-org/bge-m3-Q8_0-GGUF',
   llamaEmbedderModelFile: 'bge-m3-q8_0.gguf',
+  llamaRerankerModelRepo: 'gpustack/bge-reranker-v2-m3-GGUF',
+  llamaRerankerModelFile: 'bge-reranker-v2-m3-Q8_0.gguf',
 
   // Search parameters
   // =================

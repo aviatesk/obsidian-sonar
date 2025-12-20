@@ -4,6 +4,7 @@ import {
   fuseFileResults,
   combineSearchResults,
   aggregateChunksToFiles,
+  mergeAndDeduplicateChunks,
 } from './SearchResultFusion';
 import type { ChunkResult, SearchResult } from './SearchManager';
 import type { ChunkMetadata } from './MetadataStore';
@@ -161,6 +162,54 @@ describe('aggregateChunksToFiles', () => {
     const result = aggregateChunksToFiles(chunks, defaultAggOptions);
     expect(result[0].title).toBe('My Title');
     expect(result[0].fileSize).toBe(100);
+  });
+});
+
+describe('mergeAndDeduplicateChunks', () => {
+  it('returns empty array when all inputs are empty', () => {
+    const result = mergeAndDeduplicateChunks([], []);
+    expect(result).toEqual([]);
+  });
+
+  it('merges chunks from multiple sources', () => {
+    const embedding = [createChunkResult('a.md', 0, 0.9)];
+    const bm25 = [createChunkResult('b.md', 0, 0.8)];
+    const result = mergeAndDeduplicateChunks(embedding, bm25);
+    expect(result.length).toBe(2);
+    const chunkIds = result.map(c => c.chunkId).sort();
+    expect(chunkIds).toContain('a.md#0');
+    expect(chunkIds).toContain('b.md#0');
+  });
+
+  it('deduplicates by chunkId, keeping first occurrence', () => {
+    const embedding = [createChunkResult('a.md', 0, 0.9)];
+    const bm25 = [createChunkResult('a.md', 0, 0.7)]; // Same chunkId
+    const result = mergeAndDeduplicateChunks(embedding, bm25);
+    expect(result.length).toBe(1);
+  });
+
+  it('handles multiple chunks per file', () => {
+    const embedding = [
+      createChunkResult('a.md', 0, 0.9),
+      createChunkResult('a.md', 1, 0.7),
+    ];
+    const bm25 = [
+      createChunkResult('a.md', 0, 0.6), // Duplicate of embedding chunk 0
+      createChunkResult('a.md', 2, 0.8),
+    ];
+    const result = mergeAndDeduplicateChunks(embedding, bm25);
+    expect(result.length).toBe(3); // chunks 0, 1, 2
+    const chunk0 = result.find(c => c.chunkIndex === 0);
+    expect(chunk0?.score).toBe(0.9); // First occurrence from embedding
+  });
+
+  it('works with single array input', () => {
+    const chunks = [
+      createChunkResult('a.md', 0, 0.9),
+      createChunkResult('b.md', 0, 0.8),
+    ];
+    const result = mergeAndDeduplicateChunks(chunks);
+    expect(result.length).toBe(2);
   });
 });
 

@@ -56,8 +56,9 @@ export class BenchmarkRunner extends WithLogging {
 
   /**
    * Run full benchmark: sync index, run all search methods, and evaluate.
+   * @param reranking - If true, include Hybrid+Rerank method (slower)
    */
-  async runBenchmark(): Promise<void> {
+  async runBenchmark(reranking: boolean = false): Promise<void> {
     const queriesPath = this.configManager.get('benchmarkQueriesPath');
     const outputDir = this.configManager.get('benchmarkOutputDir');
 
@@ -91,6 +92,7 @@ export class BenchmarkRunner extends WithLogging {
         name: string;
         runId: string;
         weights: SearchOptions;
+        rerank?: boolean;
       }[] = [
         {
           name: 'BM25',
@@ -122,6 +124,21 @@ export class BenchmarkRunner extends WithLogging {
             contentWeight: 1,
           },
         },
+        ...(reranking
+          ? [
+              {
+                name: 'Hybrid+Rerank',
+                runId: 'sonar.hybrid_rerank',
+                weights: {
+                  embeddingWeight: 0.5,
+                  bm25Weight: 0.5,
+                  titleWeight: 0,
+                  contentWeight: 1,
+                },
+                rerank: true,
+              },
+            ]
+          : []),
       ];
 
       for (let i = 0; i < searchMethods.length; i++) {
@@ -134,7 +151,12 @@ export class BenchmarkRunner extends WithLogging {
         );
 
         const methodStartTime = Date.now();
-        const results = await this.runSearch(queries, method.weights);
+        let results: TrecResult[];
+        if (method.rerank) {
+          results = await this.runSearchWithRerank(queries, method.weights);
+        } else {
+          results = await this.runSearch(queries, method.weights);
+        }
         const methodTime = Date.now() - methodStartTime;
         const outputPath = `${outputDir}/${method.runId}.trec`;
 
@@ -246,6 +268,47 @@ export class BenchmarkRunner extends WithLogging {
 
       for (let i = 0; i < searchResults.length; i++) {
         const result = searchResults[i];
+        results.push({
+          queryId: query._id,
+          docId: this.normalizeDocId(result.filePath),
+          rank: i + 1,
+          score: result.score,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Run search with chunk-based reranking for all queries.
+   * Uses searchWithChunkRerank which merges chunks from BM25/Embedding before reranking.
+   */
+  private async runSearchWithRerank(
+    queries: Query[],
+    weights: SearchOptions
+  ): Promise<TrecResult[]> {
+    // Use smaller topK for chunk reranking to limit reranker input size
+    // TODO: Add dedicated config for chunk reranking limit
+    const topK = this.configManager.get('benchmarkTopK') / 10;
+    const results: TrecResult[] = [];
+
+    for (const query of queries) {
+      const rerankResult = await this.searchManager.searchWithChunkRerank(
+        query.text,
+        {
+          topK,
+          ...weights,
+          prependTitleToChunks: false, // Benchmark titles are random strings
+        }
+      );
+
+      if (rerankResult === null) {
+        continue;
+      }
+
+      for (let i = 0; i < rerankResult.results.length; i++) {
+        const result = rerankResult.results[i];
         results.push({
           queryId: query._id,
           docId: this.normalizeDocId(result.filePath),

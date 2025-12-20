@@ -7,7 +7,9 @@ import {
   fuseFileResults,
   combineSearchResults,
   aggregateChunksToFiles,
+  mergeAndDeduplicateChunks,
 } from './SearchResultFusion';
+import type { Reranker } from './Reranker';
 
 /**
  * Chunk-level search result returned by BM25Search/EmbeddingSearch
@@ -31,9 +33,17 @@ export interface ChunkSearchResult {
   metadata: ChunkMetadata;
 }
 
+/**
+ * Search result representing a matched document.
+ *
+ * The `score` field is normalized to [0, 1] for UI display purposes (e.g.,
+ * progress bars). It does NOT represent absolute relevance and should not
+ * be compared across different queries.
+ */
 export interface SearchResult {
   filePath: string;
   title: string;
+  /** Normalized score in [0, 1] for UI display. */
   score: number;
   topChunk: ChunkSearchResult;
   chunkCount: number;
@@ -44,6 +54,15 @@ interface QueuedSearchRequest {
   componentId: string;
   query: string;
   options: SearchOptionsWithTopK;
+  resolve: (value: SearchResult[] | null) => void;
+  reject: (error: unknown) => void;
+}
+
+interface QueuedRerankRequest {
+  componentId: string;
+  query: string;
+  results: SearchResult[];
+  topK: number;
   resolve: (value: SearchResult[] | null) => void;
   reject: (error: unknown) => void;
 }
@@ -66,6 +85,7 @@ export interface SearchOptions {
 
 export interface SearchOptionsWithTopK extends SearchOptions {
   topK: number; // Number of results to return (for RRF limit calculation)
+  prependTitleToChunks?: boolean; // Prepend title to chunks for reranking (default: true)
 }
 
 export interface FullSearchOptions extends SearchOptionsWithTopK {
@@ -73,10 +93,43 @@ export interface FullSearchOptions extends SearchOptionsWithTopK {
 }
 
 /**
+ * Metadata about chunk-based reranking execution
+ */
+export interface ChunkRerankMetadata {
+  embeddingChunkCount: number;
+  bm25ChunkCount: number;
+  mergedChunkCount: number;
+  retrievalTimeMs: number;
+  rerankTimeMs: number;
+  totalTimeMs: number;
+}
+
+/**
+ * Result of chunk-based reranking with metadata
+ */
+export interface ChunkRerankResult {
+  results: SearchResult[];
+  metadata: ChunkRerankMetadata;
+}
+
+/**
+ * Debug data for chunk-based reranking analysis
+ */
+export interface ChunkRerankDebugData {
+  query: string;
+  embeddingChunks: ChunkResult[];
+  bm25Chunks: ChunkResult[];
+  mergedChunks: ChunkResult[];
+  rerankedChunks: ChunkResult[];
+  results: SearchResult[];
+  metadata: ChunkRerankMetadata;
+}
+
+/**
  * High-level search manager that orchestrates hybrid search
  * combining embedding-based and BM25 full-text search
  *
- * This manager uses a processing queue to handle concurrent requests from
+ * This manager uses processing queues to handle concurrent requests from
  * multiple UI components (SemanticNoteFinder, RelatedNotesView). When a new
  * request arrives from the same component, any pending request is superseded and
  * resolved with null. This avoids sending stale requests to server.
@@ -88,11 +141,14 @@ export interface FullSearchOptions extends SearchOptionsWithTopK {
 export class SearchManager extends WithLogging {
   protected readonly componentName = 'SearchManager';
   private searchQueue: QueuedSearchRequest[] = [];
+  private rerankQueue: QueuedRerankRequest[] = [];
   private isProcessingSearch = false;
+  private isProcessingRerank = false;
 
   constructor(
     private embeddingSearch: EmbeddingSearch,
     private bm25Search: BM25Search,
+    private reranker: Reranker,
     protected configManager: ConfigManager
   ) {
     super();
@@ -209,6 +265,222 @@ export class SearchManager extends WithLogging {
   }
 
   /**
+   * Rerank search results using cross-encoder with queue management.
+   *
+   * When a new request arrives from the same component, any pending (not yet
+   * processing) request from that component is removed from the queue and
+   * resolved with `null`. This prevents stale results from updating the UI
+   * and avoids wasting server resources on outdated requests.
+   *
+   * @param componentId Identifier for the calling component (e.g., 'SemanticNoteFinder')
+   * @param query Search query text
+   * @param results Search results to rerank
+   * @param topK Number of results to return
+   * @returns Reranked results with normalized scores, or null if superseded/not ready
+   */
+  async rerank(
+    componentId: string,
+    query: string,
+    results: SearchResult[],
+    topK: number
+  ): Promise<SearchResult[] | null> {
+    if (!this.reranker.isReady() || results.length === 0) {
+      return null;
+    }
+
+    // Remove pending requests from the same component (resolve with null)
+    const newQueue: QueuedRerankRequest[] = [];
+    for (const request of this.rerankQueue) {
+      if (request.componentId === componentId) {
+        request.resolve(null);
+      } else {
+        newQueue.push(request);
+      }
+    }
+    this.rerankQueue = newQueue;
+
+    return new Promise((resolve, reject) => {
+      this.rerankQueue.push({
+        componentId,
+        query,
+        results,
+        topK,
+        resolve,
+        reject,
+      });
+      this.processRerankQueue();
+    });
+  }
+
+  private async processRerankQueue(): Promise<void> {
+    if (this.isProcessingRerank || this.rerankQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessingRerank = true;
+    const request = this.rerankQueue.shift()!;
+
+    try {
+      const results = await this.executeRerank(
+        request.query,
+        request.results,
+        request.topK
+      );
+      request.resolve(results);
+    } catch (error) {
+      request.reject(error);
+    }
+
+    this.isProcessingRerank = false;
+    this.processRerankQueue();
+  }
+
+  private async executeRerank(
+    query: string,
+    results: SearchResult[],
+    topK: number
+  ): Promise<SearchResult[]> {
+    const documents = results.map(r => r.topChunk.content);
+    const rerankResults = await this.reranker.rerank(query, documents, topK);
+
+    // Normalize scores to [0, 1]
+    const maxScore = Math.max(...rerankResults.map(r => r.relevanceScore));
+    const minScore = Math.min(...rerankResults.map(r => r.relevanceScore));
+    const scoreRange = maxScore - minScore;
+
+    return rerankResults.map(r => ({
+      ...results[r.index],
+      score: scoreRange > 0 ? (r.relevanceScore - minScore) / scoreRange : 1,
+    }));
+  }
+
+  /**
+   * Search with chunk-based reranking (direct execution, no queue).
+   * Retrieves chunks from BM25 and Embedding, merges, reranks, then aggregates.
+   */
+  async searchWithChunkRerank(
+    query: string,
+    options: SearchOptionsWithTopK
+  ): Promise<ChunkRerankResult | null> {
+    if (!this.reranker.isReady()) {
+      return null;
+    }
+    return this.executeChunkRerank(query, options);
+  }
+
+  /**
+   * Execute chunk-based reranking.
+   * 1. Get content chunks from BM25 and Embedding
+   * 2. Merge and deduplicate
+   * 3. Rerank with title prepended to each chunk
+   * 4. Aggregate to file-level results
+   */
+  private async executeChunkRerank(
+    query: string,
+    options: SearchOptionsWithTopK
+  ): Promise<ChunkRerankResult> {
+    const totalStart = performance.now();
+
+    const embeddingWeight = options.embeddingWeight ?? 0.6;
+    const bm25Weight = options.bm25Weight ?? 0.4;
+    const totalWeight = embeddingWeight + bm25Weight;
+
+    const retrievalMultiplier = this.configManager.get('retrievalMultiplier');
+    const retrievalLimit = options.topK * retrievalMultiplier;
+
+    // Distribute retrievalLimit based on embedding/bm25 weights
+    const embeddingLimit = Math.round(
+      (retrievalLimit * embeddingWeight) / totalWeight
+    );
+    const bm25Limit = Math.round((retrievalLimit * bm25Weight) / totalWeight);
+
+    // Get content chunks from both sources
+    const retrievalStart = performance.now();
+    const [embeddingChunks, bm25Chunks] = await Promise.all([
+      embeddingWeight > 0
+        ? this.embeddingSearch.searchContent(query, {
+            ...options,
+            retrievalLimit: embeddingLimit,
+          })
+        : Promise.resolve([]),
+      bm25Weight > 0
+        ? this.bm25Search.searchContent(query, {
+            ...options,
+            retrievalLimit: bm25Limit,
+          })
+        : Promise.resolve([]),
+    ]);
+    const retrievalTimeMs = performance.now() - retrievalStart;
+
+    // Merge and deduplicate
+    const mergedChunks = mergeAndDeduplicateChunks(embeddingChunks, bm25Chunks);
+
+    if (mergedChunks.length === 0) {
+      return {
+        results: [],
+        metadata: {
+          embeddingChunkCount: 0,
+          bm25ChunkCount: 0,
+          mergedChunkCount: 0,
+          retrievalTimeMs,
+          rerankTimeMs: 0,
+          totalTimeMs: performance.now() - totalStart,
+        },
+      };
+    }
+
+    // Rerank all chunks (optionally with title prepended for better relevance)
+    const rerankStart = performance.now();
+    const prependTitle = options.prependTitleToChunks ?? true;
+    const documents = mergedChunks.map(c => {
+      if (!prependTitle) return c.content;
+      const title = c.metadata.title || '';
+      return title ? `${title}\n\n${c.content}` : c.content;
+    });
+    const rerankResults = await this.reranker.rerank(query, documents);
+    const rerankTimeMs = performance.now() - rerankStart;
+
+    // Update chunk scores with rerank scores
+    const rerankedChunks: ChunkResult[] = rerankResults.map(r => ({
+      ...mergedChunks[r.index],
+      score: r.relevanceScore,
+    }));
+
+    // Aggregate to file-level results
+    const aggOptions = {
+      method: this.configManager.get('vectorAggMethod'),
+      m: this.configManager.get('aggM'),
+      l: this.configManager.get('aggL'),
+      decay: this.configManager.get('aggDecay'),
+      rrfK: this.configManager.get('aggRrfK'),
+    };
+    const results = aggregateChunksToFiles(rerankedChunks, aggOptions);
+
+    // Normalize scores to [0, 1]
+    if (results.length > 0) {
+      const maxScore = results[0].score;
+      const minScore = results[results.length - 1].score;
+      const scoreRange = maxScore - minScore;
+      for (const result of results) {
+        result.score =
+          scoreRange > 0 ? (result.score - minScore) / scoreRange : 1;
+      }
+    }
+
+    return {
+      results: results.slice(0, options.topK),
+      metadata: {
+        embeddingChunkCount: embeddingChunks.length,
+        bm25ChunkCount: bm25Chunks.length,
+        mergedChunkCount: mergedChunks.length,
+        retrievalTimeMs,
+        rerankTimeMs,
+        totalTimeMs: performance.now() - totalStart,
+      },
+    };
+  }
+
+  /**
    * Hybrid search for title (returns file-level results directly)
    */
   private async hybridTitleSearch(
@@ -306,5 +578,15 @@ export class SearchManager extends WithLogging {
       }
     }
     this.searchQueue = newSearchQueue;
+
+    const newRerankQueue: QueuedRerankRequest[] = [];
+    for (const request of this.rerankQueue) {
+      if (request.componentId === componentId) {
+        request.resolve(null);
+      } else {
+        newRerankQueue.push(request);
+      }
+    }
+    this.rerankQueue = newRerankQueue;
   }
 }

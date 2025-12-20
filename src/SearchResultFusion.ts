@@ -7,6 +7,25 @@ import {
 const RRF_K = 60;
 
 /**
+ * Merge chunks from multiple sources and deduplicate by chunkId.
+ * Keeps the first occurrence of each chunk (score is ignored since
+ * reranker will recalculate scores anyway).
+ */
+export function mergeAndDeduplicateChunks(
+  ...chunkArrays: ChunkResult[][]
+): ChunkResult[] {
+  const chunkMap = new Map<string, ChunkResult>();
+  for (const chunks of chunkArrays) {
+    for (const chunk of chunks) {
+      if (!chunkMap.has(chunk.chunkId)) {
+        chunkMap.set(chunk.chunkId, chunk);
+      }
+    }
+  }
+  return Array.from(chunkMap.values());
+}
+
+/**
  * Aggregate chunk-level results to file-level results
  * Groups chunks by file, aggregates scores, and selects top chunk per file
  */
