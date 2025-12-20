@@ -10,7 +10,6 @@
     results: SearchResult[];
     configManager: ConfigManager;
     onFileClick?: (file: TFile) => void;
-    noResultsMessage?: string;
     maxHeight?: string;
     maxLength?: number;
     showExcerpts?: boolean;
@@ -21,7 +20,6 @@
     results = [],
     configManager,
     onFileClick,
-    noResultsMessage = 'No results found',
     maxHeight = '100px',
     maxLength = undefined,
     showExcerpts = true,
@@ -79,9 +77,7 @@
 
 </script>
 
-{#if results.length === 0}
-  <p class="no-results">{noResultsMessage}</p>
-{:else}
+{#if results.length > 0}
   <div class="results-list">
     {#each results as result, index (`${result.filePath}-${index}`)}
       <div class="result-item">
@@ -130,12 +126,6 @@
 {/if}
 
 <style>
-  .no-results {
-    color: var(--text-muted);
-    text-align: center;
-    padding: 20px;
-  }
-
   .results-list {
     padding: 8px 0;
   }
