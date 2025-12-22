@@ -1,3 +1,9 @@
+export function truncateQuery(query: string, maxLength: number = 30): string {
+  const trimmed = query.trim().replace(/\s+/g, ' ');
+  if (trimmed.length <= maxLength) return `"${trimmed}"`;
+  return `"${trimmed.slice(0, maxLength)}..."`;
+}
+
 export function formatDuration(milliseconds: number): string {
   const seconds = milliseconds / 1000;
 

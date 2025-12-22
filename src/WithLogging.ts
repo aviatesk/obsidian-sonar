@@ -33,6 +33,27 @@ export class Logger {
   }
 }
 
+export interface ComponentLogger {
+  verbose(msg: string, ...data: any[]): void;
+  log(msg: string, ...data: any[]): void;
+  warn(msg: string, ...data: any[]): void;
+  error(msg: string, ...data: any[]): void;
+}
+
+export function createComponentLogger(
+  configManager: ConfigManager,
+  componentName: string
+): ComponentLogger {
+  const baseLogger = configManager.getLogger();
+  const prefix = `[Sonar.${componentName}]`;
+  return {
+    verbose: (msg, ...data) => baseLogger.verbose(`${prefix} ${msg}`, ...data),
+    log: (msg, ...data) => baseLogger.log(`${prefix} ${msg}`, ...data),
+    warn: (msg, ...data) => baseLogger.warn(`${prefix} ${msg}`, ...data),
+    error: (msg, ...data) => baseLogger.error(`${prefix} ${msg}`, ...data),
+  };
+}
+
 /**
  * Base class providing logging functionality through ConfigManager
  * Automatically formats log messages with component name prefix

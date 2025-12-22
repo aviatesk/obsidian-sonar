@@ -3,6 +3,8 @@ import { mount, unmount } from 'svelte';
 import { writable } from 'svelte/store';
 import { SearchManager, type SearchResult } from '../SearchManager';
 import { ConfigManager } from '../ConfigManager';
+import { createComponentLogger, type ComponentLogger } from '../WithLogging';
+import { truncateQuery, formatDuration } from '../utils';
 import SemanticNoteFinderComponent from './SemanticNoteFinderComponent.svelte';
 
 interface SemanticSearchState {
@@ -20,6 +22,7 @@ const COMPONENT_ID = 'SemanticNoteFinder';
 export class SemanticNoteFinder extends Modal {
   private searchManager: SearchManager;
   private configManager: ConfigManager;
+  private logger: ComponentLogger;
   private svelteComponent:
     | ReturnType<typeof SemanticNoteFinderComponent>
     | undefined;
@@ -45,6 +48,7 @@ export class SemanticNoteFinder extends Modal {
     super(app);
     this.searchManager = searchManager;
     this.configManager = configManager;
+    this.logger = createComponentLogger(configManager, COMPONENT_ID);
 
     this.debouncedSearch = debounce(
       this.handleSearch.bind(this),
@@ -109,8 +113,10 @@ export class SemanticNoteFinder extends Modal {
       ? Math.min(topK * retrievalMultiplier, MAX_INITIAL_K)
       : topK;
 
+    const queryLabel = truncateQuery(trimmedQuery);
+
     try {
-      // Initial retrieval (larger K if reranking enabled)
+      const searchStart = performance.now();
       const initialResults = await this.searchManager.search(
         COMPONENT_ID,
         trimmedQuery,
@@ -120,11 +126,16 @@ export class SemanticNoteFinder extends Modal {
           contentWeight: 0.75,
         }
       );
+      const searchTime = performance.now() - searchStart;
 
       // Skip if superseded (null from queue) or aborted (new search started)
       if (initialResults === null || searchAbortSignal.aborted) {
         return;
       }
+
+      this.logger.log(
+        `Searched ${queryLabel} in ${formatDuration(searchTime)}`
+      );
 
       if (enableReranking && initialResults.length > 0) {
         const showIntermediate = this.configManager.get(
@@ -140,7 +151,8 @@ export class SemanticNoteFinder extends Modal {
           trimmedQuery,
           initialResults,
           topK,
-          searchAbortSignal
+          searchAbortSignal,
+          queryLabel
         );
       } else {
         // No reranking: show initial results immediately
@@ -167,14 +179,21 @@ export class SemanticNoteFinder extends Modal {
     cacheKey: string,
     initialResults: SearchResult[],
     topK: number,
-    searchAbortSignal: AbortSignal
+    searchAbortSignal: AbortSignal,
+    queryLabel: string
   ): Promise<void> {
     try {
+      const rerankStart = performance.now();
       const rerankedResults = await this.searchManager.rerank(
         COMPONENT_ID,
         query,
         initialResults,
         topK
+      );
+      const rerankTime = performance.now() - rerankStart;
+
+      this.logger.log(
+        `Reranked ${queryLabel} in ${formatDuration(rerankTime)}`
       );
 
       const finalResults = rerankedResults ?? initialResults.slice(0, topK);

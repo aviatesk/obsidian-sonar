@@ -14,6 +14,8 @@ import type { SearchResult } from '../SearchManager';
 import { processQuery, type QueryOptions } from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';
 import { getCurrentContext } from '../obsidian-utils';
+import { createComponentLogger, type ComponentLogger } from '../WithLogging';
+import { truncateQuery, formatDuration } from '../utils';
 import RelatedNotesContent from './RelatedNotesContent.svelte';
 import type SonarPlugin from '../../main';
 import { isAudioExtension } from '../audio';
@@ -59,6 +61,7 @@ const COMPONENT_ID = 'RelatedNotesView';
 export class RelatedNotesView extends ItemView {
   private plugin: SonarPlugin;
   private configManager: ConfigManager;
+  private logger: ComponentLogger;
   private lastActiveFile: TFile | null = null;
   private lastQuery: string = '';
   private searchAbortController: AbortController | null = null;
@@ -80,6 +83,7 @@ export class RelatedNotesView extends ItemView {
     super(leaf);
     this.plugin = plugin;
     this.configManager = configManager;
+    this.logger = createComponentLogger(configManager, COMPONENT_ID);
 
     this.debouncedRefresh = debounce(
       this.refresh.bind(this),
@@ -331,6 +335,9 @@ export class RelatedNotesView extends ItemView {
 
       if (query) {
         const tokenCount = await this.plugin.embedder.countTokens(query);
+        const queryLabel = truncateQuery(query);
+
+        const searchStart = performance.now();
         const searchResults = await this.plugin.searchManager.search(
           COMPONENT_ID,
           query,
@@ -339,11 +346,16 @@ export class RelatedNotesView extends ItemView {
             excludeFilePath: activeFile.path,
           }
         );
+        const searchTime = performance.now() - searchStart;
 
         // Skip if superseded (null from queue) or aborted (new refresh started)
         if (searchResults === null || searchAbortSignal.aborted) {
           return;
         }
+
+        this.logger.log(
+          `Searched ${queryLabel} in ${formatDuration(searchTime)}`
+        );
 
         this.updateStore({
           query: query,
@@ -440,6 +452,9 @@ export class RelatedNotesView extends ItemView {
 
       this.lastQuery = query;
 
+      const queryLabel = truncateQuery(query);
+
+      const searchStart = performance.now();
       const searchResults = await this.plugin.searchManager!.search(
         COMPONENT_ID,
         query,
@@ -448,10 +463,15 @@ export class RelatedNotesView extends ItemView {
           excludeFilePath: file.path,
         }
       );
+      const searchTime = performance.now() - searchStart;
 
       if (searchResults === null || abortSignal.aborted) {
         return;
       }
+
+      this.logger.log(
+        `Searched ${queryLabel} in ${formatDuration(searchTime)}`
+      );
 
       this.updateStore({
         query: query,
