@@ -128,14 +128,14 @@ export class SemanticNoteFinder extends Modal {
       );
       const searchTime = performance.now() - searchStart;
 
+      this.logger.log(
+        `Searched ${queryLabel} in ${formatDuration(searchTime)}`
+      );
+
       // Skip if superseded (null from queue) or aborted (new search started)
       if (initialResults === null || searchAbortSignal.aborted) {
         return;
       }
-
-      this.logger.log(
-        `Searched ${queryLabel} in ${formatDuration(searchTime)}`
-      );
 
       if (enableReranking && initialResults.length > 0) {
         const showIntermediate = this.configManager.get(
@@ -144,16 +144,20 @@ export class SemanticNoteFinder extends Modal {
         this.updateStore({
           results: showIntermediate ? initialResults.slice(0, topK) : [],
           isSearching: false,
-          isReranking: true,
         });
-        await this.executeReranking(
-          query,
-          trimmedQuery,
-          initialResults,
-          topK,
-          searchAbortSignal,
-          queryLabel
-        );
+        // Debounce reranking since it's expensive and time-consuming
+        setTimeout(() => {
+          if (searchAbortSignal.aborted) return;
+          this.updateStore({ isReranking: true });
+          this.executeReranking(
+            query,
+            trimmedQuery,
+            initialResults,
+            topK,
+            searchAbortSignal,
+            queryLabel
+          );
+        }, SEARCH_DEBOUNCE_MS);
       } else {
         // No reranking: show initial results immediately
         this.cache.default.set(trimmedQuery, initialResults);
