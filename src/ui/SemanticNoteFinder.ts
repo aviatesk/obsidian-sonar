@@ -116,6 +116,7 @@ export class SemanticNoteFinder extends Modal {
     const queryLabel = truncateQuery(trimmedQuery);
 
     try {
+      this.logger.log(`Searching ${queryLabel}...`);
       const searchStart = performance.now();
       const initialResults = await this.searchManager.search(
         COMPONENT_ID,
@@ -127,7 +128,6 @@ export class SemanticNoteFinder extends Modal {
         }
       );
       const searchTime = performance.now() - searchStart;
-
       this.logger.log(
         `Searched ${queryLabel} in ${formatDuration(searchTime)}`
       );
@@ -187,6 +187,7 @@ export class SemanticNoteFinder extends Modal {
     queryLabel: string
   ): Promise<void> {
     try {
+      this.logger.log(`Reranking ${queryLabel}...`);
       const rerankStart = performance.now();
       const rerankedResults = await this.searchManager.rerank(
         COMPONENT_ID,
@@ -195,7 +196,6 @@ export class SemanticNoteFinder extends Modal {
         topK
       );
       const rerankTime = performance.now() - rerankStart;
-
       this.logger.log(
         `Reranked ${queryLabel} in ${formatDuration(rerankTime)}`
       );
