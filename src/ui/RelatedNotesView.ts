@@ -375,9 +375,7 @@ export class RelatedNotesView extends ItemView {
       if (searchAbortSignal.aborted) {
         return;
       }
-      this.configManager
-        .getLogger()
-        .error(`Error refreshing related notes: ${err}`);
+      this.logger.error(`Error refreshing related notes: ${err}`);
       new Notice('Failed to retrieve related notes');
       this.updateStore({
         ...EMPTY_STATE_BASE,
@@ -484,9 +482,7 @@ export class RelatedNotesView extends ItemView {
       if (abortSignal.aborted) {
         return;
       }
-      this.configManager
-        .getLogger()
-        .error(`Error refreshing related notes from metadata: ${err}`);
+      this.logger.error(`Error refreshing related notes from metadata: ${err}`);
       this.updateStore({
         ...EMPTY_STATE_BASE,
         status: 'error',

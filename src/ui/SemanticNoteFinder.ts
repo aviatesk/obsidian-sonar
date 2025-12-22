@@ -163,7 +163,7 @@ export class SemanticNoteFinder extends Modal {
         });
       }
     } catch (err) {
-      this.configManager.getLogger().error(`Search failed: ${err}`);
+      this.logger.error(`Search failed: ${err}`);
       new Notice('Search failed. Please check your settings.');
       if (searchAbortSignal.aborted) return;
       this.updateStore({
@@ -205,7 +205,7 @@ export class SemanticNoteFinder extends Modal {
         isReranking: false,
       });
     } catch (err) {
-      this.configManager.getLogger().error(`Reranking failed: ${err}`);
+      this.logger.error(`Reranking failed: ${err}`);
       // On failure, show initial results
       const fallbackResults = initialResults.slice(0, topK);
       this.cache.reranked.set(cacheKey, fallbackResults);
