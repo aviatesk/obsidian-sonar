@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
+import { Notice, Plugin, setTooltip, TFile, WorkspaceLeaf } from 'obsidian';
 import { SearchManager } from './src/SearchManager';
 import { EmbeddingSearch } from './src/EmbeddingSearch';
 import { BM25Store } from './src/BM25Store';
@@ -63,9 +63,11 @@ export default class SonarPlugin extends Plugin {
     const fullText = this.formatStatusBarText(text);
 
     // Always set tooltip to show full text (use custom tooltip if provided)
-    this.statusBarItem.title = tooltip
-      ? this.formatStatusBarText(tooltip)
-      : fullText;
+    setTooltip(
+      this.statusBarItem,
+      tooltip ? this.formatStatusBarText(tooltip) : fullText,
+      { placement: 'top', gap: 8 }
+    );
 
     let paddedText = text;
     if (maxLength > 0 && text.length > maxLength) {
