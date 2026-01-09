@@ -1,4 +1,3 @@
-import { AutoTokenizer, pipeline } from '@huggingface/transformers';
 import { isModelCached, downloadModel } from '../llamaCppUtils';
 import { DEFAULT_SETTINGS } from '../config';
 
@@ -17,33 +16,6 @@ export async function setup() {
     );
     await downloadModel(modelRepo, modelFile);
   }
-
-  const tfjsModelId = DEFAULT_SETTINGS.tfjsEmbedderModel;
-
-  const downloadedFiles = new Set<string>();
-  const createProgressCallback = () => {
-    return (progressInfo: any) => {
-      if (progressInfo.status === 'progress' && progressInfo.file) {
-        if (!downloadedFiles.has(progressInfo.file)) {
-          console.log(
-            `[Transformers.js] Loading model file: ${progressInfo.file}...`
-          );
-          downloadedFiles.add(progressInfo.file);
-        }
-      }
-    };
-  };
-
-  await AutoTokenizer.from_pretrained(tfjsModelId, {
-    progress_callback: createProgressCallback(),
-  });
-
-  const featureExtractor = await pipeline('feature-extraction', tfjsModelId, {
-    device: 'cpu',
-    dtype: 'fp32',
-    progress_callback: createProgressCallback(),
-  });
-  await featureExtractor.dispose();
 
   console.log('Set up embedding models');
 }

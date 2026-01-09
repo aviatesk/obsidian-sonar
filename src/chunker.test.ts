@@ -7,7 +7,7 @@ import {
   type TestEmbedder,
 } from './test-helpers/embedder-setup';
 
-const EMBEDDER_NAMES = ['llama.cpp', 'Transformers.js'] as const;
+const EMBEDDER_NAMES = ['llama.cpp'] as const;
 
 let embedderInfos: TestEmbedderSetupInfo[] = [];
 

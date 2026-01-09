@@ -10,9 +10,23 @@ privately on your device.
 ## Requirements
 
 - Node.js 18+
-- (Optional) [llama.cpp](https://github.com/ggerganov/llama.cpp)
+- [llama.cpp](https://github.com/ggerganov/llama.cpp)
 
 ## Installation
+
+### Install llama.cpp
+
+```bash
+# macOS (Homebrew)
+brew install llama.cpp
+
+# Or build from source
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+make llama-server
+```
+
+### Install the plugin
 
 ```bash
 git clone https://github.com/aviatesk/obsidian-sonar.git
@@ -22,83 +36,23 @@ npm run build
 cp main.js manifest.json styles.css /path/to/vault/.obsidian/plugins/obsidian-sonar/
 ```
 
-## Embedder backend
+### Configure in Sonar settings
 
-This plugin supports two backends for embedding generation:
-[Transformers.js](https://huggingface.co/docs/transformers.js) and
-[llama.cpp](https://github.com/ggml-org/llama.cpp). You can switch between them
-in the plugin settings without reloading.
+- **Server path**: Path to `llama-server` binary
+  - You can use just the command name `llama-server` if installed via Homebrew
+    or other package managers (the plugin will resolve the full path
+    automatically)
+  - If path resolution doesn't work, use the absolute path instead:
+    - macOS (Homebrew): `/opt/homebrew/bin/llama-server` (Apple Silicon) or
+      `/usr/local/bin/llama-server` (Intel)
+    - Linux: `/usr/local/bin/llama-server` or `/usr/bin/llama-server`
+    - Custom build: `/path/to/llama.cpp/llama-server`
+  - To find the absolute path, run `which llama-server` in your terminal
+- **Model repository**: HuggingFace repository (default:
+  `ggml-org/bge-m3-Q8_0-GGUF`)
+- **Model file**: GGUF filename (default: `bge-m3-q8_0.gguf`)
 
-### Transformers.js backend
-
-Transformers.js is bundled with the plugin, requiring no additional
-installation. This is the default backend for Sonar.
-
-However, Transformers.js can exhibit numerical instability when using WebGPU
-(see
-[bench/README](./bench/README.md#transformersjs-issues-found-during-benchmarking-sonar)
-for details). For this reason, the default model for Transformers.js is limited
-to
-[`Xenova/multilingual-e5-small`](https://huggingface.co/Xenova/multilingual-e5-small).
-
-**Pros:**
-
-- Zero external dependencies
-- Works out of the box
-
-**Cons:**
-
-- Numerical instability with WebGPU
-- Limited model selection
-
-### llama.cpp backend
-
-The llama.cpp backend provides better numerical accuracy and performance, using
-quantized GGUF models. The default model is configured to
-[`BAAI/bge-m3-gguf`](https://huggingface.co/BAAI/bge-m3-gguf).
-
-**Pros:**
-
-- Better numerical accuracy
-- Better performance with quantized models
-- Wider model selection (any GGUF embedding model on HuggingFace, without any
-  numerical instability - hopefully)
-
-**Cons:**
-
-- Requires external llama.cpp installation
-
-#### Installation
-
-1. Install llama.cpp:
-
-   ```bash
-   # macOS (Homebrew)
-   brew install llama.cpp
-
-   # Or build from source
-   git clone https://github.com/ggerganov/llama.cpp
-   cd llama.cpp
-   make llama-server
-   ```
-
-2. Configure in Sonar settings:
-   - **Embedder backend**: Select `llama.cpp`
-   - **Server path**: Path to `llama-server` binary
-     - You can use just the command name `llama-server` if installed via
-       Homebrew or other package managers (the plugin will resolve the full path
-       automatically)
-     - If path resolution doesn't work, use the absolute path instead:
-       - macOS (Homebrew): `/opt/homebrew/bin/llama-server` (Apple Silicon) or
-         `/usr/local/bin/llama-server` (Intel)
-       - Linux: `/usr/local/bin/llama-server` or `/usr/bin/llama-server`
-       - Custom build: `/path/to/llama.cpp/llama-server`
-     - To find the absolute path, run `which llama-server` in your terminal
-   - **Model repository**: HuggingFace repository (default:
-     `ggml-org/bge-m3-Q8_0-GGUF`)
-   - **Model file**: GGUF filename (default: `bge-m3-q8_0.gguf`)
-
-#### Model and server management
+## Model and server management
 
 The plugin automatically manages the llama.cpp server process (starts, stops,
 health checks) and downloads models from HuggingFace on first use. Models are
@@ -157,7 +111,7 @@ experimental and requires external dependencies.
 
 Configure audio transcription in Sonar settings:
 
-- **whisper-cli path**: Path to `whisper-cli` binary (default: `whisper-cli`)
+- **Whisper CLI path**: Path to `whisper-cli` binary (default: `whisper-cli`)
 - **Whisper model path**: Path to the model file (e.g.,
   `~/whisper-models/ggml-large-v3-turbo-q5_0.bin`)
 - **ffmpeg path**: Path to `ffmpeg` binary (default: `ffmpeg`)
@@ -183,7 +137,5 @@ Built with:
 
 - [llama.cpp](https://github.com/ggerganov/llama.cpp) for local embedding
   generation
-- [Transformers.js](https://huggingface.co/docs/transformers.js) for
-  browser-based embeddings
 - [Svelte](https://svelte.dev/) for reactive UI components
 - [Obsidian API](https://docs.obsidian.md/) for vault integration

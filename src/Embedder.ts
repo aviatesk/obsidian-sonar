@@ -5,7 +5,6 @@ import { progressiveWait } from './utils';
 /**
  * Base class for embedder implementations with common initialization logic
  * Implements progressive delay waiting pattern (1s, 5s, 10s, 30s, 60s, ...)
- * Supports both Transformers.js and llama.cpp backends
  */
 export abstract class Embedder extends WithLogging {
   constructor(
@@ -65,15 +64,11 @@ export abstract class Embedder extends WithLogging {
 
   /**
    * Start backend-specific initialization (non-blocking)
-   * For llama.cpp: start server process
-   * For Transformers: start worker RPC call
    */
   protected abstract startInitialization(): Promise<void>;
 
   /**
    * Check if initialization is complete
-   * For llama.cpp: health check
-   * For Transformers: check worker progress state
    */
   protected abstract checkReady(): Promise<boolean>;
 
@@ -120,16 +115,5 @@ export abstract class Embedder extends WithLogging {
    */
   abstract decodeTokenIds(tokenIds: number[]): Promise<string[]>;
 
-  abstract getDevice(): string;
   abstract cleanup(): Promise<void>;
-}
-
-export function formatTokenCountShort(count: number): string {
-  if (count < 1000) {
-    return `${count} tokens`;
-  } else if (count < 10000) {
-    return `${(count / 1000).toFixed(1)}k tokens`;
-  } else {
-    return `${(count / 1000).toFixed(0)}k tokens`;
-  }
 }

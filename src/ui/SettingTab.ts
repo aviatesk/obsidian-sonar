@@ -9,7 +9,7 @@ import {
 import { ConfigManager } from '../ConfigManager';
 import type SonarPlugin from '../../main';
 import { getIndexableFilesCount } from 'src/fileFilters';
-import type { EmbedderBackend, AggregationMethod, LogLevel } from '../config';
+import type { AggregationMethod, LogLevel } from '../config';
 
 export class SettingTab extends PluginSettingTab {
   plugin: SonarPlugin;
@@ -61,13 +61,7 @@ export class SettingTab extends PluginSettingTab {
     this.configListeners.push(
       this.configManager.subscribe('excludedPaths', handleStatsUpdate)
     );
-    // Embedder backend changes (database changes)
-    this.configListeners.push(
-      this.configManager.subscribe('embedderBackend', handleStatsUpdate)
-    );
-    this.configListeners.push(
-      this.configManager.subscribe('tfjsEmbedderModel', handleStatsUpdate)
-    );
+    // Embedder model changes (database changes)
     this.configListeners.push(
       this.configManager.subscribe('llamaEmbedderModelRepo', handleStatsUpdate)
     );
@@ -279,9 +273,7 @@ Supports:
       indexingBatchSetting.descEl,
       `Number of texts (titles + chunks) to process in a single batch during indexing (default: \`32\`).
 - Larger values: process more texts at once but use more memory.
-- Smaller values: reduce memory usage but increase the number of calls to the embedder.
-
-> [!WARNING]: This setting only applies to llama.cpp backend. Transformers.js always processes texts sequentially to avoid NaN embeddings.`
+- Smaller values: reduce memory usage but increase the number of calls to the embedder.`
     );
     indexingBatchSetting.addSlider(slider =>
       slider
@@ -291,18 +283,6 @@ Supports:
         .onChange(async value => {
           await this.configManager.set('indexingBatchSize', value);
         })
-    );
-
-    const updateIndexingBatchVisibility = () => {
-      const backend = this.configManager.get('embedderBackend');
-      indexingBatchSetting.settingEl.style.display =
-        backend === 'llamacpp' ? '' : 'none';
-    };
-    updateIndexingBatchVisibility();
-    this.configListeners.push(
-      this.configManager.subscribe('embedderBackend', () => {
-        updateIndexingBatchVisibility();
-      })
     );
 
     const autoIndexSetting = new Setting(indexConfigContainer).setName(
@@ -481,77 +461,12 @@ This is the final number after chunk aggregation:
       cls: 'sonar-settings-section',
     });
     embedderDetails.setAttr('open', '');
-    embedderDetails.createEl('summary', { text: 'Embedder configuration' });
+    embedderDetails.createEl('summary', {
+      text: 'Embedder configuration (llama.cpp)',
+    });
     const embedderContainer = embedderDetails.createDiv();
 
-    const embedderBackendSetting = new Setting(embedderContainer).setName(
-      'Embedder backend'
-    );
-    this.renderMarkdownDesc(
-      embedderBackendSetting.descEl,
-      'Choose embedding backend (Transformers.js or llama.cpp).'
-    );
-
-    let transformersSettings: HTMLElement;
-    let llamacppSettings: HTMLElement;
-
-    const updateVisibility = (backendType: EmbedderBackend) => {
-      if (backendType === 'transformers') {
-        transformersSettings.style.display = '';
-        llamacppSettings.style.display = 'none';
-      } else {
-        transformersSettings.style.display = 'none';
-        llamacppSettings.style.display = '';
-      }
-    };
-
-    embedderBackendSetting.addDropdown(dropdown =>
-      dropdown
-        .addOption('transformers', 'Transformers.js')
-        .addOption('llamacpp', 'llama.cpp')
-        .setValue(this.configManager.get('embedderBackend'))
-        .onChange(async value => {
-          await this.configManager.set(
-            'embedderBackend',
-            value as EmbedderBackend
-          );
-          updateVisibility(value as EmbedderBackend);
-        })
-    );
-
-    // Transformers.js settings
-    transformersSettings = embedderContainer.createDiv();
-    const transformersHeader = transformersSettings.createEl('h4', {
-      text: 'Transformers.js configuration',
-    });
-    transformersHeader.style.marginTop = '1em';
-    transformersHeader.style.marginBottom = '0.5em';
-
-    const embeddingModelSetting = new Setting(transformersSettings).setName(
-      'Embedding model'
-    );
-    this.renderMarkdownDesc(
-      embeddingModelSetting.descEl,
-      'HuggingFace model ID for Transformers.js (e.g., `Xenova/multilingual-e5-small`).'
-    );
-    embeddingModelSetting.addText(text =>
-      text
-        .setPlaceholder('Xenova/multilingual-e5-small')
-        .setValue(this.configManager.get('tfjsEmbedderModel'))
-        .onChange(async value => {
-          await this.configManager.set('tfjsEmbedderModel', value);
-        })
-    );
-
-    // llama.cpp settings
-    llamacppSettings = embedderContainer.createDiv();
-    const llamacppHeader = llamacppSettings.createEl('h4', {
-      text: 'llama.cpp configuration',
-    });
-    llamacppHeader.style.marginTop = '1em';
-    llamacppHeader.style.marginBottom = '0.5em';
-
-    const llamacppServerPathSetting = new Setting(llamacppSettings).setName(
+    const llamacppServerPathSetting = new Setting(embedderContainer).setName(
       'Server path'
     );
     this.renderMarkdownDesc(
@@ -567,7 +482,7 @@ This is the final number after chunk aggregation:
         })
     );
 
-    const llamacppModelRepoSetting = new Setting(llamacppSettings).setName(
+    const llamacppModelRepoSetting = new Setting(embedderContainer).setName(
       'Model repository'
     );
     this.renderMarkdownDesc(
@@ -583,7 +498,7 @@ This is the final number after chunk aggregation:
         })
     );
 
-    const llamacppModelFileSetting = new Setting(llamacppSettings).setName(
+    const llamacppModelFileSetting = new Setting(embedderContainer).setName(
       'Model file'
     );
     this.renderMarkdownDesc(
@@ -598,8 +513,6 @@ This is the final number after chunk aggregation:
           await this.configManager.set('llamaEmbedderModelFile', value);
         })
     );
-
-    updateVisibility(this.configManager.get('embedderBackend'));
   }
 
   private createSearchParamsSection(containerEl: HTMLElement): void {
@@ -811,21 +724,6 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
         .setDynamicTooltip()
         .onChange(async value => {
           await this.configManager.set('statusBarMaxLength', value);
-        })
-    );
-
-    const showBackendSetting = new Setting(loggingContainer).setName(
-      'Show backend in status bar'
-    );
-    this.renderMarkdownDesc(
-      showBackendSetting.descEl,
-      'Display embedder backend in status bar (e.g., `Sonar (llama): Ready`).'
-    );
-    showBackendSetting.addToggle(toggle =>
-      toggle
-        .setValue(this.configManager.get('showBackendInStatusBar'))
-        .onChange(async value => {
-          await this.configManager.set('showBackendInStatusBar', value);
         })
     );
 

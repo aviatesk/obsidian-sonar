@@ -59,18 +59,11 @@ export class ConfigManager extends EventEmitter {
    * Get formatted string of current embedder configuration
    */
   getCurrentConfigInfo(): string {
-    const embedderBackend = this.get('embedderBackend');
-    let modelInfo: string;
+    const modelRepo = this.get('llamaEmbedderModelRepo');
+    const modelFile = this.get('llamaEmbedderModelFile');
+    const modelInfo = `${modelRepo}/${modelFile}`;
 
-    if (embedderBackend === 'llamacpp') {
-      const modelRepo = this.get('llamaEmbedderModelRepo');
-      const modelFile = this.get('llamaEmbedderModelFile');
-      modelInfo = `${modelRepo}/${modelFile}`;
-    } else {
-      modelInfo = this.get('tfjsEmbedderModel');
-    }
-
-    return `- Embedding backend: \`${embedderBackend}\`\n- Embedding model: \`${modelInfo}\``;
+    return `- Embedding model: \`${modelInfo}\``;
   }
 
   /**

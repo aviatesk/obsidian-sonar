@@ -15,7 +15,6 @@ export default [
       'node_modules/**',
       'main.js',
       'src/generated/**',
-      'scripts/esbuild-worker.mjs',
       'bench',
       'experiments',
       '.venv/**',
