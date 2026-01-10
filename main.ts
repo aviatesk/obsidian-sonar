@@ -23,6 +23,9 @@ import type { Reranker } from './src/Reranker';
 import { NoopReranker } from './src/Reranker';
 import { LlamaCppReranker } from './src/LlamaCppReranker';
 import { LlamaCppChat } from './src/LlamaCppChat';
+import { ChatContextBuilder } from './src/ChatContextBuilder';
+import { Chat } from './src/Chat';
+import { CHAT_VIEW_TYPE, ChatView } from './src/ui/ChatView';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { isAudioExtension } from './src/audio';
 
@@ -35,6 +38,7 @@ export default class SonarPlugin extends Plugin {
   embedder: Embedder | null = null;
   reranker: Reranker | null = null;
   chatModel: LlamaCppChat | null = null;
+  chat: Chat | null = null;
   private semanticNoteFinder: SemanticNoteFinder | null = null;
   private reinitializing = false;
   private configListeners: Array<() => void> = [];
@@ -278,11 +282,106 @@ export default class SonarPlugin extends Plugin {
 
       await this.initializeChatModel(chatModel, chatModelIdentifier);
 
+      // Recreate Chat with new model
+      this.createChat();
+
       this.log('Chat model reinitialized successfully');
     } catch (error) {
       this.error(`Failed to reinitialize chat model: ${error}`);
     } finally {
       this.reinitializing = false;
+    }
+  }
+
+  /**
+   * Initialize chat model lazily when RAG view is opened
+   * Returns: 'ready' if initialized, 'pending' if waiting for Sonar, 'failed' on error
+   */
+  async initializeChatModelLazy(): Promise<'ready' | 'pending' | 'failed'> {
+    // Already initialized and ready
+    if (this.chat?.isReady()) {
+      return 'ready';
+    }
+
+    // Check if Sonar core is initialized (required dependencies)
+    if (!this.searchManager || !this.metadataStore) {
+      this.log(
+        'Chat model initialization pending: Sonar is still initializing'
+      );
+      return 'pending';
+    }
+
+    // Clean up any partially initialized model
+    if (this.chatModel) {
+      await this.chatModel.cleanup();
+      this.chatModel = null;
+    }
+
+    const serverPath = this.configManager.get('llamacppServerPath');
+    const chatModelRepo = this.configManager.get('llamaChatModelRepo');
+    const chatModelFile = this.configManager.get('llamaChatModelFile');
+    const chatModelIdentifier = `${chatModelRepo}/${chatModelFile}`;
+
+    this.log(`Lazy-loading chat model: ${chatModelIdentifier}`);
+
+    const chatModel = (this.chatModel = new LlamaCppChat(
+      serverPath,
+      chatModelRepo,
+      chatModelFile,
+      this.configManager,
+      status => this.updateStatusBar(status),
+      (msg, duration) => new Notice(msg, duration)
+    ));
+
+    const success = await this.initializeChatModel(
+      chatModel,
+      chatModelIdentifier
+    );
+    if (!success) {
+      return 'failed';
+    }
+
+    // Create Chat after chat model is ready
+    this.createChat();
+
+    return 'ready';
+  }
+
+  /**
+   * Create Chat instance (requires chatModel and searchManager to be ready)
+   */
+  private createChat(): void {
+    if (
+      !this.chatModel?.isReady() ||
+      !this.searchManager ||
+      !this.metadataStore
+    ) {
+      this.warn('Cannot create Chat: dependencies not ready');
+      return;
+    }
+
+    const contextBuilder = new ChatContextBuilder(
+      this.searchManager,
+      this.chatModel,
+      this.metadataStore,
+      this.configManager
+    );
+    this.chat = new Chat(this.chatModel, contextBuilder, this.configManager);
+    this.log('Chat initialized');
+  }
+
+  /**
+   * Cleanup chat model when RAG view is closed
+   */
+  async cleanupChatModel(): Promise<void> {
+    if (this.chat) {
+      this.chat = null;
+    }
+    if (this.chatModel) {
+      this.log('Cleaning up chat model...');
+      await this.chatModel.cleanup();
+      this.chatModel = null;
+      this.log('Chat model cleaned up');
     }
   }
 
@@ -356,22 +455,9 @@ export default class SonarPlugin extends Plugin {
       (msg, duration) => new Notice(msg, duration)
     ));
 
-    const chatModelRepo = this.configManager.get('llamaChatModelRepo');
-    const chatModelFile = this.configManager.get('llamaChatModelFile');
-    const chatModelIdentifier = `${chatModelRepo}/${chatModelFile}`;
-    const chatModel = (this.chatModel = new LlamaCppChat(
-      serverPath,
-      chatModelRepo,
-      chatModelFile,
-      this.configManager,
-      status => this.updateStatusBar(status),
-      (msg, duration) => new Notice(msg, duration)
-    ));
-
     const [embedderSuccess] = await Promise.all([
       this.initializeEmbedder(embedder, 'llama.cpp', modelIdentifier),
       this.initializeReranker(reranker, rerankerModelIdentifier),
-      this.initializeChatModel(chatModel, chatModelIdentifier),
     ]);
     if (!embedderSuccess) return;
 
@@ -454,18 +540,28 @@ export default class SonarPlugin extends Plugin {
       );
       return;
     }
-    this.notifyRelatedNotesViewsInitialized();
+    this.notifyViewsInitialized();
 
     this.indexUpdateUnsubscribe = this.indexManager.onIndexUpdated(() => {
       this.semanticNoteFinder?.invalidateCache();
     });
   }
 
-  private notifyRelatedNotesViewsInitialized(): void {
-    const leaves = this.app.workspace.getLeavesOfType(RELATED_NOTES_VIEW_TYPE);
-    leaves.forEach(leaf => {
+  private notifyViewsInitialized(): void {
+    const relatedNotesLeaves = this.app.workspace.getLeavesOfType(
+      RELATED_NOTES_VIEW_TYPE
+    );
+    relatedNotesLeaves.forEach(leaf => {
       const view = leaf.view;
       if (view instanceof RelatedNotesView) {
+        view.onSonarInitialized();
+      }
+    });
+
+    const ragLeaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
+    ragLeaves.forEach(leaf => {
+      const view = leaf.view;
+      if (view instanceof ChatView) {
         view.onSonarInitialized();
       }
     });
@@ -487,12 +583,19 @@ export default class SonarPlugin extends Plugin {
     this.registerView(RELATED_NOTES_VIEW_TYPE, leaf => {
       return new RelatedNotesView(leaf, this, this.configManager);
     });
+    this.registerView(CHAT_VIEW_TYPE, leaf => {
+      return new ChatView(leaf, this, this.configManager);
+    });
     this.registerHoverLinkSource(SEMANTIC_NOTE_FINDER_SOURCE, {
       display: 'Sonar: Semantic note finder',
       defaultMod: true,
     });
     this.registerHoverLinkSource(RELATED_NOTES_VIEW_TYPE, {
       display: 'Sonar: Related notes',
+      defaultMod: true,
+    });
+    this.registerHoverLinkSource(CHAT_VIEW_TYPE, {
+      display: 'Sonar: Chat',
       defaultMod: true,
     });
   }
@@ -603,6 +706,14 @@ export default class SonarPlugin extends Plugin {
       name: 'Open Semantic note finder',
       callback: () => {
         this.openSemanticNoteFinder();
+      },
+    });
+
+    this.addCommand({
+      id: 'open-chat',
+      name: 'Open chat view',
+      callback: () => {
+        this.activateChatView();
       },
     });
 
@@ -785,6 +896,30 @@ export default class SonarPlugin extends Plugin {
       this.searchManager!,
       this.configManager
     )).open();
+  }
+
+  async activateChatView(): Promise<void> {
+    if (!this.checkInitialized()) return;
+
+    const { workspace } = this.app;
+
+    let leaf: WorkspaceLeaf | null = null;
+    const leaves = workspace.getLeavesOfType(CHAT_VIEW_TYPE);
+
+    if (leaves.length > 0) {
+      leaf = leaves[0];
+      workspace.revealLeaf(leaf);
+    } else {
+      const rightLeaf = workspace.getRightLeaf(false);
+      if (rightLeaf) {
+        leaf = rightLeaf;
+        await leaf.setViewState({
+          type: CHAT_VIEW_TYPE,
+          active: true,
+        });
+        workspace.revealLeaf(leaf);
+      }
+    }
   }
 
   async deleteAllVaultDatabases(): Promise<void> {

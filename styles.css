@@ -28,7 +28,148 @@ body.sonar-modal-open .hover-popover {
   padding: 0px !important;
 }
 
-/* Settings tab */
+/* RAG View */
+.rag-view-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0 !important;
+  position: relative;
+}
+
+.rag-messages-wrapper {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.rag-input-container {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.rag-message-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  max-height: 200px;
+  padding: 8px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 14px;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+}
+
+.rag-send-button {
+  padding: 8px 16px;
+  min-height: 36px;
+  min-width: 60px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rag-send-button:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.rag-send-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.rag-send-button.is-loading {
+  position: relative;
+}
+
+.rag-send-button.is-loading::after {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--text-on-accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.rag-send-button.is-loading:hover {
+  background: var(--background-modifier-error);
+}
+
+.rag-send-button.is-loading:hover::after {
+  content: 'Stop';
+  width: auto;
+  height: auto;
+  border: none;
+  animation: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Settings tab - shared collapsible styles */
+.sonar-settings-section summary,
+.sonar-settings-subsection summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 0;
+  user-select: none;
+}
+
+.sonar-settings-section summary::-webkit-details-marker,
+.sonar-settings-subsection summary::-webkit-details-marker {
+  display: none;
+}
+
+.sonar-settings-section summary::before,
+.sonar-settings-subsection summary::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-color: transparent transparent transparent var(--text-muted);
+  transition: transform 0.2s ease;
+  vertical-align: middle;
+}
+
+.sonar-settings-section[open] summary::before,
+.sonar-settings-subsection[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.sonar-settings-section summary:hover,
+.sonar-settings-subsection summary:hover {
+  color: var(--text-accent);
+}
+
+.sonar-settings-section summary:hover::before,
+.sonar-settings-subsection summary:hover::before {
+  border-left-color: var(--text-accent);
+}
+
+/* Settings section specific styles */
 .sonar-settings-section {
   padding-bottom: 20px;
   margin-bottom: 20px;
@@ -45,39 +186,30 @@ body.sonar-modal-open .hover-popover {
   font-weight: 600;
   color: var(--text-normal);
   margin-bottom: 16px;
-  cursor: pointer;
-  list-style: none;
-  padding: 8px 0;
-  user-select: none;
-}
-
-.sonar-settings-section summary::-webkit-details-marker {
-  display: none;
 }
 
 .sonar-settings-section summary::before {
-  content: '';
-  display: inline-block;
-  width: 0;
-  height: 0;
-  border-style: solid;
   border-width: 6px 0 6px 10px;
-  border-color: transparent transparent transparent var(--text-muted);
   margin-right: 10px;
-  transition: transform 0.2s ease;
-  vertical-align: middle;
 }
 
-.sonar-settings-section[open] summary::before {
-  transform: rotate(90deg);
+/* Settings subsection specific styles */
+.sonar-settings-subsection {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--background-secondary);
+  border-radius: 6px;
 }
 
-.sonar-settings-section summary:hover {
-  color: var(--text-accent);
+.sonar-settings-subsection summary {
+  font-size: 1em;
+  font-weight: 500;
+  color: var(--text-muted);
 }
 
-.sonar-settings-section summary:hover::before {
-  border-left-color: var(--text-accent);
+.sonar-settings-subsection summary::before {
+  border-width: 4px 0 4px 6px;
+  margin-right: 8px;
 }
 
 .sonar-stats-in-settings {
