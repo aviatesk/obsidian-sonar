@@ -512,6 +512,101 @@ export async function waitForServerReady(
   });
 }
 
+/**
+ * Chat message format for /v1/chat/completions endpoint
+ */
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * Options for chat completion request
+ */
+export interface ChatCompletionOptions {
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  topK?: number;
+  presencePenalty?: number;
+  idSlot?: number;
+  cachePrompt?: boolean;
+}
+
+/**
+ * Response from chat completion
+ */
+export interface ChatCompletionResponse {
+  content: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * Send a chat completion request to llama-server
+ *
+ * @param serverUrl - Base URL of llama-server (e.g., "http://localhost:8080")
+ * @param messages - Array of chat messages
+ * @param options - Optional parameters for generation
+ * @returns Promise that resolves to the completion response
+ */
+export async function llamaServerChatCompletion(
+  serverUrl: string,
+  messages: ChatMessage[],
+  options: ChatCompletionOptions = {}
+): Promise<ChatCompletionResponse> {
+  const body: Record<string, unknown> = {
+    messages,
+    cache_prompt: options.cachePrompt ?? true,
+  };
+
+  if (options.temperature !== undefined) body.temperature = options.temperature;
+  if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
+  if (options.topP !== undefined) body.top_p = options.topP;
+  if (options.topK !== undefined) body.top_k = options.topK;
+  if (options.presencePenalty !== undefined)
+    body.presence_penalty = options.presencePenalty;
+  if (options.idSlot !== undefined) body.id_slot = options.idSlot;
+
+  const response = await fetch(`${serverUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Chat completion request failed: ${response.status} ${response.statusText}. Body: ${errorText}`
+    );
+  }
+
+  const data = (await response.json()) as {
+    choices: Array<{ message: { content: string } }>;
+    usage?: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+    };
+  };
+
+  if (
+    !data.choices ||
+    !Array.isArray(data.choices) ||
+    data.choices.length === 0
+  ) {
+    throw new Error('Invalid chat completion response from llama.cpp API');
+  }
+
+  return {
+    content: data.choices[0].message.content,
+    promptTokens: data.usage?.prompt_tokens ?? 0,
+    completionTokens: data.usage?.completion_tokens ?? 0,
+    totalTokens: data.usage?.total_tokens ?? 0,
+  };
+}
+
 export async function killServerProcess(
   process: ChildProcess,
   logger?: Logger

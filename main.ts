@@ -22,6 +22,7 @@ import { LlamaCppEmbedder } from './src/LlamaCppEmbedder';
 import type { Reranker } from './src/Reranker';
 import { NoopReranker } from './src/Reranker';
 import { LlamaCppReranker } from './src/LlamaCppReranker';
+import { LlamaCppChat } from './src/LlamaCppChat';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { isAudioExtension } from './src/audio';
 
@@ -33,6 +34,7 @@ export default class SonarPlugin extends Plugin {
   metadataStore: MetadataStore | null = null;
   embedder: Embedder | null = null;
   reranker: Reranker | null = null;
+  chatModel: LlamaCppChat | null = null;
   private semanticNoteFinder: SemanticNoteFinder | null = null;
   private reinitializing = false;
   private configListeners: Array<() => void> = [];
@@ -122,6 +124,22 @@ export default class SonarPlugin extends Plugin {
     }
   }
 
+  private async initializeChatModel(
+    chatModel: LlamaCppChat,
+    modelDescription: string
+  ): Promise<boolean> {
+    try {
+      await chatModel.initialize();
+      this.log(`Chat model initialized: ${modelDescription}`);
+      return true;
+    } catch (error) {
+      this.warn(`Failed to initialize chat model: ${error}`);
+      await chatModel.cleanup();
+      this.chatModel = null;
+      return false;
+    }
+  }
+
   private setupConfigListeners(): void {
     const handleBackendChange = async (
       _key: keyof typeof DEFAULT_SETTINGS,
@@ -131,6 +149,16 @@ export default class SonarPlugin extends Plugin {
         return;
       }
       await this.reinitializeSonar();
+    };
+
+    const handleChatModelChange = async (
+      _key: keyof typeof DEFAULT_SETTINGS,
+      _value: any
+    ) => {
+      if (this.reinitializing) {
+        return;
+      }
+      await this.reinitializeChatModel();
     };
 
     this.configListeners.push(
@@ -147,6 +175,12 @@ export default class SonarPlugin extends Plugin {
         'llamaEmbedderModelFile',
         handleBackendChange
       )
+    );
+    this.configListeners.push(
+      this.configManager.subscribe('llamaChatModelRepo', handleChatModelChange)
+    );
+    this.configListeners.push(
+      this.configManager.subscribe('llamaChatModelFile', handleChatModelChange)
     );
   }
 
@@ -186,6 +220,12 @@ export default class SonarPlugin extends Plugin {
         this.reranker = null;
       }
 
+      if (this.chatModel) {
+        this.log('Cleaning up old chat model...');
+        await this.chatModel.cleanup();
+        this.chatModel = null;
+      }
+
       if (this.metadataStore) {
         this.log('Closing old database...');
         await this.metadataStore.close();
@@ -200,6 +240,47 @@ export default class SonarPlugin extends Plugin {
       this.error(`Failed to reinitialize Sonar: ${error}`);
       new Notice('Failed to reinitialize Sonar - check console');
       this.updateStatusBar('Failed to reinitialize');
+    } finally {
+      this.reinitializing = false;
+    }
+  }
+
+  async reinitializeChatModel(): Promise<void> {
+    if (this.reinitializing) {
+      this.warn('Reinitialization already in progress');
+      return;
+    }
+
+    this.reinitializing = true;
+
+    try {
+      this.log('Reinitializing chat model...');
+
+      if (this.chatModel) {
+        this.log('Cleaning up old chat model...');
+        await this.chatModel.cleanup();
+        this.chatModel = null;
+      }
+
+      const serverPath = this.configManager.get('llamacppServerPath');
+      const chatModelRepo = this.configManager.get('llamaChatModelRepo');
+      const chatModelFile = this.configManager.get('llamaChatModelFile');
+      const chatModelIdentifier = `${chatModelRepo}/${chatModelFile}`;
+
+      const chatModel = (this.chatModel = new LlamaCppChat(
+        serverPath,
+        chatModelRepo,
+        chatModelFile,
+        this.configManager,
+        status => this.updateStatusBar(status),
+        (msg, duration) => new Notice(msg, duration)
+      ));
+
+      await this.initializeChatModel(chatModel, chatModelIdentifier);
+
+      this.log('Chat model reinitialized successfully');
+    } catch (error) {
+      this.error(`Failed to reinitialize chat model: ${error}`);
     } finally {
       this.reinitializing = false;
     }
@@ -275,9 +356,22 @@ export default class SonarPlugin extends Plugin {
       (msg, duration) => new Notice(msg, duration)
     ));
 
+    const chatModelRepo = this.configManager.get('llamaChatModelRepo');
+    const chatModelFile = this.configManager.get('llamaChatModelFile');
+    const chatModelIdentifier = `${chatModelRepo}/${chatModelFile}`;
+    const chatModel = (this.chatModel = new LlamaCppChat(
+      serverPath,
+      chatModelRepo,
+      chatModelFile,
+      this.configManager,
+      status => this.updateStatusBar(status),
+      (msg, duration) => new Notice(msg, duration)
+    ));
+
     const [embedderSuccess] = await Promise.all([
       this.initializeEmbedder(embedder, 'llama.cpp', modelIdentifier),
       this.initializeReranker(reranker, rerankerModelIdentifier),
+      this.initializeChatModel(chatModel, chatModelIdentifier),
     ]);
     if (!embedderSuccess) return;
 
@@ -770,7 +864,11 @@ export default class SonarPlugin extends Plugin {
     }
     // Run server cleanups in parallel to maximize chance of completion
     // before quit event terminates the process
-    await Promise.all([this.embedder?.cleanup(), this.reranker?.cleanup()]);
+    await Promise.all([
+      this.embedder?.cleanup(),
+      this.reranker?.cleanup(),
+      this.chatModel?.cleanup(),
+    ]);
   }
 
   async onunload() {

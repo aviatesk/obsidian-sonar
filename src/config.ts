@@ -39,13 +39,22 @@ export interface SonarSettings {
   chunkOverlap: number; // Overlapping tokens between chunks
   maxQueryTokens: number; // Maximum tokens for search queries
 
-  // Embedder configuration (llama.cpp)
-  // ===================================
+  // llama.cpp configuration
+  // =======================
   llamacppServerPath: string; // Path to llama.cpp server binary (e.g., 'llama-server')
   llamaEmbedderModelRepo: string; // HuggingFace repository for llama.cpp (e.g., 'BAAI/bge-m3-gguf')
   llamaEmbedderModelFile: string; // GGUF filename in the repository (e.g., 'bge-m3-q8_0.gguf')
   llamaRerankerModelRepo: string; // HuggingFace repository for reranker (e.g., 'gpustack/bge-reranker-v2-m3-GGUF')
   llamaRerankerModelFile: string; // GGUF filename for reranker (e.g., 'bge-reranker-v2-m3-Q8_0.gguf')
+  llamaChatModelRepo: string; // HuggingFace repository for chat model (e.g., 'Qwen/Qwen3-8B-GGUF')
+  llamaChatModelFile: string; // GGUF filename for chat model (e.g., 'qwen3-8b-q8_0.gguf')
+
+  // Chat generation parameters
+  // ==========================
+  chatTemperature: number; // Temperature for response generation (default: 0.6)
+  chatTopK: number; // Top-k sampling, 0 to disable (default: 0)
+  chatTopP: number; // Top-p (nucleus sampling) for response generation (default: 0.9)
+  chatPresencePenalty: number; // Presence penalty to reduce repetition (default: 0.5)
 
   // Search parameters
   // =================
@@ -102,13 +111,22 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   chunkOverlap: 64,
   maxQueryTokens: 128,
 
-  // Embedder configuration (llama.cpp)
-  // ===================================
+  // llama.cpp configuration
+  // =======================
   llamacppServerPath: 'llama-server',
   llamaEmbedderModelRepo: 'ggml-org/bge-m3-Q8_0-GGUF',
   llamaEmbedderModelFile: 'bge-m3-q8_0.gguf',
   llamaRerankerModelRepo: 'gpustack/bge-reranker-v2-m3-GGUF',
   llamaRerankerModelFile: 'bge-reranker-v2-m3-Q8_0.gguf',
+  llamaChatModelRepo: 'Qwen/Qwen3-8B-GGUF',
+  llamaChatModelFile: 'qwen3-8b-q8_0.gguf',
+
+  // Chat generation parameters
+  // ==========================
+  chatTemperature: 0.6,
+  chatTopK: 0,
+  chatTopP: 0.9,
+  chatPresencePenalty: 0.5,
 
   // Search parameters
   // =================
