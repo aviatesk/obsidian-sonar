@@ -505,8 +505,8 @@ export default class SonarPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: 'semantic-search-notes',
-      name: 'Semantic search notes',
+      id: 'open-semantic-note-finder',
+      name: 'Open Semantic note finder',
       callback: () => {
         this.openSemanticNoteFinder();
       },
