@@ -10,6 +10,7 @@
     results: SearchResult[];
     configManager: ConfigManager;
     onFileClick?: (file: TFile) => void;
+    onHoverLink?: (event: MouseEvent, linktext: string) => void;
     maxHeight?: string;
     maxLength?: number;
     showExcerpts?: boolean;
@@ -20,6 +21,7 @@
     results = [],
     configManager,
     onFileClick,
+    onHoverLink,
     maxHeight = '100px',
     maxLength = undefined,
     showExcerpts = true,
@@ -75,6 +77,41 @@
     return Math.round(score * 100);
   }
 
+  function setupInternalLinkHandler(node: HTMLElement) {
+    function handleClick(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      const link = target.closest('a.internal-link');
+      if (link) {
+        event.preventDefault();
+        const href = link.getAttribute('href');
+        if (href) {
+          app.workspace.openLinkText(href, '', false);
+        }
+      }
+    }
+
+    function handleMouseover(event: MouseEvent) {
+      if (!onHoverLink) return;
+      const target = event.target as HTMLElement;
+      const link = target.closest('a.internal-link');
+      if (link) {
+        const href = link.getAttribute('href');
+        if (href) {
+          onHoverLink(event, href);
+        }
+      }
+    }
+
+    node.addEventListener('click', handleClick);
+    node.addEventListener('mouseover', handleMouseover);
+    return {
+      destroy() {
+        node.removeEventListener('click', handleClick);
+        node.removeEventListener('mouseover', handleMouseover);
+      },
+    };
+  }
+
 </script>
 
 {#if results.length > 0}
@@ -117,6 +154,7 @@
               class="result-excerpt"
               style:max-height={maxHeight}
               use:setExcerptElement={index}
+              use:setupInternalLinkHandler
             ></div>
           {/if}
         </div>

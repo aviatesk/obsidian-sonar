@@ -1,4 +1,5 @@
 import {
+  HoverPopover,
   ItemView,
   WorkspaceLeaf,
   TFile,
@@ -62,6 +63,7 @@ export class RelatedNotesView extends ItemView {
   private plugin: SonarPlugin;
   private configManager: ConfigManager;
   private logger: ComponentLogger;
+  hoverPopover: HoverPopover | null = null; // HoverParent interface
   private lastActiveFile: TFile | null = null;
   private lastQuery: string = '';
   private searchAbortController: AbortController | null = null;
@@ -192,7 +194,20 @@ export class RelatedNotesView extends ItemView {
         onRefresh: () => {
           this.manualRefresh();
         },
+        onHoverLink: (event: MouseEvent, linktext: string) =>
+          this.handleHoverLink(event, linktext),
       },
+    });
+  }
+
+  private handleHoverLink(event: MouseEvent, linktext: string): void {
+    this.app.workspace.trigger('hover-link', {
+      event,
+      source: RELATED_NOTES_VIEW_TYPE,
+      hoverParent: this,
+      targetEl: event.target as HTMLElement,
+      linktext,
+      sourcePath: '',
     });
   }
 

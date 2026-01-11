@@ -12,9 +12,10 @@
     configManager: ConfigManager;
     store: any; // Svelte store
     onRefresh: () => void;
+    onHoverLink?: (event: MouseEvent, linktext: string) => void;
   }
 
-  let { app, configManager, store, onRefresh }: Props = $props();
+  let { app, configManager, store, onRefresh, onHoverLink }: Props = $props();
 
   const storeState = $derived($store);
   const query = $derived(storeState.query);
@@ -175,6 +176,7 @@
           {configManager}
           maxHeight="200px"
           showExcerpts={showExcerpts}
+          {onHoverLink}
         />
       </div>
     {:else}

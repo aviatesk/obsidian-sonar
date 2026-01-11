@@ -1,4 +1,4 @@
-import { App, Modal, Notice, debounce } from 'obsidian';
+import { App, HoverPopover, Modal, Notice, debounce } from 'obsidian';
 import { mount, unmount } from 'svelte';
 import { writable } from 'svelte/store';
 import { SearchManager, type SearchResult } from '../SearchManager';
@@ -19,10 +19,13 @@ const MAX_INITIAL_K = 100;
 
 const COMPONENT_ID = 'SemanticNoteFinder';
 
+export const SEMANTIC_NOTE_FINDER_SOURCE = 'semantic-note-finder';
+
 export class SemanticNoteFinder extends Modal {
   private searchManager: SearchManager;
   private configManager: ConfigManager;
   private logger: ComponentLogger;
+  hoverPopover: HoverPopover | null = null; // HoverParent interface
   private svelteComponent:
     | ReturnType<typeof SemanticNoteFinderComponent>
     | undefined;
@@ -226,6 +229,7 @@ export class SemanticNoteFinder extends Modal {
     contentEl.empty();
     titleEl.empty();
 
+    document.body.addClass('sonar-modal-open');
     this.modalEl.addClass('semantic-search-modal');
     this.modalEl.style.width = '800px';
     this.modalEl.style.height = '600px';
@@ -272,6 +276,8 @@ export class SemanticNoteFinder extends Modal {
             this.handleSearch(currentQuery);
           }
         },
+        onHoverLink: (event: MouseEvent, linktext: string) =>
+          this.handleHoverLink(event, linktext),
         onClose: () => {
           this.close();
         },
@@ -279,7 +285,20 @@ export class SemanticNoteFinder extends Modal {
     });
   }
 
+  private handleHoverLink(event: MouseEvent, linktext: string): void {
+    this.app.workspace.trigger('hover-link', {
+      event,
+      source: SEMANTIC_NOTE_FINDER_SOURCE,
+      hoverParent: this,
+      targetEl: event.target as HTMLElement,
+      linktext,
+      sourcePath: '',
+    });
+  }
+
   onClose(): void {
+    document.body.removeClass('sonar-modal-open');
+
     // Cancel queued requests (in-flight search continues to populate cache)
     this.searchManager.cancelPendingRequests(COMPONENT_ID);
 

@@ -15,6 +15,7 @@
     onQueryChange: (query: string) => void;
     onSearchImmediate: (query: string) => void;
     onRerankingToggle: (enabled: boolean) => void;
+    onHoverLink?: (event: MouseEvent, linktext: string) => void;
     onClose?: () => void;
   }
 
@@ -27,6 +28,7 @@
     onQueryChange,
     onSearchImmediate,
     onRerankingToggle,
+    onHoverLink,
     onClose,
   }: Props = $props();
 
@@ -140,6 +142,7 @@
       app.workspace.getLeaf(false).openFile(file);
       onClose?.();
     }}
+    {onHoverLink}
   />
 </div>
 

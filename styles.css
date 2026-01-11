@@ -12,6 +12,11 @@
   max-height: 80vh !important;
 }
 
+/* Ensure hover popover appears above Sonar modal */
+body.sonar-modal-open .hover-popover {
+  z-index: 100000 !important;
+}
+
 .semantic-search-modal .modal-content {
   padding: 0 !important;
   height: 100%;

@@ -8,7 +8,10 @@ import {
   RelatedNotesView,
   RELATED_NOTES_VIEW_TYPE,
 } from './src/ui/RelatedNotesView';
-import { SemanticNoteFinder } from './src/ui/SemanticNoteFinder';
+import {
+  SemanticNoteFinder,
+  SEMANTIC_NOTE_FINDER_SOURCE,
+} from './src/ui/SemanticNoteFinder';
 import { IndexManager } from './src/IndexManager';
 import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
@@ -389,6 +392,14 @@ export default class SonarPlugin extends Plugin {
   private registerViews(): void {
     this.registerView(RELATED_NOTES_VIEW_TYPE, leaf => {
       return new RelatedNotesView(leaf, this, this.configManager);
+    });
+    this.registerHoverLinkSource(SEMANTIC_NOTE_FINDER_SOURCE, {
+      display: 'Sonar: Semantic note finder',
+      defaultMod: true,
+    });
+    this.registerHoverLinkSource(RELATED_NOTES_VIEW_TYPE, {
+      display: 'Sonar: Related notes',
+      defaultMod: true,
     });
   }
 
