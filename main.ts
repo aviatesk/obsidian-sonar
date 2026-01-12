@@ -564,14 +564,23 @@ export default class SonarPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
         if (!(file instanceof TFile)) return;
-        if (!file.extension || !isAudioExtension(file.extension)) return;
+        if (!file.extension) return;
 
-        menu.addItem(item => {
-          item
-            .setTitle('Create transcription note')
-            .setIcon('file-text')
-            .onClick(() => this.createTranscriptionNote(file));
-        });
+        if (isAudioExtension(file.extension)) {
+          menu.addItem(item => {
+            item
+              .setTitle('Create transcription note')
+              .setIcon('file-text')
+              .onClick(() => this.createTranscriptionNote(file));
+          });
+        } else if (file.extension === 'pdf') {
+          menu.addItem(item => {
+            item
+              .setTitle('Create PDF extract note')
+              .setIcon('file-text')
+              .onClick(() => this.createPdfExtractNote(file));
+          });
+        }
       })
     );
   }
@@ -606,9 +615,46 @@ export default class SonarPlugin extends Plugin {
       return;
     }
 
-    const content = `![[${audioFile.name}]]\n\n${transcriptionText}`;
+    const content = `[[${audioFile.name}]]\n\n${transcriptionText}`;
     const newFile = await this.app.vault.create(notePath, content);
     new Notice(`Created transcription note: ${notePath}`);
+
+    const leaf = this.app.workspace.getLeaf();
+    await leaf.openFile(newFile);
+  }
+
+  private async createPdfExtractNote(pdfFile: TFile): Promise<void> {
+    if (!this.checkInitialized()) return;
+
+    const chunks = await this.metadataStore!.getChunksByFile(pdfFile.path);
+    if (chunks.length === 0) {
+      new Notice(
+        `No extracted text found for ${pdfFile.name}.\n\n` +
+          'Please index this file first.'
+      );
+      return;
+    }
+
+    chunks.sort((a, b) => a.id.localeCompare(b.id));
+    const extractedText = chunks.map(c => c.content).join('\n\n');
+
+    const pdfFolder = pdfFile.parent?.path || '';
+    const noteName = pdfFile.basename;
+    const notePath = pdfFolder
+      ? `${pdfFolder}/${noteName}.md`
+      : `${noteName}.md`;
+
+    const existingFile = this.app.vault.getAbstractFileByPath(notePath);
+    if (existingFile) {
+      new Notice(`Note already exists: ${notePath}`);
+      const leaf = this.app.workspace.getLeaf();
+      await leaf.openFile(existingFile as TFile);
+      return;
+    }
+
+    const content = `[[${pdfFile.name}]]\n\n${extractedText}`;
+    const newFile = await this.app.vault.create(notePath, content);
+    new Notice(`Created PDF extract note: ${notePath}`);
 
     const leaf = this.app.workspace.getLeaf();
     await leaf.openFile(newFile);
