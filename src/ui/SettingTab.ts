@@ -36,6 +36,7 @@ export class SettingTab extends PluginSettingTab {
     this.createChunkingConfigSection(containerEl);
     this.createEmbedderConfigSection(containerEl);
     this.createSearchParamsSection(containerEl);
+    this.createChatGenerationSection(containerEl);
     this.createAudioConfigSection(containerEl);
     this.createLoggingConfigSection(containerEl);
     this.createBenchmarkConfigSection(containerEl);
@@ -513,6 +514,40 @@ This is the final number after chunk aggregation:
           await this.configManager.set('llamaEmbedderModelFile', value);
         })
     );
+
+    embedderContainer.createEl('h4', { text: 'Chat model' });
+
+    const chatModelRepoSetting = new Setting(embedderContainer).setName(
+      'Chat model repository'
+    );
+    this.renderMarkdownDesc(
+      chatModelRepoSetting.descEl,
+      'HuggingFace repository for chat model (e.g., `Qwen/Qwen3-8B-GGUF`).'
+    );
+    chatModelRepoSetting.addText(text =>
+      text
+        .setPlaceholder('Qwen/Qwen3-8B-GGUF')
+        .setValue(this.configManager.get('llamaChatModelRepo'))
+        .onChange(async value => {
+          await this.configManager.set('llamaChatModelRepo', value);
+        })
+    );
+
+    const chatModelFileSetting = new Setting(embedderContainer).setName(
+      'Chat model file'
+    );
+    this.renderMarkdownDesc(
+      chatModelFileSetting.descEl,
+      'GGUF filename for chat model (e.g., `qwen3-8b-q8_0.gguf`).'
+    );
+    chatModelFileSetting.addText(text =>
+      text
+        .setPlaceholder('qwen3-8b-q8_0.gguf')
+        .setValue(this.configManager.get('llamaChatModelFile'))
+        .onChange(async value => {
+          await this.configManager.set('llamaChatModelFile', value);
+        })
+    );
   }
 
   private createSearchParamsSection(containerEl: HTMLElement): void {
@@ -699,6 +734,88 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
         .setDynamicTooltip()
         .onChange(async value => {
           await this.configManager.set('retrievalMultiplier', value);
+        })
+    );
+  }
+
+  private createChatGenerationSection(containerEl: HTMLElement): void {
+    const chatDetails = containerEl.createEl('details', {
+      cls: 'sonar-settings-section',
+    });
+    chatDetails.createEl('summary', { text: 'Chat generation' });
+    const chatContainer = chatDetails.createDiv();
+
+    const temperatureSetting = new Setting(chatContainer).setName(
+      'Temperature'
+    );
+    this.renderMarkdownDesc(
+      temperatureSetting.descEl,
+      `Controls randomness in response generation (default: \`0.6\`).
+- Lower values (\`0.1-0.4\`): more focused, deterministic responses.
+- Higher values (\`0.7-1.0\`): more creative, varied responses.`
+    );
+    temperatureSetting.addSlider(slider =>
+      slider
+        .setLimits(0.0, 1.5, 0.1)
+        .setValue(this.configManager.get('chatTemperature'))
+        .setDynamicTooltip()
+        .onChange(async value => {
+          await this.configManager.set('chatTemperature', value);
+        })
+    );
+
+    const topPSetting = new Setting(chatContainer).setName('Top-p');
+    this.renderMarkdownDesc(
+      topPSetting.descEl,
+      `Nucleus sampling threshold (default: \`0.9\`).
+- Lower values (\`0.5-0.8\`): samples from fewer tokens, more focused.
+- Higher values (\`0.9-1.0\`): considers more tokens, more diverse.`
+    );
+    topPSetting.addSlider(slider =>
+      slider
+        .setLimits(0.5, 1.0, 0.05)
+        .setValue(this.configManager.get('chatTopP'))
+        .setDynamicTooltip()
+        .onChange(async value => {
+          await this.configManager.set('chatTopP', value);
+        })
+    );
+
+    const topKSetting = new Setting(chatContainer).setName('Top-k');
+    this.renderMarkdownDesc(
+      topKSetting.descEl,
+      `Limits sampling to top K most likely tokens (default: \`0\` = disabled).
+- \`0\`: disabled, only top-p is used.
+- \`10-50\`: samples from fixed number of top candidates.
+
+Use with top-p for finer control, or set top-p to \`1.0\` to use top-k alone.`
+    );
+    topKSetting.addSlider(slider =>
+      slider
+        .setLimits(0, 100, 5)
+        .setValue(this.configManager.get('chatTopK'))
+        .setDynamicTooltip()
+        .onChange(async value => {
+          await this.configManager.set('chatTopK', value);
+        })
+    );
+
+    const presencePenaltySetting = new Setting(chatContainer).setName(
+      'Presence penalty'
+    );
+    this.renderMarkdownDesc(
+      presencePenaltySetting.descEl,
+      `Penalty for repeating tokens (default: \`0.5\`).
+- Lower values (\`0.0-0.3\`): allows natural repetition.
+- Higher values (\`0.5-1.5\`): discourages repetition, may reduce quality.`
+    );
+    presencePenaltySetting.addSlider(slider =>
+      slider
+        .setLimits(0.0, 2.0, 0.1)
+        .setValue(this.configManager.get('chatPresencePenalty'))
+        .setDynamicTooltip()
+        .onChange(async value => {
+          await this.configManager.set('chatPresencePenalty', value);
         })
     );
   }
