@@ -565,6 +565,67 @@ export class SearchManager extends WithLogging {
   }
 
   /**
+   * Retrieve reranked chunks for RAG context building.
+   * Returns chunk-level results sorted by rerank score (not aggregated to files).
+   *
+   * @param query Search query
+   * @param maxChunks Maximum number of chunks to return
+   * @returns Reranked chunks, or null if reranker is not ready
+   */
+  async getRerankedChunksForRAG(
+    query: string,
+    maxChunks: number
+  ): Promise<ChunkResult[] | null> {
+    if (!this.reranker.isReady()) {
+      return null;
+    }
+
+    const retrievalMultiplier = this.configManager.get('retrievalMultiplier');
+    const retrievalLimit = maxChunks * retrievalMultiplier;
+
+    // Distribute based on default weights (0.6 embedding, 0.4 bm25)
+    const embeddingLimit = Math.ceil(retrievalLimit * 0.6);
+    const bm25Limit = Math.ceil(retrievalLimit * 0.4);
+
+    // Get chunks from both sources
+    const [embeddingChunks, bm25Chunks] = await Promise.all([
+      this.embeddingSearch.searchContent(query, {
+        topK: maxChunks,
+        retrievalLimit: embeddingLimit,
+      }),
+      this.bm25Search.searchContent(query, {
+        topK: maxChunks,
+        retrievalLimit: bm25Limit,
+      }),
+    ]);
+
+    // Merge and deduplicate
+    const mergedChunks = mergeAndDeduplicateChunks(embeddingChunks, bm25Chunks);
+
+    if (mergedChunks.length === 0) {
+      return [];
+    }
+
+    // Rerank with title prepended
+    const documents = mergedChunks.map(c => {
+      const title = c.metadata.title || '';
+      return title ? `${title}\n\n${c.content}` : c.content;
+    });
+
+    const rerankResults = await this.reranker.rerank(
+      query,
+      documents,
+      maxChunks
+    );
+
+    // Return reranked chunks
+    return rerankResults.map(r => ({
+      ...mergedChunks[r.index],
+      score: r.relevanceScore,
+    }));
+  }
+
+  /**
    * Cancel all pending requests from a component.
    * Use this when a component is being destroyed (e.g., modal closing).
    */

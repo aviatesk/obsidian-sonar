@@ -56,6 +56,16 @@ export interface SonarSettings {
   chatTopP: number; // Top-p (nucleus sampling) for response generation (default: 0.9)
   chatPresencePenalty: number; // Presence penalty to reduce repetition (default: 0.5)
 
+  // Chat configuration
+  // ==================
+  chatMaxTokens: number; // Maximum tokens for response generation
+  chatEnableThinking: boolean; // Enable thinking mode for Qwen3 (default: false)
+
+  // RAG configuration
+  // =================
+  ragEnableContext: boolean; // Enable context retrieval from vault (default: true)
+  ragContextTokenBudget: number; // Maximum tokens for RAG context
+
   // Search parameters
   // =================
   bm25AggMethod: AggregationMethod; // BM25 aggregation method (default: 'max_p')
@@ -127,6 +137,16 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   chatTopK: 0,
   chatTopP: 0.9,
   chatPresencePenalty: 0.5,
+
+  // Chat configuration
+  // ==================
+  chatMaxTokens: 8192,
+  chatEnableThinking: false,
+
+  // RAG configuration
+  // =================
+  ragEnableContext: true,
+  ragContextTokenBudget: 4096,
 
   // Search parameters
   // =================

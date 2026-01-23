@@ -9,13 +9,20 @@ import {
   killServerProcess,
   startLlamaServer,
   waitForServerReady,
-  llamaServerChatCompletion,
+  llamaServerChatCompletionStream,
+  llamaServerTokenize,
   type ChatMessage,
   type ChatCompletionOptions,
-  type ChatCompletionResponse,
+  type ChatStreamDelta,
+  type ChatStreamUsage,
 } from './llamaCppUtils';
 
-export type { ChatMessage, ChatCompletionOptions, ChatCompletionResponse };
+export type {
+  ChatMessage,
+  ChatCompletionOptions,
+  ChatStreamDelta,
+  ChatStreamUsage,
+};
 
 /**
  * Chat completion using llama.cpp server
@@ -94,6 +101,7 @@ export class LlamaCppChat extends WithLogging {
       '32768',
       '--parallel',
       '1',
+      '--jinja',
       '-kvu',
       '-lv',
       '0',
@@ -119,16 +127,26 @@ export class LlamaCppChat extends WithLogging {
     this.ready = true;
   }
 
+  isReady(): boolean {
+    return this.ready;
+  }
+
   /**
-   * Send a chat completion request
+   * Send a streaming chat completion request
    * @param messages Array of chat messages (conversation history)
    * @param options Optional generation parameters
-   * @returns Promise that resolves to the completion response
+   * @param onDelta Callback for each token delta
+   * @param onDone Optional callback when streaming is complete
+   * @param signal Optional AbortSignal for cancellation
+   * @returns Promise that resolves to usage information when complete
    */
-  async chat(
+  async chatStream(
     messages: ChatMessage[],
-    options: ChatCompletionOptions = {}
-  ): Promise<ChatCompletionResponse> {
+    options: ChatCompletionOptions = {},
+    onDelta: (delta: ChatStreamDelta) => void,
+    onDone?: () => void,
+    signal?: AbortSignal
+  ): Promise<ChatStreamUsage> {
     if (!this.ready || !this.port) {
       throw new Error('Chat server not initialized. Call initialize() first.');
     }
@@ -144,11 +162,28 @@ export class LlamaCppChat extends WithLogging {
 
     const mergedOptions = { ...defaultOptions, ...options };
 
-    return llamaServerChatCompletion(this.serverUrl, messages, mergedOptions);
+    return llamaServerChatCompletionStream(
+      this.serverUrl,
+      messages,
+      mergedOptions,
+      onDelta,
+      onDone,
+      signal
+    );
   }
 
-  isReady(): boolean {
-    return this.ready;
+  /**
+   * Count tokens in a text using the chat model's tokenizer
+   * @param text Text to tokenize
+   * @returns Promise that resolves to the token count
+   */
+  async countTokens(text: string): Promise<number> {
+    if (!this.ready || !this.port) {
+      throw new Error('Chat server not initialized. Call initialize() first.');
+    }
+
+    const tokens = await llamaServerTokenize(this.serverUrl, text);
+    return tokens.length;
   }
 
   async cleanup(): Promise<void> {

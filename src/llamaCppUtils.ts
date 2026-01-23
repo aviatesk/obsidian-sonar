@@ -531,6 +531,7 @@ export interface ChatCompletionOptions {
   presencePenalty?: number;
   idSlot?: number;
   cachePrompt?: boolean;
+  enableThinking?: boolean;
 }
 
 /**
@@ -568,6 +569,8 @@ export async function llamaServerChatCompletion(
   if (options.presencePenalty !== undefined)
     body.presence_penalty = options.presencePenalty;
   if (options.idSlot !== undefined) body.id_slot = options.idSlot;
+  if (options.enableThinking !== undefined)
+    body.chat_template_kwargs = { enable_thinking: options.enableThinking };
 
   const response = await fetch(`${serverUrl}/v1/chat/completions`, {
     method: 'POST',
@@ -605,6 +608,133 @@ export async function llamaServerChatCompletion(
     completionTokens: data.usage?.completion_tokens ?? 0,
     totalTokens: data.usage?.total_tokens ?? 0,
   };
+}
+
+/**
+ * Stream delta content from chat completion
+ */
+export interface ChatStreamDelta {
+  content: string;
+}
+
+/**
+ * Final usage information from streaming response
+ */
+export interface ChatStreamUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * Send a streaming chat completion request to llama-server
+ * Uses Server-Sent Events (SSE) for real-time token streaming
+ *
+ * @param serverUrl - Base URL of llama-server
+ * @param messages - Array of chat messages
+ * @param options - Optional parameters for generation
+ * @param onDelta - Callback for each delta (new token)
+ * @param onDone - Callback when streaming is complete
+ * @param signal - Optional AbortSignal for cancellation
+ * @returns Promise that resolves to usage information when complete
+ */
+export async function llamaServerChatCompletionStream(
+  serverUrl: string,
+  messages: ChatMessage[],
+  options: ChatCompletionOptions = {},
+  onDelta: (delta: ChatStreamDelta) => void,
+  onDone?: () => void,
+  signal?: AbortSignal
+): Promise<ChatStreamUsage> {
+  const body: Record<string, unknown> = {
+    messages,
+    stream: true,
+    cache_prompt: options.cachePrompt ?? true,
+  };
+
+  if (options.temperature !== undefined) body.temperature = options.temperature;
+  if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
+  if (options.topP !== undefined) body.top_p = options.topP;
+  if (options.topK !== undefined) body.top_k = options.topK;
+  if (options.presencePenalty !== undefined)
+    body.presence_penalty = options.presencePenalty;
+  if (options.idSlot !== undefined) body.id_slot = options.idSlot;
+  if (options.enableThinking !== undefined)
+    body.chat_template_kwargs = { enable_thinking: options.enableThinking };
+
+  const response = await fetch(`${serverUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Chat completion stream request failed: ${response.status} ${response.statusText}. Body: ${errorText}`
+    );
+  }
+
+  if (!response.body) {
+    throw new Error('Response body is null');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let usage: ChatStreamUsage = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+      const data = trimmed.slice(6);
+      if (data === '[DONE]') {
+        onDone?.();
+        continue;
+      }
+
+      try {
+        const parsed = JSON.parse(data) as {
+          choices?: Array<{ delta?: { content?: string } }>;
+          usage?: {
+            prompt_tokens: number;
+            completion_tokens: number;
+            total_tokens: number;
+          };
+        };
+
+        if (parsed.choices?.[0]?.delta?.content) {
+          onDelta({ content: parsed.choices[0].delta.content });
+        }
+
+        if (parsed.usage) {
+          usage = {
+            promptTokens: parsed.usage.prompt_tokens,
+            completionTokens: parsed.usage.completion_tokens,
+            totalTokens: parsed.usage.total_tokens,
+          };
+        }
+      } catch {
+        // Skip malformed JSON
+      }
+    }
+  }
+
+  return usage;
 }
 
 export async function killServerProcess(
