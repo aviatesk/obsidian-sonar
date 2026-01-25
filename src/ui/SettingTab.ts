@@ -627,24 +627,27 @@ When enabled, the model will show its reasoning process before answering.`
         })
     );
 
-    // RAG subsection
-    chatContainer.createEl('h4', { text: 'Context retrieval (RAG)' });
-
-    const enableContextSetting = new Setting(chatContainer).setName(
-      'Enable context retrieval'
+    const maxIterationsSetting = new Setting(chatContainer).setName(
+      'Agent max iterations'
     );
     this.renderMarkdownDesc(
-      enableContextSetting.descEl,
-      `Retrieve relevant context from your vault when chatting (default: enabled).
-When disabled, the chat model responds without vault context.`
+      maxIterationsSetting.descEl,
+      `Maximum iterations for agent loop (default: \`5\`).
+The agent can call tools multiple times to gather information before responding.
+Higher values allow more thorough research but may increase response time.`
     );
-    enableContextSetting.addToggle(toggle =>
-      toggle
-        .setValue(this.configManager.get('ragEnableContext'))
+    maxIterationsSetting.addSlider(slider =>
+      slider
+        .setLimits(1, 10, 1)
+        .setValue(this.configManager.get('agentMaxIterations'))
+        .setDynamicTooltip()
         .onChange(async value => {
-          await this.configManager.set('ragEnableContext', value);
+          await this.configManager.set('agentMaxIterations', value);
         })
     );
+
+    // Context settings subsection
+    chatContainer.createEl('h4', { text: 'Context settings' });
 
     const contextBudgetSetting = new Setting(chatContainer).setName(
       'Context token budget'
@@ -658,11 +661,101 @@ When disabled, the chat model responds without vault context.`
     contextBudgetSetting.addSlider(slider =>
       slider
         .setLimits(512, 16384, 512)
-        .setValue(this.configManager.get('ragContextTokenBudget'))
+        .setValue(this.configManager.get('contextTokenBudget'))
         .setDynamicTooltip()
         .onChange(async value => {
-          await this.configManager.set('ragContextTokenBudget', value);
+          await this.configManager.set('contextTokenBudget', value);
         })
+    );
+
+    // Builtin tools settings subsection (collapsible)
+    const builtinToolsDetails = chatContainer.createEl('details', {
+      cls: 'sonar-settings-subsection',
+    });
+    builtinToolsDetails.createEl('summary', { text: 'Builtin tools settings' });
+    const builtinToolsContainer = builtinToolsDetails.createDiv();
+
+    builtinToolsContainer.createEl('h5', { text: 'Edit note' });
+
+    const editNoteAutoAllowSetting = new Setting(builtinToolsContainer).setName(
+      'Auto-allow edit operations'
+    );
+    this.renderMarkdownDesc(
+      editNoteAutoAllowSetting.descEl,
+      `Skip permission prompts for note editing.
+> [!warning] Enabling this allows the AI to create, modify, and overwrite notes without confirmation.`
+    );
+    editNoteAutoAllowSetting.addToggle(toggle =>
+      toggle
+        .setValue(this.configManager.get('editNoteAutoAllow'))
+        .onChange(async value => {
+          await this.configManager.set('editNoteAutoAllow', value);
+        })
+    );
+
+    builtinToolsContainer.createEl('h5', { text: 'Web search' });
+
+    const searxngUrlSetting = new Setting(builtinToolsContainer).setName(
+      'SearXNG URL'
+    );
+    this.renderMarkdownDesc(
+      searxngUrlSetting.descEl,
+      `URL of your SearXNG instance for web search.
+To set up SearXNG locally: \`docker run -d -p 8080:8080 searxng/searxng\`
+Then use \`http://localhost:8080\` as the URL.`
+    );
+    searxngUrlSetting.addText(text =>
+      text
+        .setPlaceholder('http://localhost:8080')
+        .setValue(this.configManager.get('searxngUrl'))
+        .onChange(async value => {
+          await this.configManager.set('searxngUrl', value);
+        })
+    );
+
+    // Extension tools subsection (collapsible)
+    const extensionToolsDetails = chatContainer.createEl('details', {
+      cls: 'sonar-settings-subsection',
+    });
+    extensionToolsDetails.createEl('summary', { text: 'Extension tools' });
+    const extensionToolsContainer = extensionToolsDetails.createDiv();
+
+    const extensionToolsPathSetting = new Setting(
+      extensionToolsContainer
+    ).setName('Extension tools folder');
+    this.renderMarkdownDesc(
+      extensionToolsPathSetting.descEl,
+      `Vault folder containing extension tool scripts (\`.js\` files).
+Extension tools are loaded from JavaScript files in this folder.
+See the plugin documentation for script format and examples.`
+    );
+    extensionToolsPathSetting.addText(text =>
+      text
+        .setPlaceholder('scripts/tools')
+        .setValue(this.configManager.get('extensionToolsPath'))
+        .onChange(async value => {
+          const normalized = value ? normalizePath(value) : '';
+          await this.configManager.set('extensionToolsPath', normalized);
+        })
+    );
+
+    const reloadExtensionToolsSetting = new Setting(
+      extensionToolsContainer
+    ).setName('Reload extension tools');
+    this.renderMarkdownDesc(
+      reloadExtensionToolsSetting.descEl,
+      'Reload extension tools from the configured folder. Use this after adding or modifying scripts.'
+    );
+    const loadedToolsDiv = extensionToolsContainer.createDiv({
+      cls: 'sonar-loaded-tools',
+    });
+    this.updateLoadedToolsList(loadedToolsDiv);
+    reloadExtensionToolsSetting.addButton(button =>
+      button.setButtonText('Reload').onClick(async () => {
+        const count = await this.plugin.reloadExtensionTools();
+        new Notice(`Reloaded ${count} extension tools`);
+        this.updateLoadedToolsList(loadedToolsDiv);
+      })
     );
 
     // Generation parameters subsection (collapsible)
@@ -1147,5 +1240,42 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
     this.statsDiv.createEl('p', {
       text: `Index path: ${this.configManager.get('indexPath')}`,
     });
+  }
+
+  private updateLoadedToolsList(container: HTMLElement): void {
+    container.empty();
+
+    const registry = this.plugin.chat?.getToolRegistry();
+    if (!registry) {
+      container.createEl('p', {
+        text: 'Chat not initialized',
+        cls: 'sonar-tools-list-empty',
+      });
+      return;
+    }
+
+    const extensionTools = registry.getExtensionTools();
+    if (extensionTools.length === 0) {
+      container.createEl('p', {
+        text: 'No extension tools loaded',
+        cls: 'sonar-tools-list-empty',
+      });
+      return;
+    }
+
+    const list = container.createEl('ul', { cls: 'sonar-tools-list' });
+    for (const tool of extensionTools) {
+      const item = list.createEl('li', {
+        attr: { title: tool.definition.description },
+      });
+      item.createEl('span', {
+        text: tool.displayName,
+        cls: 'sonar-tool-name',
+      });
+      item.createEl('span', {
+        text: ` (${tool.definition.name})`,
+        cls: 'sonar-tool-id',
+      });
+    }
   }
 }

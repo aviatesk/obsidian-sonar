@@ -23,11 +23,19 @@ import type { Reranker } from './src/Reranker';
 import { NoopReranker } from './src/Reranker';
 import { LlamaCppReranker } from './src/LlamaCppReranker';
 import { LlamaCppChat } from './src/LlamaCppChat';
-import { ChatContextBuilder } from './src/ChatContextBuilder';
 import { Chat } from './src/Chat';
 import { CHAT_VIEW_TYPE, ChatView } from './src/ui/ChatView';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { isAudioExtension } from './src/audio';
+import {
+  ToolRegistry,
+  createSearchVaultTool,
+  createReadFileTool,
+  createWebSearchTool,
+  createFetchUrlTool,
+  createEditNoteTool,
+  ExtensionToolLoader,
+} from './src/tools';
 
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
@@ -283,7 +291,7 @@ export default class SonarPlugin extends Plugin {
       await this.initializeChatModel(chatModel, chatModelIdentifier);
 
       // Recreate Chat with new model
-      this.createChat();
+      await this.createChat();
 
       this.log('Chat model reinitialized successfully');
     } catch (error) {
@@ -342,7 +350,7 @@ export default class SonarPlugin extends Plugin {
     }
 
     // Create Chat after chat model is ready
-    this.createChat();
+    await this.createChat();
 
     return 'ready';
   }
@@ -350,7 +358,7 @@ export default class SonarPlugin extends Plugin {
   /**
    * Create Chat instance (requires chatModel and searchManager to be ready)
    */
-  private createChat(): void {
+  private async createChat(): Promise<void> {
     if (
       !this.chatModel?.isReady() ||
       !this.searchManager ||
@@ -360,14 +368,40 @@ export default class SonarPlugin extends Plugin {
       return;
     }
 
-    const contextBuilder = new ChatContextBuilder(
-      this.searchManager,
-      this.chatModel,
-      this.metadataStore,
-      this.configManager
+    const toolRegistry = new ToolRegistry();
+
+    // Register built-in tools
+    toolRegistry.register(
+      createSearchVaultTool({
+        searchManager: this.searchManager,
+      })
     );
-    this.chat = new Chat(this.chatModel, contextBuilder, this.configManager);
-    this.log('Chat initialized');
+    toolRegistry.register(
+      createReadFileTool({
+        app: this.app,
+        metadataStore: this.metadataStore,
+      })
+    );
+    toolRegistry.register(
+      createEditNoteTool({
+        app: this.app,
+        configManager: this.configManager,
+      })
+    );
+    toolRegistry.register(
+      createWebSearchTool({
+        searxngUrl: this.configManager.get('searxngUrl'),
+      })
+    );
+    toolRegistry.register(createFetchUrlTool());
+
+    // Register extension tools
+    const extensionCount = await this.loadExtensionTools(toolRegistry);
+
+    this.chat = new Chat(this.chatModel, toolRegistry, this.configManager);
+    this.log(
+      `Chat initialized with ${toolRegistry.getAll().length} tools (${extensionCount} extensions)`
+    );
   }
 
   /**
@@ -383,6 +417,37 @@ export default class SonarPlugin extends Plugin {
       this.chatModel = null;
       this.log('Chat model cleaned up');
     }
+  }
+
+  /**
+   * Load extension tools into a registry
+   */
+  private async loadExtensionTools(
+    toolRegistry: ToolRegistry
+  ): Promise<number> {
+    const loader = new ExtensionToolLoader(this.app, this.configManager);
+    const tools = await loader.loadTools();
+    for (const tool of tools) {
+      toolRegistry.register(tool);
+    }
+    return tools.length;
+  }
+
+  /**
+   * Reload extension tools from the configured folder
+   * Returns the number of extension tools loaded
+   */
+  async reloadExtensionTools(): Promise<number> {
+    if (!this.chat) {
+      this.warn('Cannot reload extension tools: Chat not initialized');
+      return 0;
+    }
+
+    const toolRegistry = this.chat.getToolRegistry();
+    toolRegistry.unregisterExtensionTools();
+    const count = await this.loadExtensionTools(toolRegistry);
+    this.log(`Reloaded ${count} extension tools`);
+    return count;
   }
 
   async onload() {

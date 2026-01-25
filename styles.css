@@ -191,6 +191,8 @@ body.sonar-modal-open .hover-popover {
   list-style: none;
   padding: 8px 0;
   user-select: none;
+  display: flex;
+  align-items: center;
 }
 
 .sonar-settings-section summary::-webkit-details-marker,
@@ -206,12 +208,12 @@ body.sonar-modal-open .hover-popover {
   height: 0;
   border-style: solid;
   border-color: transparent transparent transparent var(--text-muted);
-  transition: transform 0.2s ease;
-  vertical-align: middle;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
 }
 
-.sonar-settings-section[open] summary::before,
-.sonar-settings-subsection[open] summary::before {
+.sonar-settings-section[open] > summary::before,
+.sonar-settings-subsection[open] > summary::before {
   transform: rotate(90deg);
 }
 
@@ -237,14 +239,14 @@ body.sonar-modal-open .hover-popover {
   margin-bottom: 0;
 }
 
-.sonar-settings-section summary {
+.sonar-settings-section > summary {
   font-size: 1.3em;
   font-weight: 600;
   color: var(--text-normal);
   margin-bottom: 16px;
 }
 
-.sonar-settings-section summary::before {
+.sonar-settings-section > summary::before {
   border-width: 6px 0 6px 10px;
   margin-right: 10px;
 }
@@ -252,20 +254,28 @@ body.sonar-modal-open .hover-popover {
 /* Settings subsection specific styles */
 .sonar-settings-subsection {
   margin-top: 16px;
-  padding: 12px;
+  padding: 12px 12px 12px 16px;
   background: var(--background-secondary);
   border-radius: 6px;
+  border-left: 3px solid var(--interactive-accent);
 }
 
-.sonar-settings-subsection summary {
+.sonar-settings-subsection > summary {
   font-size: 1em;
   font-weight: 500;
   color: var(--text-muted);
+  padding: 4px 0;
 }
 
-.sonar-settings-subsection summary::before {
+.sonar-settings-subsection > summary::before {
   border-width: 4px 0 4px 6px;
   margin-right: 8px;
+}
+
+.sonar-settings-subsection[open] > summary {
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 8px;
 }
 
 .sonar-stats-in-settings {
@@ -315,4 +325,35 @@ body.sonar-modal-open .hover-popover {
       display: none;
     }
   }
+}
+
+/* Extension tools list in settings */
+.sonar-loaded-tools {
+  margin-top: 8px;
+}
+
+.sonar-tools-list-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.sonar-tools-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+.sonar-tools-list li {
+  margin: 4px 0;
+}
+
+.sonar-tool-name {
+  color: var(--text-normal);
+}
+
+.sonar-tool-id {
+  color: var(--text-muted);
+  font-size: 11px;
 }

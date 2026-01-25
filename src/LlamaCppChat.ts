@@ -12,16 +12,24 @@ import {
   llamaServerChatCompletionStream,
   llamaServerTokenize,
   type ChatMessage,
+  type ChatMessageExtended,
+  type ToolCall,
+  type OpenAIToolDefinition,
   type ChatCompletionOptions,
   type ChatStreamDelta,
   type ChatStreamUsage,
+  type ChatStreamWithToolsResult,
 } from './llamaCppUtils';
 
 export type {
   ChatMessage,
+  ChatMessageExtended,
+  ToolCall,
+  OpenAIToolDefinition,
   ChatCompletionOptions,
   ChatStreamDelta,
   ChatStreamUsage,
+  ChatStreamWithToolsResult,
 };
 
 /**
@@ -132,21 +140,21 @@ export class LlamaCppChat extends WithLogging {
   }
 
   /**
-   * Send a streaming chat completion request
-   * @param messages Array of chat messages (conversation history)
+   * Send a streaming chat completion request with tool support
+   * @param messages Array of chat messages (supports extended format with tool messages)
+   * @param tools Array of tool definitions in OpenAI format
    * @param options Optional generation parameters
    * @param onDelta Callback for each token delta
-   * @param onDone Optional callback when streaming is complete
    * @param signal Optional AbortSignal for cancellation
-   * @returns Promise that resolves to usage information when complete
+   * @returns Promise that resolves to content, tool calls, and usage information
    */
   async chatStream(
-    messages: ChatMessage[],
+    messages: ChatMessageExtended[],
+    tools: OpenAIToolDefinition[],
     options: ChatCompletionOptions = {},
     onDelta: (delta: ChatStreamDelta) => void,
-    onDone?: () => void,
     signal?: AbortSignal
-  ): Promise<ChatStreamUsage> {
+  ): Promise<ChatStreamWithToolsResult> {
     if (!this.ready || !this.port) {
       throw new Error('Chat server not initialized. Call initialize() first.');
     }
@@ -165,9 +173,10 @@ export class LlamaCppChat extends WithLogging {
     return llamaServerChatCompletionStream(
       this.serverUrl,
       messages,
+      tools,
       mergedOptions,
       onDelta,
-      onDone,
+      undefined,
       signal
     );
   }
