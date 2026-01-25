@@ -1,12 +1,19 @@
-import { HoverPopover, ItemView, TFile, WorkspaceLeaf } from 'obsidian';
+import { HoverPopover, ItemView, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
+import { Mic, Square, createElement } from 'lucide';
 import type { ConfigManager } from '../ConfigManager';
 import type { ChatTurn } from '../Chat';
 import { createComponentLogger, type ComponentLogger } from '../WithLogging';
 import ChatViewContent from './ChatViewContent.svelte';
 import { FileSuggestModal, getWikilinkForFile } from './FileSuggestModal';
 import type SonarPlugin from '../../main';
+import {
+  VoiceRecorder,
+  deleteTempFile,
+  type RecordingState,
+} from '../VoiceRecorder';
+import { transcribeAudio, type AudioTranscriptionConfig } from '../audio';
 
 export const CHAT_VIEW_TYPE = 'chat-view';
 
@@ -206,6 +213,9 @@ export class ChatView extends ItemView {
 
   private inputEl: HTMLTextAreaElement | null = null;
   private sendButton: HTMLButtonElement | null = null;
+  private recordButton: HTMLButtonElement | null = null;
+  private voiceRecorder: VoiceRecorder | null = null;
+  private autoSendOnStop = false;
   private storeUnsubscribe: (() => void) | null = null;
 
   private createInputArea(): void {
@@ -233,6 +243,26 @@ export class ChatView extends ItemView {
     });
 
     inputContainer.appendChild(this.inputEl);
+
+    // Only show voice recording button if whisper is configured
+    if (this.configManager.get('audioWhisperModelPath')) {
+      this.recordButton = inputContainer.createEl('button', {
+        cls: 'rag-record-button',
+      });
+      this.setRecordButtonIcon('mic');
+      this.recordButton.title =
+        'Record voice message (Cmd+click to send immediately)';
+      this.recordButton.addEventListener('click', e =>
+        this.handleRecordClick(e)
+      );
+      this.voiceRecorder = new VoiceRecorder({
+        onStateChange: state => this.updateRecordButtonState(state),
+        onError: error => {
+          this.logger.error(`Voice recording error: ${error.message}`);
+          new Notice(`Voice recording failed: ${error.message}`);
+        },
+      });
+    }
 
     this.sendButton = inputContainer.createEl('button', {
       cls: 'rag-send-button',
@@ -441,6 +471,104 @@ export class ChatView extends ItemView {
     this.handleSendMessage(message);
   }
 
+  private setRecordButtonIcon(iconType: 'mic' | 'stop' | 'none'): void {
+    if (!this.recordButton) return;
+    this.recordButton.empty();
+    if (iconType === 'none') return;
+    const IconComponent = iconType === 'mic' ? Mic : Square;
+    this.recordButton.appendChild(createElement(IconComponent));
+  }
+
+  private updateRecordButtonState(state: RecordingState): void {
+    if (!this.recordButton) return;
+
+    this.recordButton.classList.toggle('is-recording', state === 'recording');
+    this.recordButton.classList.toggle('is-processing', state === 'processing');
+
+    if (state === 'recording') {
+      this.setRecordButtonIcon('stop');
+      this.recordButton.title = this.autoSendOnStop
+        ? 'Stop and send immediately'
+        : 'Stop recording';
+    } else if (state === 'processing') {
+      this.setRecordButtonIcon('none');
+      this.recordButton.title = 'Transcribing...';
+    } else {
+      this.setRecordButtonIcon('mic');
+      this.recordButton.title =
+        'Record voice message (Cmd+click to send immediately)';
+    }
+  }
+
+  private async handleRecordClick(event: MouseEvent): Promise<void> {
+    if (!this.voiceRecorder) return;
+
+    const state = this.voiceRecorder.getState();
+
+    if (state === 'idle') {
+      this.autoSendOnStop = event.metaKey;
+      await this.voiceRecorder.startRecording();
+    } else if (state === 'recording') {
+      await this.handleStopRecording();
+    }
+    // Ignore clicks while processing
+  }
+
+  private async handleStopRecording(): Promise<void> {
+    if (!this.voiceRecorder) return;
+
+    const shouldAutoSend = this.autoSendOnStop;
+    this.autoSendOnStop = false;
+
+    const tempPath = await this.voiceRecorder.stopRecording();
+    if (!tempPath) return;
+
+    try {
+      const config = this.getAudioConfig();
+      if (!config.whisperModelPath) {
+        new Notice('Whisper model path not configured. Check settings.');
+        return;
+      }
+
+      const result = await transcribeAudio(tempPath, {
+        config,
+        logger: this.logger,
+      });
+
+      if (result.text && this.inputEl) {
+        // Append to existing input (in case user typed something)
+        const existingText = this.inputEl.value;
+        const separator =
+          existingText && !existingText.endsWith(' ') ? ' ' : '';
+        this.inputEl.value = existingText + separator + result.text;
+        this.inputEl.style.height = 'auto';
+        this.inputEl.style.height = `${this.inputEl.scrollHeight}px`;
+
+        if (shouldAutoSend) {
+          this.submitMessage();
+        } else {
+          this.inputEl.focus();
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Transcription failed: ${error}`);
+      new Notice(
+        `Transcription failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    } finally {
+      deleteTempFile(tempPath);
+    }
+  }
+
+  private getAudioConfig(): AudioTranscriptionConfig {
+    return {
+      whisperCliPath: this.configManager.get('audioWhisperCliPath'),
+      whisperModelPath: this.configManager.get('audioWhisperModelPath'),
+      ffmpegPath: this.configManager.get('audioFfmpegPath'),
+      language: this.configManager.get('audioTranscriptionLanguage'),
+    };
+  }
+
   async onSonarInitialized(): Promise<void> {
     const currentState = get(this.chatViewStore);
     // Retry lazy init if view was opened before Sonar finished initializing
@@ -466,6 +594,10 @@ export class ChatView extends ItemView {
 
   async onClose(): Promise<void> {
     this.unregisterKeyboardShortcuts();
+    if (this.voiceRecorder) {
+      this.voiceRecorder.cancelRecording();
+      this.voiceRecorder = null;
+    }
     if (this.storeUnsubscribe) {
       this.storeUnsubscribe();
       this.storeUnsubscribe = null;

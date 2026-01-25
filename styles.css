@@ -72,9 +72,8 @@ body.sonar-modal-open .hover-popover {
 }
 
 .rag-send-button {
-  padding: 8px 16px;
+  padding: 8px 12px;
   min-height: 36px;
-  min-width: 60px;
   background: var(--interactive-accent);
   color: var(--text-on-accent);
   border: none;
@@ -120,6 +119,63 @@ body.sonar-modal-open .hover-popover {
   animation: none;
   font-size: 14px;
   font-weight: 500;
+}
+
+.rag-record-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  min-height: 36px;
+  background: var(--background-modifier-border);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+}
+
+.rag-record-button svg {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.rag-record-button:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.rag-record-button.is-recording {
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+  animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+.rag-record-button.is-processing {
+  position: relative;
+  pointer-events: none;
+}
+
+.rag-record-button.is-processing::after {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--text-muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes pulse-recording {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 @keyframes spin {
