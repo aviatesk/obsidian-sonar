@@ -1,10 +1,14 @@
 /*
- * NOTE: Prefer defining styles in Svelte components whenever possible.
- * This file should only contain:
- * - Global styles that apply across multiple components
- * - Styles for non-Svelte components (modals, settings, etc.)
- * - Obsidian-specific overrides that need global scope
- */
+Sonar - Deep knowledge retrieval for Obsidian
+Copyright (C) 2026 Shuhei Kadowaki
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+NOTE: Prefer defining styles in Svelte components whenever possible.
+This file should only contain:
+- Global styles that apply across multiple components
+- Styles for non-Svelte components (modals, settings, etc.)
+- Obsidian-specific overrides that need global scope
+*/
 
 /* Semantic Search Modal */
 .semantic-search-modal {
