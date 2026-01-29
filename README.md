@@ -118,6 +118,31 @@ Configure audio transcription in Sonar settings:
 - **Transcription language**: Language code for transcription (default: `auto`
   for auto-detection)
 
+## Web search (optional)
+
+Sonar can search the web using [SearXNG](https://github.com/searxng/searxng), a
+privacy-respecting metasearch engine.
+
+### Requirements
+
+- A running SearXNG instance with JSON format enabled
+- See [SearXNG documentation](https://docs.searxng.org/admin/installation.html)
+  for setup instructions
+
+### Configuration
+
+1. Ensure your SearXNG instance has JSON output enabled in `settings.yml`:
+
+   ```yaml
+   search:
+     formats:
+       - html
+       - json
+   ```
+
+2. Configure in Sonar settings:
+   - **SearXNG URL**: Your instance URL (default: `http://localhost:8080`)
+
 ## Development
 
 See [CLAUDE.md](./CLAUDE.md) for detailed development guidelines.

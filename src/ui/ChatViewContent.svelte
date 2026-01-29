@@ -3,10 +3,16 @@
   import type { Writable } from 'svelte/store';
   import type { ConfigManager } from '../ConfigManager';
   import type { ChatTurn } from '../Chat';
+  import type { ToolConfig, ToolPermissionRequest } from '../tools';
   import { MarkdownRenderingManager } from './MarkdownRenderingManager';
   import { isSendShortcut } from './ChatView';
   import { onDestroy, tick } from 'svelte';
-  import { Copy, Pencil, Trash2, createElement } from 'lucide';
+  import { Copy, Pencil, RefreshCw, Trash2, Wrench, createElement } from 'lucide';
+
+  type ProcessingPhase =
+    | { type: 'calling_tool'; toolName: string }
+    | { type: 'awaiting_permission'; request: ToolPermissionRequest }
+    | { type: 'generating' };
 
   interface ChatViewState {
     status: 'initializing' | 'ready' | 'processing' | 'error';
@@ -14,9 +20,9 @@
     errorMessage: string | null;
     streamingContent: string;
     pendingUserMessage: string | null;
-    enableContext: boolean;
     enableThinking: boolean;
-    processingPhase: 'retrieving' | 'generating' | null;
+    tools: ToolConfig[];
+    processingPhase: ProcessingPhase | null;
     modelName: string;
   }
 
@@ -25,17 +31,20 @@
     configManager: ConfigManager;
     store: Writable<ChatViewState>;
     onClearHistory: () => void;
-    onToggleContext: () => void;
     onToggleThinking: () => void;
+    onToggleTool: (toolName: string) => void;
+    onReloadExtensionTools: () => void;
     onHoverLink: (event: MouseEvent, linktext: string) => void;
     onDeleteTurn: (index: number) => void;
     onEditTurn: (index: number, message: string) => void;
+    onPermissionResponse: (permitted: boolean) => void;
   }
 
-  let { app, configManager, store, onClearHistory, onToggleContext, onToggleThinking, onHoverLink, onDeleteTurn, onEditTurn }: Props = $props();
+  let { app, configManager, store, onClearHistory, onToggleThinking, onToggleTool, onReloadExtensionTools, onHoverLink, onDeleteTurn, onEditTurn, onPermissionResponse }: Props = $props();
 
   let editingIndex = $state<number | null>(null);
   let editingText = $state('');
+  let toolsExpanded = $state(false);
 
   let messagesContainer: HTMLElement;
 
@@ -207,24 +216,44 @@
       cancelEditing();
     }
   }
+
+  function hasEnabledTools(): boolean {
+    return $store.tools.some(t => t.enabled);
+  }
+
+  function getEnabledToolCount(): number {
+    return $store.tools.filter(t => t.enabled).length;
+  }
+
+  function toggleToolsExpanded(): void {
+    toolsExpanded = !toolsExpanded;
+  }
+
+  function getBuiltinTools(): ToolConfig[] {
+    return $store.tools.filter(t => t.isBuiltin);
+  }
+
+  function getExtensionTools(): ToolConfig[] {
+    return $store.tools.filter(t => !t.isBuiltin);
+  }
 </script>
 
 <div class="rag-view">
   <div class="rag-header">
-    <div class="header-title">
+    <div class="header-left">
       {#if $store.modelName}
         <h3 class="model-name">{$store.modelName}</h3>
       {/if}
+      {#if $store.tools.length > 0}
+        <button class="tools-header" onclick={toggleToolsExpanded}>
+          <span class="tools-icon" use:setupIcon={Wrench}></span>
+          <span class="tools-label">Tools</span>
+          <span class="tools-count">{getEnabledToolCount()}/{$store.tools.length}</span>
+          <span class="tools-chevron" class:expanded={toolsExpanded}>▸</span>
+        </button>
+      {/if}
     </div>
     <div class="header-controls">
-      <button
-        class="context-toggle"
-        class:active={$store.enableContext}
-        onclick={onToggleContext}
-        title={$store.enableContext ? 'Context retrieval enabled' : 'Context retrieval disabled'}
-      >
-        RAG
-      </button>
       <button
         class="context-toggle"
         class:active={$store.enableThinking}
@@ -245,6 +274,50 @@
     </div>
   </div>
 
+  {#if $store.tools.length > 0 && toolsExpanded}
+    <div class="tools-bar">
+      {#if getBuiltinTools().length > 0}
+        <div class="tools-group">
+          <span class="tools-group-label">Built-in</span>
+          <div class="tools-list">
+            {#each getBuiltinTools() as tool (tool.name)}
+              <button
+                class="tool-toggle"
+                class:active={tool.enabled}
+                onclick={() => onToggleTool(tool.name)}
+                title={tool.description}
+              >
+                {tool.displayName}
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
+      <div class="tools-group">
+        <span class="tools-group-label">Extensions</span>
+        <div class="tools-list">
+          {#each getExtensionTools() as tool (tool.name)}
+            <button
+              class="tool-toggle"
+              class:active={tool.enabled}
+              onclick={() => onToggleTool(tool.name)}
+              title={tool.description}
+            >
+              {tool.displayName}
+            </button>
+          {/each}
+          <button
+            class="tool-reload"
+            onclick={onReloadExtensionTools}
+            title="Reload extension tools"
+          >
+            <span use:setupIcon={RefreshCw}></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <div
     class="messages-container"
     bind:this={messagesContainer}
@@ -257,12 +330,12 @@
         {#if $store.status === 'initializing'}
           <p class="thinking-indicator">Initializing...</p>
           <p class="hint">Waiting for chat model to load.</p>
-        {:else if $store.enableContext}
+        {:else if hasEnabledTools()}
           <p>Ask a question about your notes.</p>
-          <p class="hint">Context will be retrieved from your vault to answer your questions.</p>
+          <p class="hint">Context will be retrieved using enabled tools.</p>
         {:else}
           <p>Ask a question.</p>
-          <p class="hint">Use [[note]] to include specific notes as context.</p>
+          <p class="hint">Enable tools above or use [[note]] to include specific notes as context.</p>
         {/if}
       </div>
     {:else}
@@ -356,8 +429,17 @@
             {#if $store.streamingContent}
               <span class="streaming-text" use:setMessageElement={$store.streamingContent}></span>
               <span class="cursor-blink">|</span>
-            {:else if $store.processingPhase === 'retrieving'}
-              <span class="thinking-indicator">Retrieving context...</span>
+            {:else if $store.processingPhase?.type === 'calling_tool'}
+              <span class="thinking-indicator">Calling {$store.processingPhase.toolName}...</span>
+            {:else if $store.processingPhase?.type === 'awaiting_permission'}
+              <div class="permission-request">
+                <div class="permission-header">Allow {$store.processingPhase.request.displayName}?</div>
+                <pre class="permission-args">{JSON.stringify($store.processingPhase.request.args, null, 2)}</pre>
+                <div class="permission-buttons">
+                  <button class="mod-warning" onclick={() => onPermissionResponse(false)}>Deny</button>
+                  <button class="mod-cta" onclick={() => onPermissionResponse(true)}>Allow</button>
+                </div>
+              </div>
             {:else}
               <span class="thinking-indicator">Generating...</span>
             {/if}
@@ -399,7 +481,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--background-modifier-border);
     position: relative;
@@ -407,10 +489,10 @@
     flex-shrink: 0;
   }
 
-  .header-title {
+  .header-left {
     display: flex;
-    align-items: baseline;
-    gap: 8px;
+    align-items: center;
+    gap: 12px;
   }
 
   .rag-header h3 {
@@ -429,6 +511,137 @@
     display: flex;
     gap: 8px;
     align-items: center;
+  }
+
+  .tools-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .tools-header:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+  }
+
+  .tools-icon {
+    display: flex;
+    align-items: center;
+  }
+
+  .tools-icon :global(svg) {
+    width: 12px;
+    height: 12px;
+  }
+
+  .tools-label {
+    font-size: 11px;
+  }
+
+  .tools-count {
+    font-size: 10px;
+    color: var(--text-faint);
+  }
+
+  .tools-chevron {
+    font-size: 10px;
+    transition: transform 0.15s ease;
+  }
+
+  .tools-chevron.expanded {
+    transform: rotate(90deg);
+  }
+
+  .tools-bar {
+    position: relative;
+    z-index: 1;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tools-group {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .tools-group-label {
+    font-size: 9px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-top: 4px;
+    min-width: 55px;
+    flex-shrink: 0;
+  }
+
+  .tools-list {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .tool-toggle {
+    padding: 3px 8px;
+    font-size: 10px;
+    font-weight: 500;
+    background: var(--background-modifier-border);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.15s ease;
+  }
+
+  .tool-toggle:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
+
+  .tool-toggle.active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+  }
+
+  .tool-toggle.active:hover {
+    background: var(--interactive-accent-hover);
+  }
+
+  .tool-reload {
+    padding: 3px 6px;
+    background: transparent;
+    border: 1px dashed var(--background-modifier-border);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+  }
+
+  .tool-reload:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+    border-color: var(--text-muted);
+  }
+
+  .tool-reload :global(svg) {
+    width: 12px;
+    height: 12px;
   }
 
   .context-toggle {
@@ -719,5 +932,41 @@
   .edit-cancel:hover {
     background: var(--background-modifier-hover);
     color: var(--text-normal);
+  }
+
+  .permission-request {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .permission-header {
+    font-weight: 600;
+  }
+
+  .permission-args {
+    background: var(--background-primary);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    margin: 0;
+    overflow-x: auto;
+    max-height: 150px;
+    overflow-y: auto;
+  }
+
+  .permission-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-start;
+  }
+
+  .permission-buttons button {
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    flex-shrink: 0;
   }
 </style>

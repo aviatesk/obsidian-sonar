@@ -64,11 +64,8 @@ export class FileSuggestModal extends FuzzySuggestModal<TFile> {
 
 /**
  * Get the wikilink text for a file
- * Markdown files use basename, other files include extension
+ * Uses vault-relative path without extension for unambiguous references
  */
 export function getWikilinkForFile(file: TFile): string {
-  if (file.extension === 'md') {
-    return file.basename;
-  }
-  return file.name;
+  return file.path.replace(/\.md$/, '');
 }

@@ -521,6 +521,60 @@ export interface ChatMessage {
 }
 
 /**
+ * Tool call from model response (OpenAI-compatible format)
+ */
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string; // JSON string
+  };
+}
+
+/**
+ * Tool result message for returning tool execution results to the model
+ */
+export interface ToolMessage {
+  role: 'tool';
+  tool_call_id: string;
+  content: string;
+}
+
+/**
+ * Assistant message with optional tool calls
+ */
+export interface AssistantMessageWithToolCalls {
+  role: 'assistant';
+  content?: string;
+  tool_calls?: ToolCall[];
+}
+
+/**
+ * Extended ChatMessage to support tool calling
+ */
+export type ChatMessageExtended =
+  | ChatMessage
+  | ToolMessage
+  | AssistantMessageWithToolCalls;
+
+/**
+ * Tool definition for OpenAI-compatible function calling
+ */
+export interface OpenAIToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, unknown>;
+      required?: string[];
+    };
+  };
+}
+
+/**
  * Options for chat completion request
  */
 export interface ChatCompletionOptions {
@@ -532,82 +586,6 @@ export interface ChatCompletionOptions {
   idSlot?: number;
   cachePrompt?: boolean;
   enableThinking?: boolean;
-}
-
-/**
- * Response from chat completion
- */
-export interface ChatCompletionResponse {
-  content: string;
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-}
-
-/**
- * Send a chat completion request to llama-server
- *
- * @param serverUrl - Base URL of llama-server (e.g., "http://localhost:8080")
- * @param messages - Array of chat messages
- * @param options - Optional parameters for generation
- * @returns Promise that resolves to the completion response
- */
-export async function llamaServerChatCompletion(
-  serverUrl: string,
-  messages: ChatMessage[],
-  options: ChatCompletionOptions = {}
-): Promise<ChatCompletionResponse> {
-  const body: Record<string, unknown> = {
-    messages,
-    cache_prompt: options.cachePrompt ?? true,
-  };
-
-  if (options.temperature !== undefined) body.temperature = options.temperature;
-  if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
-  if (options.topP !== undefined) body.top_p = options.topP;
-  if (options.topK !== undefined) body.top_k = options.topK;
-  if (options.presencePenalty !== undefined)
-    body.presence_penalty = options.presencePenalty;
-  if (options.idSlot !== undefined) body.id_slot = options.idSlot;
-  if (options.enableThinking !== undefined)
-    body.chat_template_kwargs = { enable_thinking: options.enableThinking };
-
-  const response = await fetch(`${serverUrl}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Chat completion request failed: ${response.status} ${response.statusText}. Body: ${errorText}`
-    );
-  }
-
-  const data = (await response.json()) as {
-    choices: Array<{ message: { content: string } }>;
-    usage?: {
-      prompt_tokens: number;
-      completion_tokens: number;
-      total_tokens: number;
-    };
-  };
-
-  if (
-    !data.choices ||
-    !Array.isArray(data.choices) ||
-    data.choices.length === 0
-  ) {
-    throw new Error('Invalid chat completion response from llama.cpp API');
-  }
-
-  return {
-    content: data.choices[0].message.content,
-    promptTokens: data.usage?.prompt_tokens ?? 0,
-    completionTokens: data.usage?.completion_tokens ?? 0,
-    totalTokens: data.usage?.total_tokens ?? 0,
-  };
 }
 
 /**
@@ -627,30 +605,45 @@ export interface ChatStreamUsage {
 }
 
 /**
- * Send a streaming chat completion request to llama-server
+ * Result from streaming chat completion with tools
+ */
+export interface ChatStreamWithToolsResult {
+  content: string;
+  toolCalls: ToolCall[] | null;
+  usage: ChatStreamUsage;
+}
+
+/**
+ * Send a streaming chat completion request with tool support to llama-server
  * Uses Server-Sent Events (SSE) for real-time token streaming
  *
  * @param serverUrl - Base URL of llama-server
- * @param messages - Array of chat messages
+ * @param messages - Array of chat messages (supports extended format with tool messages)
+ * @param tools - Array of tool definitions in OpenAI format
  * @param options - Optional parameters for generation
  * @param onDelta - Callback for each delta (new token)
  * @param onDone - Callback when streaming is complete
  * @param signal - Optional AbortSignal for cancellation
- * @returns Promise that resolves to usage information when complete
+ * @returns Promise that resolves to content, tool calls, and usage information
  */
 export async function llamaServerChatCompletionStream(
   serverUrl: string,
-  messages: ChatMessage[],
+  messages: ChatMessageExtended[],
+  tools: OpenAIToolDefinition[],
   options: ChatCompletionOptions = {},
   onDelta: (delta: ChatStreamDelta) => void,
   onDone?: () => void,
   signal?: AbortSignal
-): Promise<ChatStreamUsage> {
+): Promise<ChatStreamWithToolsResult> {
   const body: Record<string, unknown> = {
     messages,
     stream: true,
     cache_prompt: options.cachePrompt ?? true,
   };
+
+  if (tools.length > 0) {
+    body.tools = tools;
+  }
 
   if (options.temperature !== undefined) body.temperature = options.temperature;
   if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
@@ -688,6 +681,8 @@ export async function llamaServerChatCompletionStream(
     completionTokens: 0,
     totalTokens: 0,
   };
+  let content = '';
+  let toolCalls: ToolCall[] | null = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -709,7 +704,21 @@ export async function llamaServerChatCompletionStream(
 
       try {
         const parsed = JSON.parse(data) as {
-          choices?: Array<{ delta?: { content?: string } }>;
+          choices?: Array<{
+            delta?: {
+              content?: string;
+              tool_calls?: Array<{
+                index: number;
+                id?: string;
+                type?: string;
+                function?: {
+                  name?: string;
+                  arguments?: string;
+                };
+              }>;
+            };
+            finish_reason?: string | null;
+          }>;
           usage?: {
             prompt_tokens: number;
             completion_tokens: number;
@@ -717,8 +726,43 @@ export async function llamaServerChatCompletionStream(
           };
         };
 
-        if (parsed.choices?.[0]?.delta?.content) {
-          onDelta({ content: parsed.choices[0].delta.content });
+        const choice = parsed.choices?.[0];
+
+        // Handle content delta
+        if (choice?.delta?.content) {
+          content += choice.delta.content;
+          onDelta({ content: choice.delta.content });
+        }
+
+        // Handle tool calls delta (streamed incrementally)
+        if (choice?.delta?.tool_calls) {
+          if (!toolCalls) {
+            toolCalls = [];
+          }
+
+          for (const tcDelta of choice.delta.tool_calls) {
+            const idx = tcDelta.index;
+
+            // Initialize tool call entry if needed
+            while (toolCalls.length <= idx) {
+              toolCalls.push({
+                id: '',
+                type: 'function',
+                function: { name: '', arguments: '' },
+              });
+            }
+
+            // Update fields incrementally
+            if (tcDelta.id) {
+              toolCalls[idx].id = tcDelta.id;
+            }
+            if (tcDelta.function?.name) {
+              toolCalls[idx].function.name += tcDelta.function.name;
+            }
+            if (tcDelta.function?.arguments) {
+              toolCalls[idx].function.arguments += tcDelta.function.arguments;
+            }
+          }
         }
 
         if (parsed.usage) {
@@ -734,7 +778,7 @@ export async function llamaServerChatCompletionStream(
     }
   }
 
-  return usage;
+  return { content, toolCalls, usage };
 }
 
 export async function killServerProcess(

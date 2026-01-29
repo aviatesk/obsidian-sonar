@@ -60,11 +60,22 @@ export interface SonarSettings {
   // ==================
   chatMaxTokens: number; // Maximum tokens for response generation
   chatEnableThinking: boolean; // Enable thinking mode for Qwen3 (default: false)
+  agentMaxIterations: number; // Maximum iterations for agent loop (default: 5)
 
-  // RAG configuration
+  // Context settings
   // =================
-  ragEnableContext: boolean; // Enable context retrieval from vault (default: true)
-  ragContextTokenBudget: number; // Maximum tokens for RAG context
+  contextTokenBudget: number; // Maximum tokens for context
+
+  // Builtin tools settings
+  // ----------------------
+  // Edit note
+  editNoteAutoAllow: boolean; // Skip permission prompt for edit_note tool (default: false)
+  // Web search
+  searxngUrl: string; // SearXNG instance URL (e.g., http://localhost:8080)
+
+  // Extension tools
+  // ---------------
+  extensionToolsPath: string; // Vault folder containing extension tool scripts (.js files)
 
   // Search parameters
   // =================
@@ -142,11 +153,20 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   // ==================
   chatMaxTokens: 8192,
   chatEnableThinking: false,
+  agentMaxIterations: 5,
 
-  // RAG configuration
+  // Context settings
   // =================
-  ragEnableContext: true,
-  ragContextTokenBudget: 4096,
+  contextTokenBudget: 8192,
+
+  // Builtin tools settings
+  // ----------------------
+  // Edit note
+  editNoteAutoAllow: false,
+  // Web search
+  searxngUrl: 'http://localhost:8080',
+  // Extension tools
+  extensionToolsPath: '',
 
   // Search parameters
   // =================

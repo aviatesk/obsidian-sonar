@@ -4,6 +4,7 @@ import { writable, get } from 'svelte/store';
 import { Mic, Square, createElement } from 'lucide';
 import type { ConfigManager } from '../ConfigManager';
 import type { ChatTurn } from '../Chat';
+import type { ToolConfig, ToolPermissionRequest } from '../tools';
 import { createComponentLogger, type ComponentLogger } from '../WithLogging';
 import ChatViewContent from './ChatViewContent.svelte';
 import { FileSuggestModal, getWikilinkForFile } from './FileSuggestModal';
@@ -26,7 +27,10 @@ export function isSendShortcut(e: KeyboardEvent): boolean {
 
 export type ChatViewStatus = 'initializing' | 'ready' | 'processing' | 'error';
 
-type ProcessingPhase = 'retrieving' | 'generating';
+type ProcessingPhase =
+  | { type: 'calling_tool'; toolName: string }
+  | { type: 'awaiting_permission'; request: ToolPermissionRequest }
+  | { type: 'generating' };
 
 interface ChatViewState {
   status: ChatViewStatus;
@@ -34,8 +38,8 @@ interface ChatViewState {
   errorMessage: string | null;
   streamingContent: string;
   pendingUserMessage: string | null;
-  enableContext: boolean;
   enableThinking: boolean;
+  tools: ToolConfig[];
   processingPhase: ProcessingPhase | null;
   modelName: string;
 }
@@ -49,6 +53,7 @@ export class ChatView extends ItemView {
   private svelteComponent: ReturnType<typeof mount> | null = null;
   hoverPopover: HoverPopover | null = null; // HoverParent interface
   private abortController: AbortController | null = null;
+  private permissionResolver: ((permitted: boolean) => void) | null = null;
 
   private chatViewStore = writable<ChatViewState>({
     status: 'initializing',
@@ -56,8 +61,8 @@ export class ChatView extends ItemView {
     errorMessage: null,
     streamingContent: '',
     pendingUserMessage: null,
-    enableContext: true,
     enableThinking: false,
+    tools: [],
     processingPhase: null,
     modelName: '',
   });
@@ -107,7 +112,6 @@ export class ChatView extends ItemView {
     this.contentEl.addClass('rag-view-container');
 
     this.updateStore({
-      enableContext: this.configManager.get('ragEnableContext'),
       enableThinking: this.configManager.get('chatEnableThinking'),
       modelName: this.getShortModelName(),
     });
@@ -119,7 +123,10 @@ export class ChatView extends ItemView {
     // Lazy-load chat model when view is opened
     const result = await this.plugin.initializeChatModelLazy();
     if (result === 'ready') {
-      this.updateStore({ status: 'ready' });
+      this.updateStore({
+        status: 'ready',
+        tools: this.getToolConfigs(),
+      });
     } else if (result === 'failed') {
       this.updateStore({
         status: 'error',
@@ -127,6 +134,11 @@ export class ChatView extends ItemView {
       });
     }
     // If 'pending', keep 'initializing' state and wait for onSonarInitialized
+  }
+
+  private getToolConfigs(): ToolConfig[] {
+    const registry = this.plugin.chat?.getToolRegistry();
+    return registry?.getToolConfigs() ?? [];
   }
 
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -167,22 +179,18 @@ export class ChatView extends ItemView {
         configManager: this.configManager,
         store: this.chatViewStore,
         onClearHistory: () => this.handleClearHistory(),
-        onToggleContext: () => this.handleToggleContext(),
         onToggleThinking: () => this.handleToggleThinking(),
+        onToggleTool: (toolName: string) => this.handleToggleTool(toolName),
+        onReloadExtensionTools: () => this.handleReloadExtensionTools(),
         onHoverLink: (event: MouseEvent, linktext: string) =>
           this.handleHoverLink(event, linktext),
         onDeleteTurn: (index: number) => this.handleDeleteTurn(index),
         onEditTurn: (index: number, message: string) =>
           this.handleEditTurn(index, message),
+        onPermissionResponse: (permitted: boolean) =>
+          this.handlePermissionResponse(permitted),
       },
     });
-  }
-
-  private handleToggleContext(): void {
-    const currentValue = this.configManager.get('ragEnableContext');
-    const newValue = !currentValue;
-    this.configManager.set('ragEnableContext', newValue);
-    this.updateStore({ enableContext: newValue });
   }
 
   private handleToggleThinking(): void {
@@ -192,9 +200,38 @@ export class ChatView extends ItemView {
     this.updateStore({ enableThinking: newValue });
   }
 
+  private handlePermissionResponse(permitted: boolean): void {
+    if (this.permissionResolver) {
+      this.permissionResolver(permitted);
+      this.permissionResolver = null;
+      this.updateStore({
+        processingPhase: { type: 'generating' },
+      });
+    }
+  }
+
+  private handleToggleTool(toolName: string): void {
+    const registry = this.plugin.chat?.getToolRegistry();
+    if (!registry) return;
+
+    registry.toggle(toolName);
+    this.updateStore({ tools: this.getToolConfigs() });
+  }
+
+  private async handleReloadExtensionTools(): Promise<void> {
+    const count = await this.plugin.reloadExtensionTools();
+    this.updateStore({ tools: this.getToolConfigs() });
+    new Notice(`Reloaded ${count} extension tools`);
+  }
+
   private handleCancel(): void {
     if (this.abortController) {
       this.logger.log('Cancelling generation...');
+      // Resolve pending permission request as denied before aborting
+      if (this.permissionResolver) {
+        this.permissionResolver(false);
+        this.permissionResolver = null;
+      }
       this.abortController.abort();
       this.abortController = null;
     }
@@ -224,6 +261,7 @@ export class ChatView extends ItemView {
     this.inputEl = document.createElement('textarea');
     this.inputEl.className = 'rag-message-input';
     this.inputEl.rows = 1;
+    this.inputEl.placeholder = 'Ask a question... (Cmd+Ctrl+Enter to send)';
 
     // Auto-resize textarea based on content and detect wikilink trigger
     this.inputEl.addEventListener('input', e => {
@@ -277,17 +315,12 @@ export class ChatView extends ItemView {
       }
     });
 
-    // Subscribe to store to update button and placeholder state
+    // Subscribe to store to update button state
     this.storeUnsubscribe = this.chatViewStore.subscribe(state => {
       if (this.sendButton) {
         const isProcessing = state.status === 'processing';
         this.sendButton.textContent = isProcessing ? '' : 'Send';
         this.sendButton.classList.toggle('is-loading', isProcessing);
-      }
-      if (this.inputEl) {
-        this.inputEl.placeholder = state.enableContext
-          ? 'Ask about your notes... (Cmd+Ctrl+Enter to send)'
-          : 'Ask a question... (Cmd+Ctrl+Enter to send)';
       }
     });
   }
@@ -370,18 +403,13 @@ export class ChatView extends ItemView {
       return;
     }
 
-    const enableContext = this.configManager.get('ragEnableContext');
-    const initialPhase: ProcessingPhase = enableContext
-      ? 'retrieving'
-      : 'generating';
-
     this.abortController = new AbortController();
 
     this.updateStore({
       status: 'processing',
       streamingContent: '',
       pendingUserMessage: message,
-      processingPhase: initialPhase,
+      processingPhase: { type: 'generating' },
       errorMessage: null,
     });
 
@@ -392,10 +420,30 @@ export class ChatView extends ItemView {
           const currentState = get(this.chatViewStore);
           this.updateStore({
             streamingContent: currentState.streamingContent + delta.content,
+            processingPhase: { type: 'generating' },
           });
         },
-        () => {
-          this.updateStore({ processingPhase: 'generating' });
+        (toolName: string, phase: 'calling' | 'done') => {
+          if (phase === 'calling') {
+            this.updateStore({
+              processingPhase: { type: 'calling_tool', toolName },
+            });
+          } else {
+            this.updateStore({
+              processingPhase: { type: 'generating' },
+            });
+          }
+        },
+        async request => {
+          return new Promise<boolean>(resolve => {
+            this.permissionResolver = resolve;
+            this.updateStore({
+              processingPhase: {
+                type: 'awaiting_permission',
+                request,
+              },
+            });
+          });
         },
         this.abortController.signal
       );
@@ -576,7 +624,11 @@ export class ChatView extends ItemView {
       const result = await this.plugin.initializeChatModelLazy();
       switch (result) {
         case 'ready':
-          this.updateStore({ status: 'ready', errorMessage: null });
+          this.updateStore({
+            status: 'ready',
+            errorMessage: null,
+            tools: this.getToolConfigs(),
+          });
           break;
         case 'failed':
           this.updateStore({
