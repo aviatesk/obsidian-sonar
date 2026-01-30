@@ -11,7 +11,7 @@ import type { MarkdownPostProcessorContext } from 'obsidian';
 import { EditorView } from '@codemirror/view';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
-import { sonarState, type SonarModelState } from '../SonarModelState';
+import { sonarState, type SonarModelState } from '../SonarState';
 import type { SearchResult } from '../SearchManager';
 import { processQuery, type QueryOptions } from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';

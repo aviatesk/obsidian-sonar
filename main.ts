@@ -23,7 +23,7 @@ import { CHAT_VIEW_TYPE, ChatView } from './src/ui/ChatView';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { isAudioExtension } from './src/audio';
 import { confirmAction } from './src/obsidian-utils';
-import { sonarState, getState } from './src/SonarModelState';
+import { sonarState, getState } from './src/SonarState';
 
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;

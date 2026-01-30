@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Tool } from '../Tool';
 import type { SearchManager } from '../../SearchManager';
-import { getState } from '../../SonarModelState';
+import { getState } from '../../SonarState';
 
 export interface SearchVaultDependencies {
   getSearchManager: () => SearchManager | null;

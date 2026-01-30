@@ -10,7 +10,7 @@ import {
   startLlamaServer,
   waitForServerReady,
 } from './llamaCppUtils';
-import type { ModelStatus } from './SonarModelState';
+import type { ModelStatus } from './SonarState';
 
 export interface RerankResult {
   index: number;

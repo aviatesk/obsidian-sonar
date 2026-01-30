@@ -2,7 +2,7 @@ import { HoverPopover, ItemView, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
 import { Mic, Square, createElement } from 'lucide';
-import { sonarState } from '../SonarModelState';
+import { sonarState } from '../SonarState';
 import { DEFAULT_SETTINGS } from '../config';
 import type { ConfigManager } from '../ConfigManager';
 import { ChatManager, type ChatTurn } from '../ChatManager';

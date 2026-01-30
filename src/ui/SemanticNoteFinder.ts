@@ -1,7 +1,7 @@
 import { App, HoverPopover, Modal, Notice, debounce } from 'obsidian';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
-import { isRerankerReady } from '../SonarModelState';
+import { isRerankerReady } from '../SonarState';
 import { SearchManager, type SearchResult } from '../SearchManager';
 import { ConfigManager } from '../ConfigManager';
 import { createComponentLogger, type ComponentLogger } from '../WithLogging';

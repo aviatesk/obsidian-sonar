@@ -1,6 +1,6 @@
 import type { ChildProcess } from 'child_process';
 import type { ConfigManager } from './ConfigManager';
-import type { ModelStatus } from './SonarModelState';
+import type { ModelStatus } from './SonarState';
 import { WithLogging } from './WithLogging';
 import {
   isModelCached,
