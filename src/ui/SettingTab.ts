@@ -756,24 +756,10 @@ See the plugin documentation for script format and examples.`
         })
     );
 
-    const reloadExtensionToolsSetting = new Setting(
-      extensionToolsContainer
-    ).setName('Reload extension tools');
-    this.renderMarkdownDesc(
-      reloadExtensionToolsSetting.descEl,
-      'Reload extension tools from the configured folder. Use this after adding or modifying scripts.'
-    );
-    const loadedToolsDiv = extensionToolsContainer.createDiv({
-      cls: 'sonar-loaded-tools',
+    extensionToolsContainer.createEl('p', {
+      text: 'Extension tools are loaded when Chat view opens. Use the reload button in Chat view toolbar to reload after modifying scripts.',
+      cls: 'setting-item-description',
     });
-    this.updateLoadedToolsList(loadedToolsDiv);
-    reloadExtensionToolsSetting.addButton(button =>
-      button.setButtonText('Reload').onClick(async () => {
-        const count = await this.plugin.reloadExtensionTools();
-        new Notice(`Reloaded ${count} extension tools`);
-        this.updateLoadedToolsList(loadedToolsDiv);
-      })
-    );
 
     // Generation parameters subsection (collapsible)
     const genDetails = chatContainer.createEl('details', {
@@ -1262,42 +1248,5 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
     this.statsDiv.createEl('p', {
       text: `Index path: ${this.configManager.get('indexPath')}`,
     });
-  }
-
-  private updateLoadedToolsList(container: HTMLElement): void {
-    container.empty();
-
-    const registry = this.plugin.chatManager?.getToolRegistry();
-    if (!registry) {
-      container.createEl('p', {
-        text: 'Chat not initialized',
-        cls: 'sonar-tools-list-empty',
-      });
-      return;
-    }
-
-    const extensionTools = registry.getExtensionTools();
-    if (extensionTools.length === 0) {
-      container.createEl('p', {
-        text: 'No extension tools loaded',
-        cls: 'sonar-tools-list-empty',
-      });
-      return;
-    }
-
-    const list = container.createEl('ul', { cls: 'sonar-tools-list' });
-    for (const tool of extensionTools) {
-      const item = list.createEl('li', {
-        attr: { title: tool.definition.description },
-      });
-      item.createEl('span', {
-        text: tool.displayName,
-        cls: 'sonar-tool-name',
-      });
-      item.createEl('span', {
-        text: ` (${tool.definition.name})`,
-        cls: 'sonar-tool-id',
-      });
-    }
   }
 }

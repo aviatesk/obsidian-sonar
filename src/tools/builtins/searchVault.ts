@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import type { Tool } from '../Tool';
 import type { SearchManager } from '../../SearchManager';
+import { getState } from '../../SonarModelState';
 
 export interface SearchVaultDependencies {
-  searchManager: SearchManager;
+  getSearchManager: () => SearchManager | null;
 }
 
 const argsSchema = z.object({
@@ -15,16 +16,18 @@ export async function executeSearchVault(
   args: Record<string, unknown>,
   deps: SearchVaultDependencies
 ): Promise<string> {
+  const searchManager = deps.getSearchManager();
+  if (!searchManager) {
+    return 'Error: Search is not available. Embedding model is still initializing.';
+  }
+
   const parsed = argsSchema.safeParse(args);
   if (!parsed.success) {
     return `Error: Invalid arguments: ${parsed.error.issues.map(i => i.message).join(', ')}`;
   }
   const { query, max_results: maxResults } = parsed.data;
 
-  const chunks = await deps.searchManager.getRerankedChunksForRAG(
-    query,
-    maxResults
-  );
+  const chunks = await searchManager.getRerankedChunksForRAG(query, maxResults);
 
   if (chunks === null || chunks.length === 0) {
     return 'No relevant information found in the vault.';
@@ -80,5 +83,19 @@ export function createSearchVaultTool(deps: SearchVaultDependencies): Tool {
     displayName: 'Search vault',
     isBuiltin: true,
     execute: args => executeSearchVault(args, deps),
+    isAvailable: () => {
+      const state = getState();
+      if (state.embedder === 'failed') {
+        return 'Initialization failed. Run Reinitialize Sonar.';
+      }
+      if (
+        state.embedder === 'initializing' ||
+        state.embedder === 'uninitialized'
+      ) {
+        return 'Still initializing...';
+      }
+      const searchManager = deps.getSearchManager();
+      return searchManager ? null : 'SearchManager not ready';
+    },
   };
 }

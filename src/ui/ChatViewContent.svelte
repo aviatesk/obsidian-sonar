@@ -218,11 +218,24 @@
   }
 
   function hasEnabledTools(): boolean {
-    return $store.tools.some(t => t.enabled);
+    return $store.tools.some(t => t.enabled && !t.unavailableReason);
   }
 
   function getEnabledToolCount(): number {
-    return $store.tools.filter(t => t.enabled).length;
+    return $store.tools.filter(t => t.enabled && !t.unavailableReason).length;
+  }
+
+  function getToolTooltip(tool: ToolConfig): string {
+    if (tool.unavailableReason) {
+      return `${tool.description}\n\n⚠ Unavailable: ${tool.unavailableReason}`;
+    }
+    return tool.description;
+  }
+
+  function handleToolClick(tool: ToolConfig): void {
+    // Don't toggle unavailable tools
+    if (tool.unavailableReason) return;
+    onToggleTool(tool.name);
   }
 
   function toggleToolsExpanded(): void {
@@ -283,9 +296,10 @@
             {#each getBuiltinTools() as tool (tool.name)}
               <button
                 class="tool-toggle"
-                class:active={tool.enabled}
-                onclick={() => onToggleTool(tool.name)}
-                title={tool.description}
+                class:active={tool.enabled && !tool.unavailableReason}
+                class:unavailable={!!tool.unavailableReason}
+                onclick={() => handleToolClick(tool)}
+                title={getToolTooltip(tool)}
               >
                 {tool.displayName}
               </button>
@@ -299,9 +313,10 @@
           {#each getExtensionTools() as tool (tool.name)}
             <button
               class="tool-toggle"
-              class:active={tool.enabled}
-              onclick={() => onToggleTool(tool.name)}
-              title={tool.description}
+              class:active={tool.enabled && !tool.unavailableReason}
+              class:unavailable={!!tool.unavailableReason}
+              onclick={() => handleToolClick(tool)}
+              title={getToolTooltip(tool)}
             >
               {tool.displayName}
             </button>
@@ -618,6 +633,17 @@
 
   .tool-toggle.active:hover {
     background: var(--interactive-accent-hover);
+  }
+
+  .tool-toggle.unavailable {
+    opacity: 0.5;
+    cursor: not-allowed;
+    text-decoration: line-through;
+  }
+
+  .tool-toggle.unavailable:hover {
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
   }
 
   .tool-reload {

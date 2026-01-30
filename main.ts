@@ -19,20 +19,9 @@ import { getDBName, MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
 import { LlamaCppEmbedder } from './src/LlamaCppEmbedder';
 import { LlamaCppReranker } from './src/LlamaCppReranker';
-import { LlamaCppChat } from './src/LlamaCppChat';
-import { ChatManager } from './src/ChatManager';
 import { CHAT_VIEW_TYPE, ChatView } from './src/ui/ChatView';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { isAudioExtension } from './src/audio';
-import {
-  ToolRegistry,
-  createSearchVaultTool,
-  createReadFileTool,
-  createWebSearchTool,
-  createFetchUrlTool,
-  createEditNoteTool,
-  ExtensionToolLoader,
-} from './src/tools';
 import { confirmAction } from './src/obsidian-utils';
 import { sonarState, getState } from './src/SonarModelState';
 
@@ -44,11 +33,8 @@ export default class SonarPlugin extends Plugin {
   metadataStore: MetadataStore | null = null;
   embedder: LlamaCppEmbedder | null = null;
   reranker: LlamaCppReranker | null = null;
-  chatModel: LlamaCppChat | null = null;
-  chatManager: ChatManager | null = null;
   private semanticNoteFinder: SemanticNoteFinder | null = null;
   private reinitializing = false;
-  private initializingChatModel = false;
   private indexUpdateUnsubscribe: (() => void) | null = null;
 
   private log(msg: string): void {
@@ -67,7 +53,7 @@ export default class SonarPlugin extends Plugin {
     return `Sonar: ${status}`;
   }
 
-  private updateStatusBar(text: string, tooltip?: string): void {
+  updateStatusBar(text: string, tooltip?: string): void {
     const maxLength = this.configManager.get('statusBarMaxLength');
     const fullText = this.formatStatusBarText(text);
 
@@ -94,6 +80,22 @@ export default class SonarPlugin extends Plugin {
       paddedText = text.padEnd(maxLength);
     }
     this.statusBarItem.setText(this.formatStatusBarText(paddedText));
+  }
+
+  /**
+   * Show confirmation dialog for model download
+   * Used by ChatView for chat model downloads
+   */
+  confirmModelDownload(modelType: string, modelId: string): Promise<boolean> {
+    return confirmAction(
+      this.app,
+      `Download ${modelType} model?`,
+      `The ${modelType} model is not cached and needs to be downloaded:\n\n` +
+        `\`${modelId}\`\n\n` +
+        `If you want to use a different model, select **Cancel** and change ` +
+        `the model settings in **Settings → Sonar**, then reinitialize.`,
+      'Download'
+    );
   }
 
   private async initializeEmbedder(
@@ -169,12 +171,6 @@ export default class SonarPlugin extends Plugin {
         this.reranker = null;
       }
 
-      if (this.chatModel) {
-        this.log('Cleaning up old chat model...');
-        await this.chatModel.cleanup();
-        this.chatModel = null;
-      }
-
       if (this.metadataStore) {
         this.log('Closing old database...');
         await this.metadataStore.close();
@@ -198,202 +194,6 @@ export default class SonarPlugin extends Plugin {
     } finally {
       this.reinitializing = false;
     }
-  }
-
-  /**
-   * Initialize chat model lazily when RAG view is opened
-   * Returns: 'ready' if initialized, 'pending' if waiting for Sonar, 'failed' on error
-   */
-  async initializeChatModelLazy(): Promise<'ready' | 'pending' | 'failed'> {
-    // Already initialized and ready
-    if (this.chatManager?.isReady()) {
-      return 'ready';
-    }
-
-    // Prevent concurrent initialization
-    if (this.initializingChatModel) {
-      this.log('Chat model initialization already in progress');
-      return 'pending';
-    }
-
-    // Check if Sonar core is initialized (required dependencies)
-    if (!this.searchManager || !this.metadataStore) {
-      // If embedder initialization failed, return 'failed' immediately
-      if (getState().embedder === 'failed') {
-        this.log(
-          'Chat model initialization failed: embedder initialization failed'
-        );
-        return 'failed';
-      }
-      this.log(
-        'Chat model initialization pending: Sonar is still initializing'
-      );
-      return 'pending';
-    }
-
-    this.initializingChatModel = true;
-
-    try {
-      // Clean up any partially initialized model
-      const oldModel = this.chatModel;
-      this.chatModel = null;
-      if (oldModel) {
-        await oldModel.cleanup();
-      }
-
-      const serverPath = this.configManager.get('llamacppServerPath');
-      const chatModelRepo =
-        this.configManager.get('llamaChatModelRepo') ||
-        DEFAULT_SETTINGS.llamaChatModelRepo;
-      const chatModelFile =
-        this.configManager.get('llamaChatModelFile') ||
-        DEFAULT_SETTINGS.llamaChatModelFile;
-      const chatModelIdentifier = `${chatModelRepo}/${chatModelFile}`;
-
-      this.log(`Lazy-loading chat model: ${chatModelIdentifier}`);
-
-      const chatModel = (this.chatModel = new LlamaCppChat(
-        serverPath,
-        chatModelRepo,
-        chatModelFile,
-        this.configManager,
-        status => this.updateStatusBar(status),
-        status => sonarState.setChatModelStatus(status),
-        (msg, duration) => new Notice(msg, duration),
-        this.createConfirmDownload('chat')
-      ));
-
-      const success = await this.initializeChatModel(
-        chatModel,
-        chatModelIdentifier
-      );
-      if (!success) {
-        return 'failed';
-      }
-
-      await this.createChat();
-
-      return 'ready';
-    } finally {
-      this.initializingChatModel = false;
-    }
-  }
-
-  private async initializeChatModel(
-    chatModel: LlamaCppChat,
-    modelDescription: string
-  ): Promise<boolean> {
-    try {
-      await chatModel.initialize();
-      this.log(`Chat model initialized: ${modelDescription}`);
-      return true;
-    } catch (error) {
-      this.warn(`Failed to initialize chat model: ${error}`);
-      this.chatModel = null;
-      await chatModel.cleanup();
-      return false;
-    }
-  }
-
-  /**
-   * Create Chat instance (requires chatModel and searchManager to be ready)
-   */
-  private async createChat(): Promise<void> {
-    if (
-      !this.chatModel?.isReady() ||
-      !this.searchManager ||
-      !this.metadataStore
-    ) {
-      this.warn('Cannot create Chat: dependencies not ready');
-      return;
-    }
-
-    const toolRegistry = new ToolRegistry();
-
-    // Register built-in tools
-    toolRegistry.register(
-      createSearchVaultTool({
-        searchManager: this.searchManager,
-      })
-    );
-    toolRegistry.register(
-      createReadFileTool({
-        app: this.app,
-        metadataStore: this.metadataStore,
-      })
-    );
-    toolRegistry.register(
-      createEditNoteTool({
-        app: this.app,
-        configManager: this.configManager,
-      })
-    );
-    toolRegistry.register(
-      createWebSearchTool({
-        searxngUrl: this.configManager.get('searxngUrl'),
-      })
-    );
-    toolRegistry.register(createFetchUrlTool());
-
-    // Register extension tools
-    const extensionCount = await this.loadExtensionTools(toolRegistry);
-
-    this.chatManager = new ChatManager(
-      this.chatModel,
-      toolRegistry,
-      this.configManager
-    );
-    this.log(
-      `Chat initialized with ${toolRegistry.getAll().length} tools (${extensionCount} extensions)`
-    );
-  }
-
-  /**
-   * Cleanup chat model when RAG view is closed
-   */
-  async cleanupChatModel(): Promise<void> {
-    const modelToCleanup = this.chatModel;
-
-    // Immediately clear references so new initialization won't see old model
-    this.chatManager = null;
-    this.chatModel = null;
-
-    if (modelToCleanup) {
-      this.log('Cleaning up chat model...');
-      await modelToCleanup.cleanup();
-      this.log('Chat model cleaned up');
-    }
-  }
-
-  /**
-   * Load extension tools into a registry
-   */
-  private async loadExtensionTools(
-    toolRegistry: ToolRegistry
-  ): Promise<number> {
-    const loader = new ExtensionToolLoader(this.app, this.configManager);
-    const tools = await loader.loadTools();
-    for (const tool of tools) {
-      toolRegistry.register(tool);
-    }
-    return tools.length;
-  }
-
-  /**
-   * Reload extension tools from the configured folder
-   * Returns the number of extension tools loaded
-   */
-  async reloadExtensionTools(): Promise<number> {
-    if (!this.chatManager) {
-      this.warn('Cannot reload extension tools: Chat not initialized');
-      return 0;
-    }
-
-    const toolRegistry = this.chatManager.getToolRegistry();
-    toolRegistry.unregisterExtensionTools();
-    const count = await this.loadExtensionTools(toolRegistry);
-    this.log(`Reloaded ${count} extension tools`);
-    return count;
   }
 
   async onload() {
@@ -445,16 +245,7 @@ export default class SonarPlugin extends Plugin {
   private createConfirmDownload(
     modelType: string
   ): (modelId: string) => Promise<boolean> {
-    return (modelId: string) =>
-      confirmAction(
-        this.app,
-        `Download ${modelType} model?`,
-        `The ${modelType} model is not cached and needs to be downloaded:\n\n` +
-          `\`${modelId}\`\n\n` +
-          `If you want to use a different model, select **Cancel** and change ` +
-          `the model settings in **Settings → Sonar**, then reinitialize.`,
-        'Download'
-      );
+    return (modelId: string) => this.confirmModelDownload(modelType, modelId);
   }
 
   private async initializeAsync(): Promise<boolean> {
@@ -1033,11 +824,7 @@ export default class SonarPlugin extends Plugin {
     }
     // Run server cleanups in parallel to maximize chance of completion
     // before quit event terminates the process
-    await Promise.all([
-      this.embedder?.cleanup(),
-      this.reranker?.cleanup(),
-      this.chatModel?.cleanup(),
-    ]);
+    await Promise.all([this.embedder?.cleanup(), this.reranker?.cleanup()]);
   }
 
   async onunload() {

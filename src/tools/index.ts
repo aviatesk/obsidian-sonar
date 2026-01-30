@@ -31,4 +31,7 @@ export type {
 
 // Extension tool loader
 export { ExtensionToolLoader } from './ExtensionToolLoader';
-export type { ExtensionToolContext } from './ExtensionToolLoader';
+export type {
+  ExtensionToolContext,
+  PluginResources,
+} from './ExtensionToolLoader';

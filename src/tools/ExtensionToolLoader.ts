@@ -1,8 +1,19 @@
 import type { App, TFile } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import type { ConfigManager } from '../ConfigManager';
+import type { SearchManager } from '../SearchManager';
+import type { MetadataStore } from '../MetadataStore';
 import { WithLogging } from '../WithLogging';
 import type { Tool, ToolDefinition, ToolParameterSchema } from './Tool';
+
+/**
+ * Plugin resources accessible from extension tools
+ * Uses getters since some resources may not be available initially
+ */
+export interface PluginResources {
+  getSearchManager: () => SearchManager | null;
+  getMetadataStore: () => MetadataStore | null;
+}
 
 /**
  * Context object passed to extension tool scripts
@@ -14,6 +25,7 @@ export interface ExtensionToolContext {
   log: (message: string) => void;
   warn: (message: string) => void;
   error: (message: string) => void;
+  plugin: PluginResources;
 }
 
 /**
@@ -39,7 +51,8 @@ export class ExtensionToolLoader extends WithLogging {
 
   constructor(
     private app: App,
-    protected configManager: ConfigManager
+    protected configManager: ConfigManager,
+    private pluginResources: PluginResources
   ) {
     super();
   }
@@ -142,6 +155,7 @@ export class ExtensionToolLoader extends WithLogging {
       log: (msg: string) => console.log(`${prefix} ${msg}`),
       warn: (msg: string) => console.warn(`${prefix} ${msg}`),
       error: (msg: string) => console.error(`${prefix} ${msg}`),
+      plugin: this.pluginResources,
     };
   }
 

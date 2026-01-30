@@ -5,14 +5,12 @@ export type ModelStatus = 'uninitialized' | 'initializing' | 'ready' | 'failed';
 export interface SonarModelState {
   embedder: ModelStatus;
   reranker: ModelStatus;
-  chatModel: ModelStatus;
   searchReady: boolean;
 }
 
 const initialState: SonarModelState = {
   embedder: 'uninitialized',
   reranker: 'uninitialized',
-  chatModel: 'uninitialized',
   searchReady: false,
 };
 
@@ -28,10 +26,6 @@ function createSonarState() {
 
     setRerankerStatus(status: ModelStatus) {
       update(state => ({ ...state, reranker: status }));
-    },
-
-    setChatModelStatus(status: ModelStatus) {
-      update(state => ({ ...state, chatModel: status }));
     },
 
     setSearchReady(ready: boolean) {
@@ -59,11 +53,6 @@ export const hasInitializationFailed: Readable<boolean> = derived(
 export const isRerankerReady: Readable<boolean> = derived(
   sonarState,
   $state => $state.reranker === 'ready'
-);
-
-export const isChatModelReady: Readable<boolean> = derived(
-  sonarState,
-  $state => $state.chatModel === 'ready'
 );
 
 export function getState(): SonarModelState {
