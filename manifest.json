@@ -3,7 +3,7 @@
   "name": "Sonar",
   "version": "0.0.0",
   "minAppVersion": "1.9.0",
-  "description": "Deep semantic search for your Obsidian notes, completely offline",
+  "description": "Deep knowledge retrieval for Obsidian, completely offline",
   "author": "Shuhei Kadowaki",
   "authorUrl": "https://github.com/aviatesk",
   "isDesktopOnly": true,

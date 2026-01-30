@@ -31,13 +31,13 @@ export class SettingTab extends PluginSettingTab {
 
     this.createActionsSection(containerEl);
     this.createStatisticsSection(containerEl);
-    this.createIndexConfigSection(containerEl);
-    this.createUiPreferencesSection(containerEl);
-    this.createChunkingConfigSection(containerEl);
     this.createLlamaCppConfigSection(containerEl);
-    this.createChatConfigSection(containerEl);
-    this.createSearchParamsSection(containerEl);
+    this.createIndexConfigSection(containerEl);
     this.createAudioConfigSection(containerEl);
+    this.createUiPreferencesSection(containerEl);
+    this.createChatConfigSection(containerEl);
+    this.createChunkingConfigSection(containerEl);
+    this.createSearchParamsSection(containerEl);
     this.createLoggingConfigSection(containerEl);
     this.createBenchmarkConfigSection(containerEl);
   }
@@ -306,7 +306,6 @@ Supports:
     const uiPreferencesDetails = containerEl.createEl('details', {
       cls: 'sonar-settings-section',
     });
-    uiPreferencesDetails.setAttr('open', '');
     uiPreferencesDetails.createEl('summary', { text: 'UI preferences' });
     const uiPreferencesContainer = uiPreferencesDetails.createDiv();
 
@@ -1069,6 +1068,7 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
     const audioDetails = containerEl.createEl('details', {
       cls: 'sonar-settings-section',
     });
+    audioDetails.setAttr('open', '');
     audioDetails.createEl('summary', {
       text: 'Audio transcription configuration',
     });
