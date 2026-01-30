@@ -57,7 +57,7 @@ export interface ChatTurn {
  * Chat session with agentic tool calling
  * Model autonomously calls tools to gather information
  */
-export class Chat extends WithLogging {
+export class ChatManager extends WithLogging {
   protected readonly componentName = 'Chat';
 
   private history: ChatTurn[] = [];

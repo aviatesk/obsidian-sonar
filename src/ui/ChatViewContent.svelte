@@ -2,7 +2,7 @@
   import { App, Notice } from 'obsidian';
   import type { Writable } from 'svelte/store';
   import type { ConfigManager } from '../ConfigManager';
-  import type { ChatTurn } from '../Chat';
+  import type { ChatTurn } from '../ChatManager';
   import type { ToolConfig, ToolPermissionRequest } from '../tools';
   import { MarkdownRenderingManager } from './MarkdownRenderingManager';
   import { isSendShortcut } from './ChatView';

@@ -1267,7 +1267,7 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
   private updateLoadedToolsList(container: HTMLElement): void {
     container.empty();
 
-    const registry = this.plugin.chat?.getToolRegistry();
+    const registry = this.plugin.chatManager?.getToolRegistry();
     if (!registry) {
       container.createEl('p', {
         text: 'Chat not initialized',

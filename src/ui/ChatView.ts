@@ -4,7 +4,7 @@ import { writable, get } from 'svelte/store';
 import { Mic, Square, createElement } from 'lucide';
 import { sonarState, type SonarModelState } from '../SonarModelState';
 import type { ConfigManager } from '../ConfigManager';
-import type { ChatTurn } from '../Chat';
+import type { ChatTurn } from '../ChatManager';
 import type { ToolConfig, ToolPermissionRequest } from '../tools';
 import { createComponentLogger, type ComponentLogger } from '../WithLogging';
 import ChatViewContent from './ChatViewContent.svelte';
@@ -121,9 +121,6 @@ export class ChatView extends ItemView {
     this.createInputArea();
     this.registerKeyboardShortcuts();
     this.setupSonarStateSubscription();
-
-    // Lazy-load chat model when view is opened
-    await this.tryInitializeChatModel();
   }
 
   private setupSonarStateSubscription(): void {
@@ -169,7 +166,7 @@ export class ChatView extends ItemView {
   }
 
   private getToolConfigs(): ToolConfig[] {
-    const registry = this.plugin.chat?.getToolRegistry();
+    const registry = this.plugin.chatManager?.getToolRegistry();
     return registry?.getToolConfigs() ?? [];
   }
 
@@ -243,7 +240,7 @@ export class ChatView extends ItemView {
   }
 
   private handleToggleTool(toolName: string): void {
-    const registry = this.plugin.chat?.getToolRegistry();
+    const registry = this.plugin.chatManager?.getToolRegistry();
     if (!registry) return;
 
     registry.toggle(toolName);
@@ -427,7 +424,7 @@ export class ChatView extends ItemView {
   }
 
   private async handleSendMessage(message: string): Promise<void> {
-    if (!this.plugin.chat) {
+    if (!this.plugin.chatManager) {
       this.logger.error('Chat not initialized');
       this.updateStore({
         status: 'error',
@@ -447,7 +444,7 @@ export class ChatView extends ItemView {
     });
 
     try {
-      await this.plugin.chat.chatStream(
+      await this.plugin.chatManager.chatStream(
         message,
         delta => {
           const currentState = get(this.chatViewStore);
@@ -483,7 +480,7 @@ export class ChatView extends ItemView {
 
       this.updateStore({
         status: 'ready',
-        history: this.plugin.chat.getHistory(),
+        history: this.plugin.chatManager.getHistory(),
         errorMessage: null,
         streamingContent: '',
         pendingUserMessage: null,
@@ -524,8 +521,8 @@ export class ChatView extends ItemView {
   }
 
   private handleClearHistory(): void {
-    if (this.plugin.chat) {
-      this.plugin.chat.clear();
+    if (this.plugin.chatManager) {
+      this.plugin.chatManager.clear();
       this.updateStore({
         history: [],
         errorMessage: null,
@@ -534,20 +531,20 @@ export class ChatView extends ItemView {
   }
 
   private handleDeleteTurn(index: number): void {
-    if (this.plugin.chat) {
-      this.plugin.chat.deleteTurn(index);
+    if (this.plugin.chatManager) {
+      this.plugin.chatManager.deleteTurn(index);
       this.updateStore({
-        history: this.plugin.chat.getHistory(),
+        history: this.plugin.chatManager.getHistory(),
       });
     }
   }
 
   private handleEditTurn(index: number, message: string): void {
-    if (!this.plugin.chat) return;
+    if (!this.plugin.chatManager) return;
     // Truncate history to the turn being edited
-    this.plugin.chat.truncateHistory(index);
+    this.plugin.chatManager.truncateHistory(index);
     this.updateStore({
-      history: this.plugin.chat.getHistory(),
+      history: this.plugin.chatManager.getHistory(),
     });
     this.handleSendMessage(message);
   }

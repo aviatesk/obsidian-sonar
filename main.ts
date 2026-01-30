@@ -20,7 +20,7 @@ import { EmbeddingStore } from './src/EmbeddingStore';
 import { LlamaCppEmbedder } from './src/LlamaCppEmbedder';
 import { LlamaCppReranker } from './src/LlamaCppReranker';
 import { LlamaCppChat } from './src/LlamaCppChat';
-import { Chat } from './src/Chat';
+import { ChatManager } from './src/ChatManager';
 import { CHAT_VIEW_TYPE, ChatView } from './src/ui/ChatView';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { isAudioExtension } from './src/audio';
@@ -45,7 +45,7 @@ export default class SonarPlugin extends Plugin {
   embedder: LlamaCppEmbedder | null = null;
   reranker: LlamaCppReranker | null = null;
   chatModel: LlamaCppChat | null = null;
-  chat: Chat | null = null;
+  chatManager: ChatManager | null = null;
   private semanticNoteFinder: SemanticNoteFinder | null = null;
   private reinitializing = false;
   private indexUpdateUnsubscribe: (() => void) | null = null;
@@ -205,7 +205,7 @@ export default class SonarPlugin extends Plugin {
    */
   async initializeChatModelLazy(): Promise<'ready' | 'pending' | 'failed'> {
     // Already initialized and ready
-    if (this.chat?.isReady()) {
+    if (this.chatManager?.isReady()) {
       return 'ready';
     }
 
@@ -324,7 +324,11 @@ export default class SonarPlugin extends Plugin {
     // Register extension tools
     const extensionCount = await this.loadExtensionTools(toolRegistry);
 
-    this.chat = new Chat(this.chatModel, toolRegistry, this.configManager);
+    this.chatManager = new ChatManager(
+      this.chatModel,
+      toolRegistry,
+      this.configManager
+    );
     this.log(
       `Chat initialized with ${toolRegistry.getAll().length} tools (${extensionCount} extensions)`
     );
@@ -334,8 +338,8 @@ export default class SonarPlugin extends Plugin {
    * Cleanup chat model when RAG view is closed
    */
   async cleanupChatModel(): Promise<void> {
-    if (this.chat) {
-      this.chat = null;
+    if (this.chatManager) {
+      this.chatManager = null;
     }
     if (this.chatModel) {
       this.log('Cleaning up chat model...');
@@ -364,12 +368,12 @@ export default class SonarPlugin extends Plugin {
    * Returns the number of extension tools loaded
    */
   async reloadExtensionTools(): Promise<number> {
-    if (!this.chat) {
+    if (!this.chatManager) {
       this.warn('Cannot reload extension tools: Chat not initialized');
       return 0;
     }
 
-    const toolRegistry = this.chat.getToolRegistry();
+    const toolRegistry = this.chatManager.getToolRegistry();
     toolRegistry.unregisterExtensionTools();
     const count = await this.loadExtensionTools(toolRegistry);
     this.log(`Reloaded ${count} extension tools`);
