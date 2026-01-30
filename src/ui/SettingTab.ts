@@ -93,12 +93,12 @@ export class SettingTab extends PluginSettingTab {
     );
     this.renderMarkdownDesc(
       reinitializeSetting.descEl,
-      'Reinitialize embedder backend (useful to reinitialize after updating configuration if the initialization failed for missing configuration etc.).'
+      'Restart all llama.cpp servers (embedder, reranker, chat). Use this after changing model settings or server path.'
     );
     reinitializeSetting.addButton(button =>
-      button.setButtonText('Reinitialize').onClick(async () => {
-        await this.plugin.reinitializeSonar();
-      })
+      button
+        .setButtonText('Reinitialize')
+        .onClick(async () => await this.plugin.reinitializeSonar())
     );
 
     const syncSetting = new Setting(actionsContainer).setName(
@@ -281,9 +281,10 @@ Supports:
         .setLimits(1, 128, 1)
         .setValue(this.configManager.get('indexingBatchSize'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('indexingBatchSize', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('indexingBatchSize', value)
+        )
     );
 
     const autoIndexSetting = new Setting(indexConfigContainer).setName(
@@ -296,9 +297,9 @@ Supports:
     autoIndexSetting.addToggle(toggle =>
       toggle
         .setValue(this.configManager.get('autoIndex'))
-        .onChange(async value => {
-          await this.configManager.set('autoIndex', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('autoIndex', value)
+        )
     );
   }
 
@@ -319,9 +320,10 @@ Supports:
     autoOpenSetting.addToggle(toggle =>
       toggle
         .setValue(this.configManager.get('autoOpenRelatedNotes'))
-        .onChange(async value => {
-          await this.configManager.set('autoOpenRelatedNotes', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('autoOpenRelatedNotes', value)
+        )
     );
 
     const showQuerySetting = new Setting(uiPreferencesContainer).setName(
@@ -334,9 +336,10 @@ Supports:
     showQuerySetting.addToggle(toggle =>
       toggle
         .setValue(this.configManager.get('showRelatedNotesQuery'))
-        .onChange(async value => {
-          await this.configManager.set('showRelatedNotesQuery', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('showRelatedNotesQuery', value)
+        )
     );
 
     const showExcerptsSetting = new Setting(uiPreferencesContainer).setName(
@@ -349,9 +352,10 @@ Supports:
     showExcerptsSetting.addToggle(toggle =>
       toggle
         .setValue(this.configManager.get('showRelatedNotesExcerpts'))
-        .onChange(async value => {
-          await this.configManager.set('showRelatedNotesExcerpts', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('showRelatedNotesExcerpts', value)
+        )
     );
 
     const showGraphSetting = new Setting(uiPreferencesContainer).setName(
@@ -364,9 +368,10 @@ Supports:
     showGraphSetting.addToggle(toggle =>
       toggle
         .setValue(this.configManager.get('showKnowledgeGraph'))
-        .onChange(async value => {
-          await this.configManager.set('showKnowledgeGraph', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('showKnowledgeGraph', value)
+        )
     );
 
     const searchResultsSetting = new Setting(uiPreferencesContainer).setName(
@@ -385,9 +390,10 @@ This is the final number after chunk aggregation:
         .setLimits(1, 20, 1)
         .setValue(this.configManager.get('searchResultsCount'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('searchResultsCount', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('searchResultsCount', value)
+        )
     );
 
     const debounceSetting = new Setting(uiPreferencesContainer).setName(
@@ -402,9 +408,10 @@ This is the final number after chunk aggregation:
         .setLimits(500, 10000, 500)
         .setValue(this.configManager.get('relatedNotesDebounceMs'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('relatedNotesDebounceMs', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('relatedNotesDebounceMs', value)
+        )
     );
   }
 
@@ -431,9 +438,9 @@ This is the final number after chunk aggregation:
         .setLimits(64, 2048, 64)
         .setValue(this.configManager.get('maxChunkSize'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('maxChunkSize', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('maxChunkSize', value)
+        )
     );
 
     const chunkOverlapSetting = new Setting(chunkingConfigContainer).setName(
@@ -450,9 +457,9 @@ This is the final number after chunk aggregation:
         .setLimits(0, 256, 8)
         .setValue(this.configManager.get('chunkOverlap'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('chunkOverlap', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('chunkOverlap', value)
+        )
     );
   }
 
@@ -477,9 +484,10 @@ This is the final number after chunk aggregation:
       text
         .setPlaceholder('llama-server')
         .setValue(this.configManager.get('llamacppServerPath'))
-        .onChange(async value => {
-          await this.configManager.set('llamacppServerPath', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('llamacppServerPath', value)
+        )
     );
 
     llamacppContainer.createEl('h4', { text: 'Embedder model' });
@@ -489,15 +497,16 @@ This is the final number after chunk aggregation:
     );
     this.renderMarkdownDesc(
       llamacppModelRepoSetting.descEl,
-      'HuggingFace repository for embedder model (e.g., `BAAI/bge-m3-gguf`).'
+      'HuggingFace repository for embedder model (e.g., `ggml-org/bge-m3-Q8_0-GGUF`).'
     );
     llamacppModelRepoSetting.addText(text =>
       text
-        .setPlaceholder('BAAI/bge-m3-gguf')
+        .setPlaceholder('ggml-org/bge-m3-Q8_0-GGUF')
         .setValue(this.configManager.get('llamaEmbedderModelRepo'))
-        .onChange(async value => {
-          await this.configManager.set('llamaEmbedderModelRepo', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('llamaEmbedderModelRepo', value)
+        )
     );
 
     const llamacppModelFileSetting = new Setting(llamacppContainer).setName(
@@ -511,9 +520,10 @@ This is the final number after chunk aggregation:
       text
         .setPlaceholder('bge-m3-q8_0.gguf')
         .setValue(this.configManager.get('llamaEmbedderModelFile'))
-        .onChange(async value => {
-          await this.configManager.set('llamaEmbedderModelFile', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('llamaEmbedderModelFile', value)
+        )
     );
 
     llamacppContainer.createEl('h4', { text: 'Reranker model' });
@@ -529,9 +539,10 @@ This is the final number after chunk aggregation:
       text
         .setPlaceholder('gpustack/bge-reranker-v2-m3-GGUF')
         .setValue(this.configManager.get('llamaRerankerModelRepo'))
-        .onChange(async value => {
-          await this.configManager.set('llamaRerankerModelRepo', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('llamaRerankerModelRepo', value)
+        )
     );
 
     const rerankerModelFileSetting = new Setting(llamacppContainer).setName(
@@ -545,9 +556,10 @@ This is the final number after chunk aggregation:
       text
         .setPlaceholder('bge-reranker-v2-m3-Q8_0.gguf')
         .setValue(this.configManager.get('llamaRerankerModelFile'))
-        .onChange(async value => {
-          await this.configManager.set('llamaRerankerModelFile', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('llamaRerankerModelFile', value)
+        )
     );
 
     llamacppContainer.createEl('h4', { text: 'Chat model' });
@@ -563,9 +575,10 @@ This is the final number after chunk aggregation:
       text
         .setPlaceholder('Qwen/Qwen3-8B-GGUF')
         .setValue(this.configManager.get('llamaChatModelRepo'))
-        .onChange(async value => {
-          await this.configManager.set('llamaChatModelRepo', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('llamaChatModelRepo', value)
+        )
     );
 
     const chatModelFileSetting = new Setting(llamacppContainer).setName(
@@ -579,9 +592,10 @@ This is the final number after chunk aggregation:
       text
         .setPlaceholder('qwen3-8b-q8_0.gguf')
         .setValue(this.configManager.get('llamaChatModelFile'))
-        .onChange(async value => {
-          await this.configManager.set('llamaChatModelFile', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('llamaChatModelFile', value)
+        )
     );
   }
 
@@ -605,9 +619,9 @@ This is the final number after chunk aggregation:
         .setLimits(256, 16384, 256)
         .setValue(this.configManager.get('chatMaxTokens'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('chatMaxTokens', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('chatMaxTokens', value)
+        )
     );
 
     const thinkingSetting = new Setting(chatContainer).setName(
@@ -621,9 +635,10 @@ When enabled, the model will show its reasoning process before answering.`
     thinkingSetting.addToggle(toggle =>
       toggle
         .setValue(this.configManager.get('chatEnableThinking'))
-        .onChange(async value => {
-          await this.configManager.set('chatEnableThinking', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('chatEnableThinking', value)
+        )
     );
 
     const maxIterationsSetting = new Setting(chatContainer).setName(
@@ -640,9 +655,10 @@ Higher values allow more thorough research but may increase response time.`
         .setLimits(1, 10, 1)
         .setValue(this.configManager.get('agentMaxIterations'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('agentMaxIterations', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('agentMaxIterations', value)
+        )
     );
 
     // Context settings subsection
@@ -662,9 +678,10 @@ Higher values allow more thorough research but may increase response time.`
         .setLimits(512, 16384, 512)
         .setValue(this.configManager.get('contextTokenBudget'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('contextTokenBudget', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('contextTokenBudget', value)
+        )
     );
 
     // Builtin tools settings subsection (collapsible)
@@ -687,9 +704,10 @@ Higher values allow more thorough research but may increase response time.`
     editNoteAutoAllowSetting.addToggle(toggle =>
       toggle
         .setValue(this.configManager.get('editNoteAutoAllow'))
-        .onChange(async value => {
-          await this.configManager.set('editNoteAutoAllow', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('editNoteAutoAllow', value)
+        )
     );
 
     builtinToolsContainer.createEl('h5', { text: 'Web search' });
@@ -707,9 +725,9 @@ Then use \`http://localhost:8080\` as the URL.`
       text
         .setPlaceholder('http://localhost:8080')
         .setValue(this.configManager.get('searxngUrl'))
-        .onChange(async value => {
-          await this.configManager.set('searxngUrl', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('searxngUrl', value)
+        )
     );
 
     // Extension tools subsection (collapsible)
@@ -776,9 +794,9 @@ See the plugin documentation for script format and examples.`
         .setLimits(0.0, 1.5, 0.1)
         .setValue(this.configManager.get('chatTemperature'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('chatTemperature', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('chatTemperature', value)
+        )
     );
 
     const topPSetting = new Setting(genContainer).setName('Top-p');
@@ -793,9 +811,9 @@ See the plugin documentation for script format and examples.`
         .setLimits(0.5, 1.0, 0.05)
         .setValue(this.configManager.get('chatTopP'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('chatTopP', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('chatTopP', value)
+        )
     );
 
     const topKSetting = new Setting(genContainer).setName('Top-k');
@@ -812,9 +830,9 @@ Use with top-p for finer control, or set top-p to \`1.0\` to use top-k alone.`
         .setLimits(0, 100, 5)
         .setValue(this.configManager.get('chatTopK'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('chatTopK', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('chatTopK', value)
+        )
     );
 
     const presencePenaltySetting = new Setting(genContainer).setName(
@@ -831,9 +849,10 @@ Use with top-p for finer control, or set top-p to \`1.0\` to use top-k alone.`
         .setLimits(0.0, 2.0, 0.1)
         .setValue(this.configManager.get('chatPresencePenalty'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('chatPresencePenalty', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('chatPresencePenalty', value)
+        )
     );
   }
 
@@ -860,9 +879,9 @@ Queries are constructed from the current note filename and content:
         .setLimits(32, 512, 16)
         .setValue(this.configManager.get('maxQueryTokens'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('maxQueryTokens', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('maxQueryTokens', value)
+        )
     );
 
     const bm25Setting = new Setting(searchParamsContainer).setName(
@@ -935,9 +954,7 @@ Queries are constructed from the current note filename and content:
         .setLimits(1, 10, 1)
         .setValue(this.configManager.get('aggM'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('aggM', value);
-        })
+        .onChange(async value => await this.configManager.set('aggM', value))
     );
 
     const aggLSetting = new Setting(searchParamsContainer).setName(
@@ -954,9 +971,7 @@ Queries are constructed from the current note filename and content:
         .setLimits(1, 10, 1)
         .setValue(this.configManager.get('aggL'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('aggL', value);
-        })
+        .onChange(async value => await this.configManager.set('aggL', value))
     );
 
     const aggDecaySetting = new Setting(searchParamsContainer).setName(
@@ -975,9 +990,9 @@ Formula: \`w_i = decay^i\` for i-th chunk:
         .setLimits(0.5, 1.0, 0.01)
         .setValue(this.configManager.get('aggDecay'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('aggDecay', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('aggDecay', value)
+        )
     );
 
     const aggRrfKSetting = new Setting(searchParamsContainer).setName(
@@ -996,9 +1011,7 @@ Formula: \`score = sum(1/(k + rank))\`:
         .setLimits(1, 100, 1)
         .setValue(this.configManager.get('aggRrfK'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('aggRrfK', value);
-        })
+        .onChange(async value => await this.configManager.set('aggRrfK', value))
     );
 
     const retrievalMultiplierSetting = new Setting(
@@ -1019,9 +1032,10 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
         .setLimits(1, 50, 1)
         .setValue(this.configManager.get('retrievalMultiplier'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('retrievalMultiplier', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('retrievalMultiplier', value)
+        )
     );
   }
 
@@ -1044,9 +1058,10 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
         .setLimits(0, 100, 5)
         .setValue(this.configManager.get('statusBarMaxLength'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('statusBarMaxLength', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('statusBarMaxLength', value)
+        )
     );
 
     const logLevelSetting = new Setting(loggingContainer).setName('Log level');
@@ -1058,9 +1073,10 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
         .addOption('log', 'Log + Warn + Error')
         .addOption('verbose', 'Verbose message + Log + Warn + Error')
         .setValue(this.configManager.get('debugMode'))
-        .onChange(async value => {
-          await this.configManager.set('debugMode', value as LogLevel);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('debugMode', value as LogLevel)
+        )
     );
   }
 
@@ -1085,9 +1101,10 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
       text
         .setPlaceholder('whisper-cli')
         .setValue(this.configManager.get('audioWhisperCliPath'))
-        .onChange(async value => {
-          await this.configManager.set('audioWhisperCliPath', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('audioWhisperCliPath', value)
+        )
     );
 
     const modelPathSetting = new Setting(audioContainer).setName(
@@ -1101,9 +1118,10 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
       text
         .setPlaceholder('~/whisper-models/ggml-large-v3-turbo-q5_0.bin')
         .setValue(this.configManager.get('audioWhisperModelPath'))
-        .onChange(async value => {
-          await this.configManager.set('audioWhisperModelPath', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('audioWhisperModelPath', value)
+        )
     );
 
     const ffmpegPathSetting = new Setting(audioContainer).setName(
@@ -1117,9 +1135,9 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
       text
         .setPlaceholder('ffmpeg')
         .setValue(this.configManager.get('audioFfmpegPath'))
-        .onChange(async value => {
-          await this.configManager.set('audioFfmpegPath', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('audioFfmpegPath', value)
+        )
     );
 
     const languageSetting = new Setting(audioContainer).setName(
@@ -1133,9 +1151,10 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
       text
         .setPlaceholder('auto')
         .setValue(this.configManager.get('audioTranscriptionLanguage'))
-        .onChange(async value => {
-          await this.configManager.set('audioTranscriptionLanguage', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('audioTranscriptionLanguage', value)
+        )
     );
   }
 
@@ -1159,9 +1178,10 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
           'bench/queries.jsonl or /absolute/path/to/queries.jsonl'
         )
         .setValue(this.configManager.get('benchmarkQueriesPath'))
-        .onChange(async value => {
-          await this.configManager.set('benchmarkQueriesPath', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('benchmarkQueriesPath', value)
+        )
     );
 
     const qrelsPathSetting = new Setting(benchmarkContainer).setName(
@@ -1175,9 +1195,10 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
       text
         .setPlaceholder('bench/qrels.tsv or /absolute/path/to/qrels.tsv')
         .setValue(this.configManager.get('benchmarkQrelsPath'))
-        .onChange(async value => {
-          await this.configManager.set('benchmarkQrelsPath', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('benchmarkQrelsPath', value)
+        )
     );
 
     const outputDirSetting = new Setting(benchmarkContainer).setName(
@@ -1191,9 +1212,10 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
       text
         .setPlaceholder('bench/output or /absolute/path/to/output')
         .setValue(this.configManager.get('benchmarkOutputDir'))
-        .onChange(async value => {
-          await this.configManager.set('benchmarkOutputDir', value);
-        })
+        .onChange(
+          async value =>
+            await this.configManager.set('benchmarkOutputDir', value)
+        )
     );
 
     const topKSetting = new Setting(benchmarkContainer).setName(
@@ -1208,9 +1230,9 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
         .setLimits(10, 1000, 10)
         .setValue(this.configManager.get('benchmarkTopK'))
         .setDynamicTooltip()
-        .onChange(async value => {
-          await this.configManager.set('benchmarkTopK', value);
-        })
+        .onChange(
+          async value => await this.configManager.set('benchmarkTopK', value)
+        )
     );
   }
 

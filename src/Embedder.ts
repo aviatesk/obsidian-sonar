@@ -1,4 +1,5 @@
 import type { ConfigManager } from './ConfigManager';
+import type { ModelStatus } from './SonarModelState';
 import { WithLogging } from './WithLogging';
 import { progressiveWait } from './utils';
 
@@ -7,17 +8,29 @@ import { progressiveWait } from './utils';
  * Implements progressive delay waiting pattern (1s, 5s, 10s, 30s, 60s, ...)
  */
 export abstract class Embedder extends WithLogging {
+  private _status: ModelStatus = 'uninitialized';
+
   constructor(
     protected configManager: ConfigManager,
-    private statusCallback: (status: string) => void
+    private statusCallback: (status: string) => void,
+    private onStatusChange?: (status: ModelStatus) => void
   ) {
     super();
   }
 
+  get status(): ModelStatus {
+    return this._status;
+  }
+
+  private setStatus(status: ModelStatus): void {
+    this._status = status;
+    this.onStatusChange?.(status);
+  }
+
   /**
-   * Update status via callback if set
+   * Update status bar text via callback
    */
-  protected updateStatus(status: string): void {
+  protected updateStatusBar(status: string): void {
     this.statusCallback(status);
   }
 
@@ -26,9 +39,10 @@ export abstract class Embedder extends WithLogging {
    * Subclasses implement startInitialization() and checkReady()
    */
   async initialize(): Promise<void> {
+    this.setStatus('initializing');
     try {
       if (this.shouldUpdateStatusDuringWait()) {
-        this.updateStatus('Loading model...');
+        this.updateStatusBar('Loading model...');
       }
 
       // Start backend-specific initialization
@@ -39,7 +53,8 @@ export abstract class Embedder extends WithLogging {
         checkReady: async () => {
           if (await this.checkReady()) {
             await this.onInitializationComplete();
-            this.updateStatus('Ready');
+            this.setStatus('ready');
+            this.updateStatusBar('Ready');
             return true;
           }
           return false;
@@ -49,15 +64,16 @@ export abstract class Embedder extends WithLogging {
             `Still waiting... (Model download may take several minutes on first run)`
           );
           if (this.shouldUpdateStatusDuringWait()) {
-            this.updateStatus('Still loading...');
+            this.updateStatusBar('Still loading...');
           }
         },
       });
     } catch (error) {
+      this.setStatus('failed');
       this.error(
         `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`
       );
-      this.updateStatus('Failed to initialize');
+      this.updateStatusBar('Failed to initialize');
       throw error;
     }
   }

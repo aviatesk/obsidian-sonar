@@ -2,6 +2,7 @@ import { HoverPopover, ItemView, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
 import { Mic, Square, createElement } from 'lucide';
+import { sonarState, type SonarModelState } from '../SonarModelState';
 import type { ConfigManager } from '../ConfigManager';
 import type { ChatTurn } from '../Chat';
 import type { ToolConfig, ToolPermissionRequest } from '../tools';
@@ -119,21 +120,52 @@ export class ChatView extends ItemView {
     this.mountComponent();
     this.createInputArea();
     this.registerKeyboardShortcuts();
+    this.setupSonarStateSubscription();
 
     // Lazy-load chat model when view is opened
+    await this.tryInitializeChatModel();
+  }
+
+  private setupSonarStateSubscription(): void {
+    let previousState: SonarModelState | null = null;
+
+    this.sonarStateUnsubscribe = sonarState.subscribe(state => {
+      if (state.embedder === 'failed') {
+        this.updateStore({
+          status: 'error',
+          errorMessage:
+            'Sonar initialization failed. Check llama.cpp configuration in Settings → Sonar, then run Reinitialize Sonar.',
+        });
+      } else if (state.embedder === 'ready') {
+        // Try to initialize chat model when embedder becomes ready
+        if (previousState?.embedder !== 'ready') {
+          this.tryInitializeChatModel();
+        }
+      }
+
+      previousState = state;
+    });
+  }
+
+  private async tryInitializeChatModel(): Promise<void> {
     const result = await this.plugin.initializeChatModelLazy();
     if (result === 'ready') {
+      const currentState = get(this.chatViewStore);
       this.updateStore({
         status: 'ready',
+        history: [],
         tools: this.getToolConfigs(),
+        enableThinking: currentState.enableThinking,
+        modelName: this.getShortModelName(),
       });
     } else if (result === 'failed') {
       this.updateStore({
         status: 'error',
-        errorMessage: 'Failed to initialize chat model',
+        errorMessage:
+          'Failed to initialize chat model. Check llama.cpp configuration in Settings → Sonar, then run Reinitialize Sonar.',
       });
     }
-    // If 'pending', keep 'initializing' state and wait for onSonarInitialized
+    // If 'pending', keep 'initializing' state and wait for embedder to become ready
   }
 
   private getToolConfigs(): ToolConfig[] {
@@ -254,6 +286,7 @@ export class ChatView extends ItemView {
   private voiceRecorder: VoiceRecorder | null = null;
   private autoSendOnStop = false;
   private storeUnsubscribe: (() => void) | null = null;
+  private sonarStateUnsubscribe: (() => void) | null = null;
 
   private createInputArea(): void {
     const inputContainer = this.contentEl.createDiv('rag-input-container');
@@ -617,38 +650,15 @@ export class ChatView extends ItemView {
     };
   }
 
-  async onSonarInitialized(): Promise<void> {
-    const currentState = get(this.chatViewStore);
-    // Retry lazy init if view was opened before Sonar finished initializing
-    if (currentState.status === 'initializing') {
-      const result = await this.plugin.initializeChatModelLazy();
-      switch (result) {
-        case 'ready':
-          this.updateStore({
-            status: 'ready',
-            errorMessage: null,
-            tools: this.getToolConfigs(),
-          });
-          break;
-        case 'failed':
-          this.updateStore({
-            status: 'error',
-            errorMessage: 'Failed to initialize chat model',
-          });
-          break;
-        case 'pending':
-          throw new Error(
-            'Unexpected pending state: Sonar should be initialized at this point'
-          );
-      }
-    }
-  }
-
   async onClose(): Promise<void> {
     this.unregisterKeyboardShortcuts();
     if (this.voiceRecorder) {
       this.voiceRecorder.cancelRecording();
       this.voiceRecorder = null;
+    }
+    if (this.sonarStateUnsubscribe) {
+      this.sonarStateUnsubscribe();
+      this.sonarStateUnsubscribe = null;
     }
     if (this.storeUnsubscribe) {
       this.storeUnsubscribe();

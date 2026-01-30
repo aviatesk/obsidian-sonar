@@ -179,6 +179,13 @@
           {onHoverLink}
         />
       </div>
+    {:else if status === 'initialization-failed'}
+      <div class="empty-state initialization-failed">
+        <div class="failed-message">
+          <span class="failed-title">Initialization failed</span>
+          <span class="failed-hint">Check llama.cpp configuration in Settings → Sonar, then run Reinitialize Sonar.</span>
+        </div>
+      </div>
     {:else}
       <div class="empty-state">
         <span>{statusText}</span>
@@ -381,5 +388,27 @@
     padding: 24px;
     color: var(--text-muted);
     font-size: 13px;
+  }
+
+  .empty-state.initialization-failed {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .failed-message {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .failed-title {
+    font-weight: 500;
+    color: var(--text-normal);
+  }
+
+  .failed-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
   }
 </style>

@@ -329,7 +329,7 @@
       <div class="empty-state">
         {#if $store.status === 'initializing'}
           <p class="thinking-indicator">Initializing...</p>
-          <p class="hint">Waiting for chat model to load.</p>
+          <p class="hint">Waiting for Sonar to initialize. This may take a moment if models are being downloaded.</p>
         {:else if hasEnabledTools()}
           <p>Ask a question about your notes.</p>
           <p class="hint">Context will be retrieved using enabled tools.</p>

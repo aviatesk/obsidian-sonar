@@ -32,9 +32,11 @@ export class LlamaCppEmbedder extends Embedder {
     private modelFile: string,
     configManager: ConfigManager,
     statusCallback: (status: string) => void,
-    private showNotice?: (msg: string, duration?: number) => void
+    onStatusChange: (status: import('./SonarModelState').ModelStatus) => void,
+    private showNotice?: (msg: string, duration?: number) => void,
+    private confirmDownload?: (modelId: string) => Promise<boolean>
   ) {
-    super(configManager, statusCallback);
+    super(configManager, statusCallback, onStatusChange);
   }
 
   protected async startInitialization(): Promise<void> {
@@ -42,11 +44,24 @@ export class LlamaCppEmbedder extends Embedder {
 
     // Check if model is cached, download if not
     if (!isModelCached(this.modelRepo, this.modelFile)) {
+      const modelId = `${this.modelRepo}/${this.modelFile}`;
+
+      // Ask for confirmation before downloading
+      if (this.confirmDownload) {
+        const confirmed = await this.confirmDownload(modelId);
+        if (!confirmed) {
+          throw new Error(
+            `Download cancelled by user. ` +
+              `To use a different model, change the settings and reinitialize.`
+          );
+        }
+      }
+
       this.log(`Model not found in cache, downloading...`);
       await downloadModel(this.modelRepo, this.modelFile, progress => {
         if (progress.status === 'progress') {
           const percent = progress.percent.toFixed(0);
-          this.updateStatus(`Loading: ${percent}%`);
+          this.updateStatusBar(`Loading: ${percent}%`);
         }
       });
       this.log(`Model downloaded`);

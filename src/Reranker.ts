@@ -1,3 +1,5 @@
+import type { ModelStatus } from './SonarModelState';
+
 export interface RerankResult {
   index: number;
   relevanceScore: number;
@@ -7,6 +9,8 @@ export interface RerankResult {
  * Abstract interface for cross-encoder reranking
  */
 export interface Reranker {
+  readonly status: ModelStatus;
+
   initialize(): Promise<void>;
 
   rerank(
@@ -25,6 +29,8 @@ export interface Reranker {
  * Used when reranking is not available.
  */
 export class NoopReranker implements Reranker {
+  readonly status: ModelStatus = 'ready';
+
   initialize(): Promise<void> {
     return Promise.resolve();
   }

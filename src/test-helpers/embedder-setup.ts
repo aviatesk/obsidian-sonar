@@ -32,7 +32,8 @@ async function setupLlamaCppEmbedder(): Promise<TestEmbedderSetupInfo> {
     modelRepo,
     modelFile,
     configManager,
-    () => {} // statusCallback - not needed for tests
+    () => {}, // statusCallback - not needed for tests
+    () => {} // onStatusChange - not needed for tests
   );
 
   await embedder.initialize();

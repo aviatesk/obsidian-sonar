@@ -87,7 +87,8 @@ cp main.js manifest.json styles.css /path/to/your/vault/.obsidian/plugins/obsidi
      automatically)
    - Or run `which llama-server` (macOS/Linux) or `where llama-server` (Windows)
      to find the absolute path
-4. The plugin will automatically download required models on first launch
+4. On first launch, you will be asked to permit downloading the required models
+   (a confirmation dialog appears for each model)
 
 ## Feature guide
 
@@ -127,10 +128,14 @@ locally in an IndexedDB database along with a BM25 index for hybrid search.
 
 - **Embedder model**: Specify model repository and file. Default:
   [`ggml-org/bge-m3-Q8_0-GGUF`](https://huggingface.co/ggml-org/bge-m3-Q8_0-GGUF).
-  If the model is not in the cache, it is downloaded automatically on
-  initialization (public models only). Models are cached in
-  `~/Library/Caches/llama.cpp/` (macOS), `~/.cache/llama.cpp/` (Linux), or
-  `%LOCALAPPDATA%\llama.cpp` (Windows).
+  Models are cached in `~/Library/Caches/llama.cpp/` (macOS),
+  `~/.cache/llama.cpp/` (Linux), or `%LOCALAPPDATA%\llama.cpp` (Windows). If a
+  model is not cached, a confirmation dialog will ask you to permit the
+  download.
+
+After changing model settings, run `Sonar: Reinitialize Sonar` from the command
+palette (or click **Reinitialize Sonar** in **Settings → Sonar → Actions**) to
+apply the new configuration.
 
 #### Audio transcription
 
