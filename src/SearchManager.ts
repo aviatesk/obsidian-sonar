@@ -9,7 +9,7 @@ import {
   aggregateChunksToFiles,
   mergeAndDeduplicateChunks,
 } from './SearchResultFusion';
-import type { Reranker } from './Reranker';
+import type { LlamaCppReranker } from './LlamaCppReranker';
 
 /**
  * Chunk-level search result returned by BM25Search/EmbeddingSearch
@@ -148,7 +148,7 @@ export class SearchManager extends WithLogging {
   constructor(
     private embeddingSearch: EmbeddingSearch,
     private bm25Search: BM25Search,
-    private reranker: Reranker,
+    private reranker: LlamaCppReranker,
     protected configManager: ConfigManager
   ) {
     super();

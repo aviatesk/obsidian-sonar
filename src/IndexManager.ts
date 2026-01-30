@@ -17,7 +17,7 @@ import {
 import { type ChunkMetadata, MetadataStore } from './MetadataStore';
 import { EmbeddingStore } from './EmbeddingStore';
 import { createChunks, type Chunk } from './chunker';
-import type { Embedder } from './Embedder';
+import type { LlamaCppEmbedder } from './LlamaCppEmbedder';
 import { BM25Store } from './BM25Store';
 import {
   formatBytes,
@@ -91,7 +91,7 @@ export class IndexManager extends WithLogging {
     private metadataStore: MetadataStore,
     private embeddingStore: EmbeddingStore,
     private bm25Store: BM25Store,
-    private embedder: Embedder,
+    private embedder: LlamaCppEmbedder,
     private vault: Vault,
     private workspace: Workspace,
     protected configManager: ConfigManager,

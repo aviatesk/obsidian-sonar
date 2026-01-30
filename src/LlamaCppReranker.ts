@@ -11,13 +11,17 @@ import {
   waitForServerReady,
 } from './llamaCppUtils';
 import type { ModelStatus } from './SonarModelState';
-import type { Reranker, RerankResult } from './Reranker';
+
+export interface RerankResult {
+  index: number;
+  relevanceScore: number;
+}
 
 /**
  * Cross-encoder reranking using llama.cpp server
  * Manages a separate llama.cpp server process for reranking
  */
-export class LlamaCppReranker extends WithLogging implements Reranker {
+export class LlamaCppReranker extends WithLogging {
   protected readonly componentName = 'LlamaCppReranker';
 
   private serverProcess: ChildProcess | null = null;

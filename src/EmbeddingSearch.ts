@@ -1,6 +1,6 @@
 import { EmbeddingStore } from './EmbeddingStore';
 import { MetadataStore, type ChunkMetadata } from './MetadataStore';
-import type { Embedder } from './Embedder';
+import type { LlamaCppEmbedder } from './LlamaCppEmbedder';
 import { ConfigManager } from './ConfigManager';
 import type {
   ChunkResult,
@@ -44,7 +44,7 @@ export class EmbeddingSearch extends WithLogging {
   constructor(
     private metadataStore: MetadataStore,
     private embeddingStore: EmbeddingStore,
-    private embedder: Embedder,
+    private embedder: LlamaCppEmbedder,
     protected configManager: ConfigManager
   ) {
     super();

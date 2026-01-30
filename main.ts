@@ -17,9 +17,7 @@ import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
 import { getDBName, MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
-import type { Embedder } from './src/Embedder';
 import { LlamaCppEmbedder } from './src/LlamaCppEmbedder';
-import type { Reranker } from './src/Reranker';
 import { LlamaCppReranker } from './src/LlamaCppReranker';
 import { LlamaCppChat } from './src/LlamaCppChat';
 import { Chat } from './src/Chat';
@@ -44,8 +42,8 @@ export default class SonarPlugin extends Plugin {
   searchManager: SearchManager | null = null;
   indexManager: IndexManager | null = null;
   metadataStore: MetadataStore | null = null;
-  embedder: Embedder | null = null;
-  reranker: Reranker | null = null;
+  embedder: LlamaCppEmbedder | null = null;
+  reranker: LlamaCppReranker | null = null;
   chatModel: LlamaCppChat | null = null;
   chat: Chat | null = null;
   private semanticNoteFinder: SemanticNoteFinder | null = null;
@@ -98,7 +96,7 @@ export default class SonarPlugin extends Plugin {
   }
 
   private async initializeEmbedder(
-    embedder: Embedder,
+    embedder: LlamaCppEmbedder,
     backendName: string,
     modelDescription: string
   ): Promise<boolean> {
@@ -120,7 +118,7 @@ export default class SonarPlugin extends Plugin {
   }
 
   private async initializeReranker(
-    reranker: Reranker,
+    reranker: LlamaCppReranker,
     modelDescription: string
   ): Promise<boolean> {
     try {
