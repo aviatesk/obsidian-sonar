@@ -6,12 +6,14 @@ export interface SonarModelState {
   embedder: ModelStatus;
   reranker: ModelStatus;
   chatModel: ModelStatus;
+  searchReady: boolean;
 }
 
 const initialState: SonarModelState = {
   embedder: 'uninitialized',
   reranker: 'uninitialized',
   chatModel: 'uninitialized',
+  searchReady: false,
 };
 
 function createSonarState() {
@@ -32,6 +34,10 @@ function createSonarState() {
       update(state => ({ ...state, chatModel: status }));
     },
 
+    setSearchReady(ready: boolean) {
+      update(state => ({ ...state, searchReady: ready }));
+    },
+
     reset() {
       update(() => ({ ...initialState }));
     },
@@ -42,7 +48,7 @@ export const sonarState = createSonarState();
 
 export const isSearchReady: Readable<boolean> = derived(
   sonarState,
-  $state => $state.embedder === 'ready'
+  $state => $state.searchReady
 );
 
 export const hasInitializationFailed: Readable<boolean> = derived(

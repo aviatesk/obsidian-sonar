@@ -133,9 +133,10 @@ export class ChatView extends ItemView {
           errorMessage:
             'Sonar initialization failed. Check llama.cpp configuration in Settings → Sonar, then run Reinitialize Sonar.',
         });
-      } else if (state.embedder === 'ready') {
-        // Try to initialize chat model when embedder becomes ready
-        if (previousState?.embedder !== 'ready') {
+      } else if (state.searchReady) {
+        // Try to initialize chat model when search becomes ready
+        // (searchReady means embedder is ready AND searchManager exists)
+        if (!previousState?.searchReady) {
           this.tryInitializeChatModel();
         }
       }

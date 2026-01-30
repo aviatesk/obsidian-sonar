@@ -537,6 +537,7 @@ export default class SonarPlugin extends Plugin {
       this.reranker!,
       this.configManager
     );
+    sonarState.setSearchReady(true);
 
     this.indexManager = new IndexManager(
       this.metadataStore,
