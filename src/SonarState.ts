@@ -5,13 +5,15 @@ export type ModelStatus = 'uninitialized' | 'initializing' | 'ready' | 'failed';
 export interface SonarModelState {
   embedder: ModelStatus;
   reranker: ModelStatus;
-  searchReady: boolean;
+  metadataStore: ModelStatus;
+  bm25Store: ModelStatus;
 }
 
 const initialState: SonarModelState = {
   embedder: 'uninitialized',
   reranker: 'uninitialized',
-  searchReady: false,
+  metadataStore: 'uninitialized',
+  bm25Store: 'uninitialized',
 };
 
 function createSonarState() {
@@ -28,8 +30,12 @@ function createSonarState() {
       update(state => ({ ...state, reranker: status }));
     },
 
-    setSearchReady(ready: boolean) {
-      update(state => ({ ...state, searchReady: ready }));
+    setMetadataStoreStatus(status: ModelStatus) {
+      update(state => ({ ...state, metadataStore: status }));
+    },
+
+    setBm25StoreStatus(status: ModelStatus) {
+      update(state => ({ ...state, bm25Store: status }));
     },
 
     reset() {
@@ -40,6 +46,14 @@ function createSonarState() {
 
 export const sonarState = createSonarState();
 
+export const isSearchReady: Readable<boolean> = derived(
+  sonarState,
+  $state =>
+    $state.embedder === 'ready' &&
+    $state.metadataStore === 'ready' &&
+    $state.bm25Store === 'ready'
+);
+
 export const isRerankerReady: Readable<boolean> = derived(
   sonarState,
   $state => $state.reranker === 'ready'
@@ -47,4 +61,20 @@ export const isRerankerReady: Readable<boolean> = derived(
 
 export function getState(): SonarModelState {
   return get(sonarState);
+}
+
+export function checkSearchReady(state: SonarModelState): boolean {
+  return (
+    state.embedder === 'ready' &&
+    state.metadataStore === 'ready' &&
+    state.bm25Store === 'ready'
+  );
+}
+
+export function checkHasFailure(state: SonarModelState): boolean {
+  return (
+    state.embedder === 'failed' ||
+    state.metadataStore === 'failed' ||
+    state.bm25Store === 'failed'
+  );
 }

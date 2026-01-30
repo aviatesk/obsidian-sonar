@@ -11,7 +11,7 @@ import type { MarkdownPostProcessorContext } from 'obsidian';
 import { EditorView } from '@codemirror/view';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
-import { sonarState, type SonarModelState } from '../SonarState';
+import { sonarState, isSearchReady, type SonarModelState } from '../SonarState';
 import type { SearchResult } from '../SearchManager';
 import { processQuery, type QueryOptions } from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';
@@ -134,12 +134,12 @@ export class RelatedNotesView extends ItemView {
 
   private setupSonarStateSubscription(): void {
     let wasSearchReady = false;
-    this.sonarStateUnsubscribe = sonarState.subscribe(state => {
-      if (state.searchReady && !wasSearchReady) {
+    this.sonarStateUnsubscribe = isSearchReady.subscribe(ready => {
+      if (ready && !wasSearchReady) {
         this.lastQuery = '';
         this.refresh(true);
       }
-      wasSearchReady = state.searchReady;
+      wasSearchReady = ready;
     });
   }
 

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Tool } from '../Tool';
 import type { SearchManager } from '../../SearchManager';
-import { getState } from '../../SonarState';
+import { getState, checkSearchReady } from '../../SonarState';
 
 export interface SearchVaultDependencies {
   getSearchManager: () => SearchManager | null;
@@ -86,12 +86,15 @@ export function createSearchVaultTool(deps: SearchVaultDependencies): Tool {
     isAvailable: () => {
       const state = getState();
       if (state.embedder === 'failed') {
-        return 'Initialization failed. Run Reinitialize Sonar.';
+        return 'Embedder initialization failed. Run Reinitialize Sonar.';
       }
-      if (
-        state.embedder === 'initializing' ||
-        state.embedder === 'uninitialized'
-      ) {
+      if (state.metadataStore === 'failed') {
+        return 'Metadata store initialization failed. Run Reinitialize Sonar.';
+      }
+      if (state.bm25Store === 'failed') {
+        return 'BM25 store initialization failed. Run Reinitialize Sonar.';
+      }
+      if (!checkSearchReady(state)) {
         return 'Still initializing...';
       }
       const searchManager = deps.getSearchManager();

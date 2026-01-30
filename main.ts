@@ -292,6 +292,7 @@ export default class SonarPlugin extends Plugin {
     ]);
     if (!embedderInitialized) return false;
 
+    sonarState.setMetadataStoreStatus('initializing');
     try {
       this.metadataStore = await MetadataStore.initialize(
         this.app.vault.getName(),
@@ -299,6 +300,7 @@ export default class SonarPlugin extends Plugin {
         this.configManager
       );
     } catch (error) {
+      sonarState.setMetadataStoreStatus('failed');
       this.error(`Failed to initialize metadata store: ${error}`);
       new Notice(
         'Failed to initialize metadata store.\n\n' +
@@ -309,12 +311,16 @@ export default class SonarPlugin extends Plugin {
       return false;
     }
 
+    sonarState.setMetadataStoreStatus('ready');
+
     const db = this.metadataStore.getDB();
     const embeddingStore = new EmbeddingStore(db, this.configManager);
     let bm25Store: BM25Store;
+    sonarState.setBm25StoreStatus('initializing');
     try {
       bm25Store = await BM25Store.initialize(db, this.configManager);
     } catch (error) {
+      sonarState.setBm25StoreStatus('failed');
       this.error(`Failed to initialize BM25 store: ${error}`);
       new Notice(
         'Failed to initialize BM25 store.\n\n' +
@@ -324,6 +330,7 @@ export default class SonarPlugin extends Plugin {
       );
       return false;
     }
+    sonarState.setBm25StoreStatus('ready');
 
     const bm25Search = new BM25Search(
       bm25Store,
@@ -344,7 +351,6 @@ export default class SonarPlugin extends Plugin {
       this.reranker!,
       this.configManager
     );
-    sonarState.setSearchReady(true);
 
     this.indexManager = new IndexManager(
       this.metadataStore,
@@ -386,19 +392,31 @@ export default class SonarPlugin extends Plugin {
       const state = getState();
       if (state.embedder === 'failed') {
         new Notice(
-          'Sonar initialization failed.\n\n' +
+          'Embedder initialization failed.\n\n' +
             'Check llama.cpp configuration in Settings → Sonar, ' +
             'then run "Reinitialize Sonar".'
         );
+      } else if (state.metadataStore === 'failed') {
+        new Notice(
+          'Metadata store initialization failed.\n\n' +
+            'Check the console for details, ' +
+            'then run "Reinitialize Sonar".'
+        );
+      } else if (state.bm25Store === 'failed') {
+        new Notice(
+          'BM25 store initialization failed.\n\n' +
+            'Check the console for details, ' +
+            'then run "Reinitialize Sonar".'
+        );
       } else if (
-        state.embedder === 'initializing' ||
-        state.embedder === 'uninitialized'
+        state.embedder !== 'ready' ||
+        state.metadataStore !== 'ready' ||
+        state.bm25Store !== 'ready'
       ) {
         new Notice('Sonar is still initializing. Please wait...');
       } else {
-        // embedder is 'ready' but indexManager is null - MetadataStore or BM25Store failed
         new Notice(
-          'Index initialization failed.\n\n' +
+          'Sonar initialization failed.\n\n' +
             'Check the console for details, ' +
             'then run "Reinitialize Sonar".'
         );

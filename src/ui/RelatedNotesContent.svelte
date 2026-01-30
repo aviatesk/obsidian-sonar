@@ -1,7 +1,7 @@
 <script lang="ts">
   import { App, Notice } from 'obsidian';
   import type { ConfigManager } from '../ConfigManager';
-  import type { SonarModelState } from '../SonarState';
+  import { checkSearchReady, checkHasFailure, type SonarModelState } from '../SonarState';
   import { STATUS_DISPLAY_TEXT, type RelatedNotesStatus } from './RelatedNotesView';
   import SearchResults from './SearchResults.svelte';
   import KnowledgeGraph from './KnowledgeGraph.svelte';
@@ -29,15 +29,29 @@
 
   // Derive effective status: sonarState takes precedence over store status
   const status: RelatedNotesStatus = $derived.by(() => {
-    if (sonar.embedder === 'failed') {
+    if (checkHasFailure(sonar)) {
       return 'initialization-failed';
     }
-    if (!sonar.searchReady) {
+    if (!checkSearchReady(sonar)) {
       return 'initializing';
     }
     return storeState.status as RelatedNotesStatus;
   });
   const statusText = $derived(STATUS_DISPLAY_TEXT[status]);
+
+  // Derive failure hint based on which component failed
+  const failureHint = $derived.by(() => {
+    if (sonar.embedder === 'failed') {
+      return 'Check llama.cpp configuration in Settings → Sonar, then run Reinitialize Sonar.';
+    }
+    if (sonar.metadataStore === 'failed') {
+      return 'Metadata store initialization failed. Check console for details, then run Reinitialize Sonar.';
+    }
+    if (sonar.bm25Store === 'failed') {
+      return 'BM25 store initialization failed. Check console for details, then run Reinitialize Sonar.';
+    }
+    return '';
+  });
   let showQuery = $state(configManager.get('showRelatedNotesQuery'));
   let showExcerpts = $state(configManager.get('showRelatedNotesExcerpts'));
   let showKnowledgeGraph = $state(configManager.get('showKnowledgeGraph'));
@@ -196,7 +210,7 @@
       <div class="empty-state initialization-failed">
         <div class="failed-message">
           <span class="failed-title">Initialization failed</span>
-          <span class="failed-hint">Check llama.cpp configuration in Settings → Sonar, then run Reinitialize Sonar.</span>
+          <span class="failed-hint">{failureHint}</span>
         </div>
       </div>
     {:else}
