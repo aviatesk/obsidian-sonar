@@ -36,10 +36,9 @@ export interface Tool {
   defaultDisabled?: boolean;
   execute: (args: Record<string, unknown>) => Promise<string>;
   /**
-   * Check if the tool is currently available.
-   * Returns null if available, or a reason string if unavailable.
+   * Returns the reason why the tool is unavailable, or undefined if available.
    */
-  isAvailable?: () => string | null;
+  getUnavailableReason?: () => string | undefined;
 }
 
 /**

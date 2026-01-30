@@ -83,7 +83,7 @@ export class ToolRegistry {
   getEnabled(): Tool[] {
     return this.getAll().filter(
       tool =>
-        this.isEnabled(tool.definition.name) && tool.isAvailable?.() === null
+        this.isEnabled(tool.definition.name) && !tool.getUnavailableReason?.()
     );
   }
 
@@ -97,7 +97,7 @@ export class ToolRegistry {
       description: tool.definition.description,
       enabled: this.isEnabled(tool.definition.name),
       isBuiltin: tool.isBuiltin,
-      unavailableReason: tool.isAvailable?.() ?? undefined,
+      unavailableReason: tool.getUnavailableReason?.(),
     }));
   }
 

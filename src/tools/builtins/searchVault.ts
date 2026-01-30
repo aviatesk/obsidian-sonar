@@ -83,7 +83,7 @@ export function createSearchVaultTool(deps: SearchVaultDependencies): Tool {
     displayName: 'Search vault',
     isBuiltin: true,
     execute: args => executeSearchVault(args, deps),
-    isAvailable: () => {
+    getUnavailableReason: () => {
       const state = getState();
       if (state.embedder === 'failed') {
         return 'Embedder initialization failed. Run Reinitialize Sonar.';
@@ -98,7 +98,7 @@ export function createSearchVaultTool(deps: SearchVaultDependencies): Tool {
         return 'Still initializing...';
       }
       const searchManager = deps.getSearchManager();
-      return searchManager ? null : 'SearchManager not ready';
+      return searchManager ? undefined : 'SearchManager not ready';
     },
   };
 }

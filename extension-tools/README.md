@@ -32,13 +32,19 @@ module.exports = function (ctx) {
       // args contains the parameters from the LLM
       return 'Result string returned to the LLM';
     },
+    getUnavailableReason: () => {
+      // Optional: return a string if the tool is temporarily unavailable
+      // return undefined (or omit this function) if available
+      return undefined;
+    },
   };
 };
 ```
 
 ### Context object
 
-The `ctx` object provides access to Obsidian APIs and logging:
+The `ctx` object provides access to Obsidian APIs, logging, and plugin
+resources:
 
 | Property         | Description                                        |
 | ---------------- | -------------------------------------------------- |
@@ -48,6 +54,16 @@ The `ctx` object provides access to Obsidian APIs and logging:
 | `ctx.log`        | Log function (info level)                          |
 | `ctx.warn`       | Warning function                                   |
 | `ctx.error`      | Error function                                     |
+| `ctx.plugin`     | Plugin resources (see below)                       |
+
+#### Plugin resources
+
+The `ctx.plugin` object provides access to Sonar's internal components:
+
+| Property                      | Description                                   |
+| ----------------------------- | --------------------------------------------- |
+| `ctx.plugin.getSearchManager` | Returns `SearchManager` or `null` if not ready |
+| `ctx.plugin.getMetadataStore` | Returns `MetadataStore` or `null` if not ready |
 
 ### Tool definition
 
@@ -63,6 +79,17 @@ The `definition` object follows the
 
 The `execute` function receives the parsed arguments from the LLM and should
 return a string result. Use `async/await` for asynchronous operations.
+
+### Availability check
+
+The optional `getUnavailableReason` function allows you to dynamically control
+when your tool is available to the LLM:
+
+- Return `undefined` (or omit the function): Tool is available
+- Return a string: Tool is unavailable, and the string explains why
+
+This is useful when your tool depends on external services, specific
+configurations, or other conditions that may not always be met.
 
 ## Examples
 
