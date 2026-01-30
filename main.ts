@@ -48,6 +48,7 @@ export default class SonarPlugin extends Plugin {
   chatManager: ChatManager | null = null;
   private semanticNoteFinder: SemanticNoteFinder | null = null;
   private reinitializing = false;
+  private initializingChatModel = false;
   private indexUpdateUnsubscribe: (() => void) | null = null;
 
   private log(msg: string): void {
@@ -209,6 +210,12 @@ export default class SonarPlugin extends Plugin {
       return 'ready';
     }
 
+    // Prevent concurrent initialization
+    if (this.initializingChatModel) {
+      this.log('Chat model initialization already in progress');
+      return 'pending';
+    }
+
     // Check if Sonar core is initialized (required dependencies)
     if (!this.searchManager || !this.metadataStore) {
       // If embedder initialization failed, return 'failed' immediately
@@ -224,46 +231,52 @@ export default class SonarPlugin extends Plugin {
       return 'pending';
     }
 
-    // Clean up any partially initialized model
-    if (this.chatModel) {
-      await this.chatModel.cleanup();
+    this.initializingChatModel = true;
+
+    try {
+      // Clean up any partially initialized model
+      const oldModel = this.chatModel;
       this.chatModel = null;
+      if (oldModel) {
+        await oldModel.cleanup();
+      }
+
+      const serverPath = this.configManager.get('llamacppServerPath');
+      const chatModelRepo =
+        this.configManager.get('llamaChatModelRepo') ||
+        DEFAULT_SETTINGS.llamaChatModelRepo;
+      const chatModelFile =
+        this.configManager.get('llamaChatModelFile') ||
+        DEFAULT_SETTINGS.llamaChatModelFile;
+      const chatModelIdentifier = `${chatModelRepo}/${chatModelFile}`;
+
+      this.log(`Lazy-loading chat model: ${chatModelIdentifier}`);
+
+      const chatModel = (this.chatModel = new LlamaCppChat(
+        serverPath,
+        chatModelRepo,
+        chatModelFile,
+        this.configManager,
+        status => this.updateStatusBar(status),
+        status => sonarState.setChatModelStatus(status),
+        (msg, duration) => new Notice(msg, duration),
+        this.createConfirmDownload('chat')
+      ));
+
+      const success = await this.initializeChatModel(
+        chatModel,
+        chatModelIdentifier
+      );
+      if (!success) {
+        return 'failed';
+      }
+
+      await this.createChat();
+
+      return 'ready';
+    } finally {
+      this.initializingChatModel = false;
     }
-
-    const serverPath = this.configManager.get('llamacppServerPath');
-    const chatModelRepo =
-      this.configManager.get('llamaChatModelRepo') ||
-      DEFAULT_SETTINGS.llamaChatModelRepo;
-    const chatModelFile =
-      this.configManager.get('llamaChatModelFile') ||
-      DEFAULT_SETTINGS.llamaChatModelFile;
-    const chatModelIdentifier = `${chatModelRepo}/${chatModelFile}`;
-
-    this.log(`Lazy-loading chat model: ${chatModelIdentifier}`);
-
-    const chatModel = (this.chatModel = new LlamaCppChat(
-      serverPath,
-      chatModelRepo,
-      chatModelFile,
-      this.configManager,
-      status => this.updateStatusBar(status),
-      status => sonarState.setChatModelStatus(status),
-      (msg, duration) => new Notice(msg, duration),
-      this.createConfirmDownload('chat')
-    ));
-
-    const success = await this.initializeChatModel(
-      chatModel,
-      chatModelIdentifier
-    );
-    if (!success) {
-      return 'failed';
-    }
-
-    // Create Chat after chat model is ready
-    await this.createChat();
-
-    return 'ready';
   }
 
   private async initializeChatModel(
@@ -276,6 +289,7 @@ export default class SonarPlugin extends Plugin {
       return true;
     } catch (error) {
       this.warn(`Failed to initialize chat model: ${error}`);
+      this.chatModel = null;
       await chatModel.cleanup();
       return false;
     }
@@ -338,13 +352,15 @@ export default class SonarPlugin extends Plugin {
    * Cleanup chat model when RAG view is closed
    */
   async cleanupChatModel(): Promise<void> {
-    if (this.chatManager) {
-      this.chatManager = null;
-    }
-    if (this.chatModel) {
+    const modelToCleanup = this.chatModel;
+
+    // Immediately clear references so new initialization won't see old model
+    this.chatManager = null;
+    this.chatModel = null;
+
+    if (modelToCleanup) {
       this.log('Cleaning up chat model...');
-      await this.chatModel.cleanup();
-      this.chatModel = null;
+      await modelToCleanup.cleanup();
       this.log('Chat model cleaned up');
     }
   }
