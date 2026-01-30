@@ -1,6 +1,7 @@
 <script lang="ts">
   import { App, Notice } from 'obsidian';
   import type { ConfigManager } from '../ConfigManager';
+  import type { SonarModelState } from '../SonarState';
   import { STATUS_DISPLAY_TEXT, type RelatedNotesStatus } from './RelatedNotesView';
   import SearchResults from './SearchResults.svelte';
   import KnowledgeGraph from './KnowledgeGraph.svelte';
@@ -10,21 +11,33 @@
   interface Props {
     app: App;
     configManager: ConfigManager;
-    store: any; // Svelte store
+    store: any; // Svelte store for view-specific state
+    sonarState: { subscribe: (fn: (value: SonarModelState) => void) => () => void };
     onRefresh: () => void;
     onHoverLink?: (event: MouseEvent, linktext: string) => void;
   }
 
-  let { app, configManager, store, onRefresh, onHoverLink }: Props = $props();
+  let { app, configManager, store, sonarState, onRefresh, onHoverLink }: Props = $props();
 
   const storeState = $derived($store);
+  const sonar = $derived($sonarState);
   const query = $derived(storeState.query);
   const results = $derived(storeState.results);
   const tokenCount = $derived(storeState.tokenCount);
-  const status = $derived(storeState.status as RelatedNotesStatus);
-  const statusText = $derived(STATUS_DISPLAY_TEXT[status]);
   const activeFile = $derived(storeState.activeFile);
   const hasQuery = $derived(query && query.trim().length > 0);
+
+  // Derive effective status: sonarState takes precedence over store status
+  const status: RelatedNotesStatus = $derived.by(() => {
+    if (sonar.embedder === 'failed') {
+      return 'initialization-failed';
+    }
+    if (!sonar.searchReady) {
+      return 'initializing';
+    }
+    return storeState.status as RelatedNotesStatus;
+  });
+  const statusText = $derived(STATUS_DISPLAY_TEXT[status]);
   let showQuery = $state(configManager.get('showRelatedNotesQuery'));
   let showExcerpts = $state(configManager.get('showRelatedNotesExcerpts'));
   let showKnowledgeGraph = $state(configManager.get('showKnowledgeGraph'));

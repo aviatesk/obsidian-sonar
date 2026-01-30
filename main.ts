@@ -726,8 +726,6 @@ export default class SonarPlugin extends Plugin {
   }
 
   async activateChatView(): Promise<void> {
-    if (!this.checkInitialized()) return;
-
     const { workspace } = this.app;
 
     let leaf: WorkspaceLeaf | null = null;

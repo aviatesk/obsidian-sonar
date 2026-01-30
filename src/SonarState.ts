@@ -40,16 +40,6 @@ function createSonarState() {
 
 export const sonarState = createSonarState();
 
-export const isSearchReady: Readable<boolean> = derived(
-  sonarState,
-  $state => $state.searchReady
-);
-
-export const hasInitializationFailed: Readable<boolean> = derived(
-  sonarState,
-  $state => $state.embedder === 'failed'
-);
-
 export const isRerankerReady: Readable<boolean> = derived(
   sonarState,
   $state => $state.reranker === 'ready'

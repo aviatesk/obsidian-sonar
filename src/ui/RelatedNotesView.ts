@@ -78,7 +78,7 @@ export class RelatedNotesView extends ItemView {
   private sonarStateUnsubscribe: (() => void) | null = null;
   private relatedNotesStore = writable<RelatedNotesState>({
     ...EMPTY_STATE_BASE,
-    status: 'initializing',
+    status: 'no-active-note',
   });
 
   constructor(
@@ -133,37 +133,13 @@ export class RelatedNotesView extends ItemView {
   }
 
   private setupSonarStateSubscription(): void {
-    let previousState: SonarModelState | null = null;
-
+    let wasSearchReady = false;
     this.sonarStateUnsubscribe = sonarState.subscribe(state => {
-      const currentStatus = get(this.relatedNotesStore).status;
-
-      if (state.embedder === 'failed') {
-        if (currentStatus !== 'initialization-failed') {
-          this.updateStore({
-            ...EMPTY_STATE_BASE,
-            status: 'initialization-failed',
-          });
-        }
-      } else if (state.embedder === 'ready') {
-        // Trigger refresh when embedder becomes ready
-        if (previousState?.embedder !== 'ready') {
-          this.lastQuery = '';
-          this.refresh(true);
-        }
-      } else if (state.embedder === 'initializing') {
-        if (
-          currentStatus !== 'initializing' &&
-          currentStatus !== 'processing'
-        ) {
-          this.updateStore({
-            ...EMPTY_STATE_BASE,
-            status: 'initializing',
-          });
-        }
+      if (state.searchReady && !wasSearchReady) {
+        this.lastQuery = '';
+        this.refresh(true);
       }
-
-      previousState = state;
+      wasSearchReady = state.searchReady;
     });
   }
 
@@ -232,6 +208,9 @@ export class RelatedNotesView extends ItemView {
         app: this.app,
         configManager: this.configManager,
         store: this.relatedNotesStore,
+        sonarState: sonarState as {
+          subscribe: (fn: (value: SonarModelState) => void) => () => void;
+        },
         onRefresh: () => {
           this.manualRefresh();
         },
@@ -315,11 +294,8 @@ export class RelatedNotesView extends ItemView {
       this.searchAbortController = null;
     }
 
+    // Search not ready yet - UI state is handled by sonarState in Svelte
     if (!this.plugin.searchManager || !this.plugin.embedder) {
-      this.updateStore({
-        ...EMPTY_STATE_BASE,
-        status: 'initializing',
-      });
       return;
     }
 
@@ -445,11 +421,8 @@ export class RelatedNotesView extends ItemView {
     file: TFile,
     abortSignal: AbortSignal
   ): Promise<void> {
+    // Dependencies not ready yet - UI state is handled by sonarState in Svelte
     if (!this.plugin.metadataStore || !this.plugin.embedder) {
-      this.updateStore({
-        ...EMPTY_STATE_BASE,
-        status: 'initializing',
-      });
       return;
     }
 

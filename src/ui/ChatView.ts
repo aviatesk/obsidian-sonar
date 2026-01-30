@@ -264,11 +264,11 @@ export class ChatView extends ItemView {
 
   /**
    * Create ChatManager instance (requires chatModel to be ready)
-   * searchManager is optional - search_vault tool checks availability at runtime
+   * searchManager and metadataStore are optional - tools check availability at runtime
    */
   private async createChatManager(): Promise<void> {
-    if (!this.chatModel?.isReady() || !this.plugin.metadataStore) {
-      this.logger.warn('Cannot create ChatManager: dependencies not ready');
+    if (!this.chatModel?.isReady()) {
+      this.logger.warn('Cannot create ChatManager: chat model not ready');
       return;
     }
 
