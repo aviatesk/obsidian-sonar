@@ -373,6 +373,10 @@ module.exports = function (ctx) {
     },
     displayName: 'Tasks calendar',
     defaultDisabled: true,
+    getUnavailableReason: () => {
+      const plugin = ctx.app.plugins?.plugins?.['tasks-calendar'];
+      return plugin ? undefined : 'Tasks Calendar plugin not installed';
+    },
     execute: async args => {
       const startDate = args.start_date || getTodayString();
       const endDate = args.end_date || getTodayString();

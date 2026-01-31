@@ -48,14 +48,17 @@ export async function executeFetchUrl(
   );
 }
 
-export function createFetchUrlTool(): Tool {
+export interface FetchUrlDependencies {
+  enabled: boolean;
+}
+
+export function createFetchUrlTool(deps: FetchUrlDependencies): Tool {
   return {
     definition: {
       name: 'fetch_url',
       description:
         'Fetch and extract text content from a web page. ' +
-        'Use this to get detailed information from a URL found via web_search, ' +
-        'or when the user provides a specific URL.',
+        'Use this when the user provides a URL or references a web page.',
       parameters: {
         type: 'object',
         properties: {
@@ -69,6 +72,7 @@ export function createFetchUrlTool(): Tool {
     },
     displayName: 'Fetch URL',
     isBuiltin: true,
+    defaultDisabled: !deps.enabled,
     execute: executeFetchUrl,
   };
 }

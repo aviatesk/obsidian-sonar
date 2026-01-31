@@ -23,8 +23,7 @@ your machine.
   connections to your current note, with optional knowledge graph visualization
 - [**Agentic assistant chat**](#agentic-assistant-chat): Have conversations with
   an assistant grounded in your knowledge base — supports tool use including
-  vault search, note editing, and web search, with extensibility through custom
-  tools
+  vault search, note editing, with extensibility through custom tools
 
 ## Installation
 
@@ -235,39 +234,19 @@ decides when to use tools based on your request.
 
 **Built-in tools**:
 
-| Tool           | Description                                                           |
-| -------------- | --------------------------------------------------------------------- |
-| `search_vault` | Search your knowledge base semantically                               |
-| `read_file`    | Read content from markdown, PDF, or audio files                       |
-| `edit_note`    | Create or modify notes in your vault                                  |
-| `web_search`   | Search the web via SearXNG (requires [additional setup](#web-search)) |
-| `fetch_url`    | Fetch and analyze web page content                                    |
+| Tool           | Description                               |
+| -------------- | ----------------------------------------- |
+| `search_vault` | Search your knowledge base semantically   |
+| `read_file`    | Read content from markdown, PDF, or audio |
+| `edit_note`    | Create or modify notes in your vault      |
+| `fetch_url`    | Fetch and extract text from a web page    |
 
-**Custom tools**: Extend the assistant with your own tools to provide any
-context you want — the model will fetch it when needed. See
-[extension-tools/README.md](./extension-tools/README.md) for the API and
-examples.
-
-##### Web search
-
-The `web_search` tool uses [SearXNG](https://github.com/searxng/searxng), a
-self-hosted metasearch engine — no API keys required, no search history stored
-on third-party services. To set it up:
-
-1. Install and run a SearXNG instance (see
-   [installation docs](https://docs.searxng.org/admin/installation.html))
-
-2. Enable JSON output in SearXNG's `settings.yml`:
-
-   ```yaml
-   search:
-     formats:
-       - html
-       - json
-   ```
-
-3. Configure **SearXNG URL** in **Settings → Sonar** (default:
-   `http://localhost:8080`)
+**Extension tools**: Extend the assistant with custom tools. Several example
+tools are provided in the
+[extension-tools](./extension-tools/README.md#bundled-extension-tools) folder,
+including web search via SearXNG and calendar integrations. See
+[extension-tools/README.md](./extension-tools/README.md) for the API and setup
+instructions
 
 ---
 

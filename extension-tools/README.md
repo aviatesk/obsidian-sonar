@@ -1,8 +1,14 @@
-# Extension tools
+# Sonar chat extension tools
 
-Create custom tools for the agentic assistant chat by placing JavaScript files
-in this folder (or any folder you configure in **Settings → Sonar → Extension
-tools folder**).
+This folder contains documentation for the extension tool [API](#api) and
+[bundled example tools](#bundled-extension-tools). To use extension tools:
+
+1. Configure **Settings → Sonar → Chat → Extension tools → Extension tools
+   folder** to point to a folder in your vault
+2. Copy the desired tool scripts (`.js` files) from this folder to your
+   configured folder
+3. Edit the copied scripts to add your configuration (API keys, URLs, etc.)
+4. Enable the tools in the chat interface
 
 ## API
 
@@ -85,7 +91,7 @@ when your tool is available to the LLM:
 This is useful when your tool depends on external services, specific
 configurations, or other conditions that may not always be met.
 
-## Type definitions
+### Type definitions
 
 A `types.d.ts` file is provided for TypeScript users or for JSDoc type hints in
 JavaScript. You can reference types using JSDoc comments:
@@ -110,10 +116,84 @@ module.exports = function (ctx) {
 This enables IDE autocompletion and type checking even in plain JavaScript
 files.
 
-## Examples
+## Bundled extension tools
 
-See the example tools in this folder:
+This folder includes several ready-to-use extension tools. To use them, copy the
+desired tool to your extension tools folder and configure as needed.
 
-- `get_google_calendar.js` - Fetches events from Google Calendar via iCal URL
-- `get_tasks.js` - Integrates with the
-  [Tasks calendar](https://github.com/aviatesk/obsidian-tasks-calendar) plugin
+### SearXNG search ([`searxng_search.js`](./searxng_search.js))
+
+Search the web using a self-hosted [SearXNG](https://github.com/searxng/searxng)
+instance. SearXNG is a privacy-respecting metasearch engine that aggregates
+results from multiple search engines without tracking.
+
+**Setup:**
+
+1. Install SearXNG using Docker:
+
+   ```bash
+   mkdir -p ~/searxng
+   cat > ~/searxng/settings.yml << 'EOF'
+   use_default_settings: true
+
+   server:
+     limiter: false
+     secret_key: "change-this-to-random-string"
+
+   search:
+     formats:
+       - html
+       - json
+   EOF
+
+   docker run -d -p 8080:8080 --name searxng \
+     -v ~/searxng/settings.yml:/etc/searxng/settings.yml:ro \
+     searxng/searxng
+   ```
+
+2. Test the setup:
+
+   ```bash
+   curl "http://localhost:8080/search?q=test&format=json"
+   ```
+
+3. Edit `searxng_search.js` and set `SEARXNG_URL` to your instance URL:
+
+   ```javascript
+   const SEARXNG_URL = 'http://localhost:8080';
+   ```
+
+4. Enable the tool in the chat interface
+
+### Google Calendar ([`get_google_calendar.js`](./get_google_calendar.js))
+
+Fetch events from a Google Calendar using its public iCal URL.
+
+**Setup:**
+
+1. Go to
+   [Google Calendar settings](https://calendar.google.com/calendar/r/settings)
+2. Select your calendar from the left sidebar
+3. Scroll to "Integrate calendar" and copy the "Secret address in iCal format"
+4. Edit `get_google_calendar.js` and set `CALENDAR_URL`:
+
+   ```javascript
+   const CALENDAR_URL = 'https://calendar.google.com/calendar/ical/...';
+   ```
+
+5. Enable the tool in the chat interface
+
+### Tasks Calendar ([`get_tasks.js`](./get_tasks.js))
+
+Integrate with the
+[Tasks Calendar](https://github.com/aviatesk/obsidian-tasks-calendar) plugin to
+fetch tasks with due dates.
+
+**Setup:**
+
+1. Install and configure the Tasks Calendar plugin
+2. Copy `get_tasks.js` to your extension tools folder
+3. Enable the tool in the chat interface
+
+The tool will automatically find tasks with due dates in your vault using the
+Tasks Calendar plugin's data.

@@ -11,7 +11,6 @@ import {
   ToolRegistry,
   createSearchVaultTool,
   createReadFileTool,
-  createWebSearchTool,
   createFetchUrlTool,
   createEditNoteTool,
   ExtensionToolLoader,
@@ -294,11 +293,10 @@ export class ChatView extends ItemView {
       })
     );
     toolRegistry.register(
-      createWebSearchTool({
-        searxngUrl: this.configManager.get('searxngUrl'),
+      createFetchUrlTool({
+        enabled: this.configManager.get('fetchUrlEnabled'),
       })
     );
-    toolRegistry.register(createFetchUrlTool());
 
     // Register extension tools
     const extensionCount = await this.loadExtensionTools(toolRegistry);

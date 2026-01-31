@@ -710,29 +710,28 @@ Higher values allow more thorough research but may increase response time.`
         )
     );
 
-    builtinToolsContainer.createEl('h5', { text: 'Web search' });
+    builtinToolsContainer.createEl('h5', { text: 'Fetch URL' });
 
-    const searxngUrlSetting = new Setting(builtinToolsContainer).setName(
-      'SearXNG URL'
+    const fetchUrlEnabledSetting = new Setting(builtinToolsContainer).setName(
+      'Enable fetch URL tool'
     );
     this.renderMarkdownDesc(
-      searxngUrlSetting.descEl,
-      `URL of your SearXNG instance for web search.
-To set up SearXNG locally: \`docker run -d -p 8080:8080 searxng/searxng\`
-Then use \`http://localhost:8080\` as the URL.`
+      fetchUrlEnabledSetting.descEl,
+      `Allow the assistant to fetch and read content from web URLs.
+When enabled, the assistant can retrieve web page content when you provide a URL.`
     );
-    searxngUrlSetting.addText(text =>
-      text
-        .setPlaceholder('http://localhost:8080')
-        .setValue(this.configManager.get('searxngUrl'))
+    fetchUrlEnabledSetting.addToggle(toggle =>
+      toggle
+        .setValue(this.configManager.get('fetchUrlEnabled'))
         .onChange(
-          async value => await this.configManager.set('searxngUrl', value)
+          async value => await this.configManager.set('fetchUrlEnabled', value)
         )
     );
 
-    // Extension tools subsection (collapsible)
+    // Extension tools subsection
     const extensionToolsDetails = chatContainer.createEl('details', {
       cls: 'sonar-settings-subsection',
+      attr: { open: true },
     });
     extensionToolsDetails.createEl('summary', { text: 'Extension tools' });
     const extensionToolsContainer = extensionToolsDetails.createDiv();

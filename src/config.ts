@@ -70,8 +70,8 @@ export interface SonarSettings {
   // ----------------------
   // Edit note
   editNoteAutoAllow: boolean; // Skip permission prompt for edit_note tool (default: false)
-  // Web search
-  searxngUrl: string; // SearXNG instance URL (e.g., http://localhost:8080)
+  // Fetch URL
+  fetchUrlEnabled: boolean; // Enable fetch_url tool (default: false)
 
   // Extension tools
   // ---------------
@@ -163,8 +163,8 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   // ----------------------
   // Edit note
   editNoteAutoAllow: false,
-  // Web search
-  searxngUrl: 'http://localhost:8080',
+  // Fetch URL
+  fetchUrlEnabled: false,
   // Extension tools
   extensionToolsPath: '',
 
