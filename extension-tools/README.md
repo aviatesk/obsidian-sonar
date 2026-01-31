@@ -26,16 +26,10 @@ module.exports = function (ctx) {
         required: ['param1'],
       },
     },
-    displayName: 'My Tool', // Optional: shown in UI
-    defaultDisabled: false, // Optional: if true, disabled by default
+    displayName: 'My Tool',
     execute: async args => {
       // args contains the parameters from the LLM
       return 'Result string returned to the LLM';
-    },
-    getUnavailableReason: () => {
-      // Optional: return a string if the tool is temporarily unavailable
-      // return undefined (or omit this function) if available
-      return undefined;
     },
   };
 };
@@ -60,8 +54,8 @@ resources:
 
 The `ctx.plugin` object provides access to Sonar's internal components:
 
-| Property                      | Description                                   |
-| ----------------------------- | --------------------------------------------- |
+| Property                      | Description                                    |
+| ----------------------------- | ---------------------------------------------- |
 | `ctx.plugin.getSearchManager` | Returns `SearchManager` or `null` if not ready |
 | `ctx.plugin.getMetadataStore` | Returns `MetadataStore` or `null` if not ready |
 
@@ -90,6 +84,31 @@ when your tool is available to the LLM:
 
 This is useful when your tool depends on external services, specific
 configurations, or other conditions that may not always be met.
+
+## Type definitions
+
+A `types.d.ts` file is provided for TypeScript users or for JSDoc type hints in
+JavaScript. You can reference types using JSDoc comments:
+
+```javascript
+/** @param {import('./types').ExtensionToolContext} ctx */
+module.exports = function (ctx) {
+  /** @type {import('./types').ExtensionTool} */
+  const tool = {
+    definition: {
+      /* ... */
+    },
+    displayName: 'My Tool',
+    execute: async args => {
+      /* ... */
+    },
+  };
+  return tool;
+};
+```
+
+This enables IDE autocompletion and type checking even in plain JavaScript
+files.
 
 ## Examples
 

@@ -4,7 +4,13 @@ import type { ConfigManager } from '../ConfigManager';
 import type { SearchManager } from '../SearchManager';
 import type { MetadataStore } from '../MetadataStore';
 import { WithLogging } from '../WithLogging';
-import type { Tool, ToolDefinition, ToolParameterSchema } from './Tool';
+import type { Tool, ToolDefinition } from './Tool';
+import type {
+  ExtensionToolContext,
+  ExtensionTool as ExtensionToolExport,
+} from '../../extension-tools/types';
+
+export type { ExtensionToolContext };
 
 /**
  * Plugin resources accessible from extension tools
@@ -13,34 +19,6 @@ import type { Tool, ToolDefinition, ToolParameterSchema } from './Tool';
 export interface PluginResources {
   getSearchManager: () => SearchManager | null;
   getMetadataStore: () => MetadataStore | null;
-}
-
-/**
- * Context object passed to extension tool scripts
- */
-export interface ExtensionToolContext {
-  app: App;
-  vault: App['vault'];
-  requestUrl: typeof requestUrl;
-  log: (message: string) => void;
-  warn: (message: string) => void;
-  error: (message: string) => void;
-  plugin: PluginResources;
-}
-
-/**
- * Expected export structure from extension tool scripts
- */
-interface ExtensionToolExport {
-  definition: {
-    name: string;
-    description: string;
-    parameters: ToolParameterSchema;
-  };
-  displayName: string;
-  requiresPermission?: boolean;
-  defaultDisabled?: boolean;
-  execute: (args: Record<string, unknown>) => Promise<string>;
 }
 
 /**
@@ -167,14 +145,13 @@ export class ExtensionToolLoader extends WithLogging {
     context: ExtensionToolContext
   ): ExtensionToolExport {
     // Create a function that wraps the script with module.exports pattern
-    // The script should assign to module.exports or return from a factory function
+    // Supports both CommonJS (module.exports = fn) and ES module default exports
     const wrappedCode = `
       const module = { exports: {} };
       const exports = module.exports;
       ${code}
-      return typeof module.exports === 'function'
-        ? module.exports(context)
-        : module.exports;
+      const exp = module.exports.default || module.exports;
+      return typeof exp === 'function' ? exp(context) : exp;
     `;
 
     const factory = new Function('context', wrappedCode);

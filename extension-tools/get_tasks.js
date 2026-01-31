@@ -347,8 +347,10 @@ async function fetchEvents(app, startDate, endDate, log, warn) {
   return filtered;
 }
 
+/** @param {import('./types').ExtensionToolContext} ctx */
 module.exports = function (ctx) {
-  return {
+  /** @type {import('./types').ExtensionTool} */
+  const tool = {
     definition: {
       name: 'get_tasks',
       description:
@@ -390,4 +392,5 @@ module.exports = function (ctx) {
       return formatEventsForContext(events);
     },
   };
+  return tool;
 };
