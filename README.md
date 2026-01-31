@@ -241,12 +241,11 @@ decides when to use tools based on your request.
 | `edit_note`    | Create or modify notes in your vault                         |
 | `fetch_url`    | Fetch and extract text from a web page (disabled by default) |
 
-**Extension tools**: Extend the assistant with custom tools. Several example
-tools are provided in the
-[extension-tools](./extension-tools/README.md#bundled-extension-tools) folder,
-including web search via SearXNG and calendar integrations. See
+**Extension tools**: Extend the assistant with custom tools. Several
+[example tools](./extension-tools/README.md#example-extension-tools) are
+provided, including web search via SearXNG and calendar integrations. See
 [extension-tools/README.md](./extension-tools/README.md) for the API and setup
-instructions
+instructions.
 
 ---
 

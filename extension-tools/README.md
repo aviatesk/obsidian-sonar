@@ -1,7 +1,7 @@
 # Sonar chat extension tools
 
 This folder contains documentation for the extension tool [API](#api) and
-[bundled example tools](#bundled-extension-tools). To use extension tools:
+[example tools](#example-extension-tools). To use extension tools:
 
 1. Configure **Settings → Sonar → Chat → Extension tools → Extension tools
    folder** to point to a folder in your vault
@@ -116,7 +116,7 @@ module.exports = function (ctx) {
 This enables IDE autocompletion and type checking even in plain JavaScript
 files.
 
-## Bundled extension tools
+## Example extension tools
 
 This folder includes several ready-to-use extension tools. To use them, copy the
 desired tool to your extension tools folder and configure as needed.
