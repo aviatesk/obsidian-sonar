@@ -77,6 +77,22 @@
     return Math.round(score * 100);
   }
 
+  function getLinkText(result: SearchResult): string {
+    // Convert file path to wikilink format (remove .md extension for markdown files)
+    const path = result.filePath.replace(/\.md$/, '');
+    if (isPdf(result.filePath) && result.topChunk.metadata.pageNumber) {
+      return `${path}#page=${result.topChunk.metadata.pageNumber}`;
+    }
+    return path;
+  }
+
+  function handleTitleHover(event: MouseEvent | FocusEvent, result: SearchResult) {
+    if (onHoverLink) {
+      // Cast to MouseEvent for hover-link API compatibility
+      onHoverLink(event as MouseEvent, getLinkText(result));
+    }
+  }
+
   function setupInternalLinkHandler(node: HTMLElement) {
     function handleClick(event: MouseEvent) {
       const target = event.target as HTMLElement;
@@ -129,6 +145,8 @@
             <button
               class="result-title"
               onclick={() => handleTitleClick(result)}
+              onmouseover={(e) => handleTitleHover(e, result)}
+              onfocus={(e) => handleTitleHover(e, result)}
               type="button"
             >
               {getDisplayTitle(result)}
