@@ -2,8 +2,7 @@
 title: Style guide
 source: https://help.obsidian.md/style-guide
 author:
-  - '[[Obsidian]]'
-  - '[[Help]]'
+  - '[[Obsidian Help]]'
 published:
 created: 2025-09-21
 description: Style guide - Obsidian Help
@@ -13,8 +12,6 @@ tags:
 image:
 favicon: https://publish-01.obsidian.md/access/f786db9fac45774fa4f0d8112e232d67/favicon-96x96.png
 site: Obsidian Help
-file-created: 2025-09-21T14:25
-file-modified: 2025-09-21T14:26
 ---
 
 The Obsidian documentation uses the
