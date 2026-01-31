@@ -17,25 +17,18 @@ import { ConfigManager } from './src/ConfigManager';
 import { SettingTab } from './src/ui/SettingTab';
 import { getDBName, MetadataStore } from './src/MetadataStore';
 import { EmbeddingStore } from './src/EmbeddingStore';
-import type { Embedder } from './src/Embedder';
 import { LlamaCppEmbedder } from './src/LlamaCppEmbedder';
-import type { Reranker } from './src/Reranker';
-import { NoopReranker } from './src/Reranker';
 import { LlamaCppReranker } from './src/LlamaCppReranker';
-import { LlamaCppChat } from './src/LlamaCppChat';
-import { Chat } from './src/Chat';
 import { CHAT_VIEW_TYPE, ChatView } from './src/ui/ChatView';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { isAudioExtension } from './src/audio';
+import { confirmAction } from './src/obsidian-utils';
 import {
-  ToolRegistry,
-  createSearchVaultTool,
-  createReadFileTool,
-  createWebSearchTool,
-  createFetchUrlTool,
-  createEditNoteTool,
-  ExtensionToolLoader,
-} from './src/tools';
+  sonarState,
+  getState,
+  checkSearchReady,
+  checkHasFailure,
+} from './src/SonarState';
 
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
@@ -43,13 +36,10 @@ export default class SonarPlugin extends Plugin {
   searchManager: SearchManager | null = null;
   indexManager: IndexManager | null = null;
   metadataStore: MetadataStore | null = null;
-  embedder: Embedder | null = null;
-  reranker: Reranker | null = null;
-  chatModel: LlamaCppChat | null = null;
-  chat: Chat | null = null;
+  embedder: LlamaCppEmbedder | null = null;
+  reranker: LlamaCppReranker | null = null;
   private semanticNoteFinder: SemanticNoteFinder | null = null;
   private reinitializing = false;
-  private configListeners: Array<() => void> = [];
   private indexUpdateUnsubscribe: (() => void) | null = null;
 
   private log(msg: string): void {
@@ -68,7 +58,7 @@ export default class SonarPlugin extends Plugin {
     return `Sonar: ${status}`;
   }
 
-  private updateStatusBar(text: string, tooltip?: string): void {
+  updateStatusBar(text: string, tooltip?: string): void {
     const maxLength = this.configManager.get('statusBarMaxLength');
     const fullText = this.formatStatusBarText(text);
 
@@ -97,8 +87,24 @@ export default class SonarPlugin extends Plugin {
     this.statusBarItem.setText(this.formatStatusBarText(paddedText));
   }
 
+  /**
+   * Show confirmation dialog for model download
+   * Used by ChatView for chat model downloads
+   */
+  confirmModelDownload(modelType: string, modelId: string): Promise<boolean> {
+    return confirmAction(
+      this.app,
+      `Download ${modelType} model?`,
+      `The ${modelType} model is not cached and needs to be downloaded:\n\n` +
+        `\`${modelId}\`\n\n` +
+        `If you want to use a different model, select **Cancel** and change ` +
+        `the model settings in **Settings → Sonar**, then reinitialize.`,
+      'Download'
+    );
+  }
+
   private async initializeEmbedder(
-    embedder: Embedder,
+    embedder: LlamaCppEmbedder,
     backendName: string,
     modelDescription: string
   ): Promise<boolean> {
@@ -115,13 +121,12 @@ export default class SonarPlugin extends Plugin {
         0
       );
       await embedder.cleanup();
-      this.embedder = null;
       return false;
     }
   }
 
   private async initializeReranker(
-    reranker: Reranker,
+    reranker: LlamaCppReranker,
     modelDescription: string
   ): Promise<boolean> {
     try {
@@ -131,69 +136,8 @@ export default class SonarPlugin extends Plugin {
     } catch (error) {
       this.warn(`Failed to initialize reranker: ${error}`);
       await reranker.cleanup();
-      this.reranker = new NoopReranker();
       return false;
     }
-  }
-
-  private async initializeChatModel(
-    chatModel: LlamaCppChat,
-    modelDescription: string
-  ): Promise<boolean> {
-    try {
-      await chatModel.initialize();
-      this.log(`Chat model initialized: ${modelDescription}`);
-      return true;
-    } catch (error) {
-      this.warn(`Failed to initialize chat model: ${error}`);
-      await chatModel.cleanup();
-      this.chatModel = null;
-      return false;
-    }
-  }
-
-  private setupConfigListeners(): void {
-    const handleBackendChange = async (
-      _key: keyof typeof DEFAULT_SETTINGS,
-      _value: any
-    ) => {
-      if (this.reinitializing) {
-        return;
-      }
-      await this.reinitializeSonar();
-    };
-
-    const handleChatModelChange = async (
-      _key: keyof typeof DEFAULT_SETTINGS,
-      _value: any
-    ) => {
-      if (this.reinitializing) {
-        return;
-      }
-      await this.reinitializeChatModel();
-    };
-
-    this.configListeners.push(
-      this.configManager.subscribe('llamacppServerPath', handleBackendChange)
-    );
-    this.configListeners.push(
-      this.configManager.subscribe(
-        'llamaEmbedderModelRepo',
-        handleBackendChange
-      )
-    );
-    this.configListeners.push(
-      this.configManager.subscribe(
-        'llamaEmbedderModelFile',
-        handleBackendChange
-      )
-    );
-    this.configListeners.push(
-      this.configManager.subscribe('llamaChatModelRepo', handleChatModelChange)
-    );
-    this.configListeners.push(
-      this.configManager.subscribe('llamaChatModelFile', handleChatModelChange)
-    );
   }
 
   async reinitializeSonar(): Promise<void> {
@@ -232,19 +176,19 @@ export default class SonarPlugin extends Plugin {
         this.reranker = null;
       }
 
-      if (this.chatModel) {
-        this.log('Cleaning up old chat model...');
-        await this.chatModel.cleanup();
-        this.chatModel = null;
-      }
-
       if (this.metadataStore) {
         this.log('Closing old database...');
         await this.metadataStore.close();
         this.metadataStore = null;
       }
 
-      await this.initializeAsync();
+      sonarState.reset();
+
+      const success = await this.initializeAsync();
+      if (!success) {
+        this.updateStatusBar('Failed to reinitialize');
+        return;
+      }
 
       this.log('Sonar reinitialized successfully');
       new Notice('Sonar reinitialized successfully');
@@ -255,199 +199,6 @@ export default class SonarPlugin extends Plugin {
     } finally {
       this.reinitializing = false;
     }
-  }
-
-  async reinitializeChatModel(): Promise<void> {
-    if (this.reinitializing) {
-      this.warn('Reinitialization already in progress');
-      return;
-    }
-
-    this.reinitializing = true;
-
-    try {
-      this.log('Reinitializing chat model...');
-
-      if (this.chatModel) {
-        this.log('Cleaning up old chat model...');
-        await this.chatModel.cleanup();
-        this.chatModel = null;
-      }
-
-      const serverPath = this.configManager.get('llamacppServerPath');
-      const chatModelRepo = this.configManager.get('llamaChatModelRepo');
-      const chatModelFile = this.configManager.get('llamaChatModelFile');
-      const chatModelIdentifier = `${chatModelRepo}/${chatModelFile}`;
-
-      const chatModel = (this.chatModel = new LlamaCppChat(
-        serverPath,
-        chatModelRepo,
-        chatModelFile,
-        this.configManager,
-        status => this.updateStatusBar(status),
-        (msg, duration) => new Notice(msg, duration)
-      ));
-
-      await this.initializeChatModel(chatModel, chatModelIdentifier);
-
-      // Recreate Chat with new model
-      await this.createChat();
-
-      this.log('Chat model reinitialized successfully');
-    } catch (error) {
-      this.error(`Failed to reinitialize chat model: ${error}`);
-    } finally {
-      this.reinitializing = false;
-    }
-  }
-
-  /**
-   * Initialize chat model lazily when RAG view is opened
-   * Returns: 'ready' if initialized, 'pending' if waiting for Sonar, 'failed' on error
-   */
-  async initializeChatModelLazy(): Promise<'ready' | 'pending' | 'failed'> {
-    // Already initialized and ready
-    if (this.chat?.isReady()) {
-      return 'ready';
-    }
-
-    // Check if Sonar core is initialized (required dependencies)
-    if (!this.searchManager || !this.metadataStore) {
-      this.log(
-        'Chat model initialization pending: Sonar is still initializing'
-      );
-      return 'pending';
-    }
-
-    // Clean up any partially initialized model
-    if (this.chatModel) {
-      await this.chatModel.cleanup();
-      this.chatModel = null;
-    }
-
-    const serverPath = this.configManager.get('llamacppServerPath');
-    const chatModelRepo = this.configManager.get('llamaChatModelRepo');
-    const chatModelFile = this.configManager.get('llamaChatModelFile');
-    const chatModelIdentifier = `${chatModelRepo}/${chatModelFile}`;
-
-    this.log(`Lazy-loading chat model: ${chatModelIdentifier}`);
-
-    const chatModel = (this.chatModel = new LlamaCppChat(
-      serverPath,
-      chatModelRepo,
-      chatModelFile,
-      this.configManager,
-      status => this.updateStatusBar(status),
-      (msg, duration) => new Notice(msg, duration)
-    ));
-
-    const success = await this.initializeChatModel(
-      chatModel,
-      chatModelIdentifier
-    );
-    if (!success) {
-      return 'failed';
-    }
-
-    // Create Chat after chat model is ready
-    await this.createChat();
-
-    return 'ready';
-  }
-
-  /**
-   * Create Chat instance (requires chatModel and searchManager to be ready)
-   */
-  private async createChat(): Promise<void> {
-    if (
-      !this.chatModel?.isReady() ||
-      !this.searchManager ||
-      !this.metadataStore
-    ) {
-      this.warn('Cannot create Chat: dependencies not ready');
-      return;
-    }
-
-    const toolRegistry = new ToolRegistry();
-
-    // Register built-in tools
-    toolRegistry.register(
-      createSearchVaultTool({
-        searchManager: this.searchManager,
-      })
-    );
-    toolRegistry.register(
-      createReadFileTool({
-        app: this.app,
-        metadataStore: this.metadataStore,
-      })
-    );
-    toolRegistry.register(
-      createEditNoteTool({
-        app: this.app,
-        configManager: this.configManager,
-      })
-    );
-    toolRegistry.register(
-      createWebSearchTool({
-        searxngUrl: this.configManager.get('searxngUrl'),
-      })
-    );
-    toolRegistry.register(createFetchUrlTool());
-
-    // Register extension tools
-    const extensionCount = await this.loadExtensionTools(toolRegistry);
-
-    this.chat = new Chat(this.chatModel, toolRegistry, this.configManager);
-    this.log(
-      `Chat initialized with ${toolRegistry.getAll().length} tools (${extensionCount} extensions)`
-    );
-  }
-
-  /**
-   * Cleanup chat model when RAG view is closed
-   */
-  async cleanupChatModel(): Promise<void> {
-    if (this.chat) {
-      this.chat = null;
-    }
-    if (this.chatModel) {
-      this.log('Cleaning up chat model...');
-      await this.chatModel.cleanup();
-      this.chatModel = null;
-      this.log('Chat model cleaned up');
-    }
-  }
-
-  /**
-   * Load extension tools into a registry
-   */
-  private async loadExtensionTools(
-    toolRegistry: ToolRegistry
-  ): Promise<number> {
-    const loader = new ExtensionToolLoader(this.app, this.configManager);
-    const tools = await loader.loadTools();
-    for (const tool of tools) {
-      toolRegistry.register(tool);
-    }
-    return tools.length;
-  }
-
-  /**
-   * Reload extension tools from the configured folder
-   * Returns the number of extension tools loaded
-   */
-  async reloadExtensionTools(): Promise<number> {
-    if (!this.chat) {
-      this.warn('Cannot reload extension tools: Chat not initialized');
-      return 0;
-    }
-
-    const toolRegistry = this.chat.getToolRegistry();
-    toolRegistry.unregisterExtensionTools();
-    const count = await this.loadExtensionTools(toolRegistry);
-    this.log(`Reloaded ${count} extension tools`);
-    return count;
   }
 
   async onload() {
@@ -461,6 +212,25 @@ export default class SonarPlugin extends Plugin {
     this.statusBarItem = this.addStatusBarItem();
     this.updateStatusBar('Initializing...');
 
+    // Subscribe to state changes for reactive status bar updates
+    const unsubscribe = sonarState.subscribe(state => {
+      // Once indexManager is ready, it handles status bar updates
+      if (this.indexManager) return;
+
+      if (checkHasFailure(state)) {
+        this.updateStatusBar('Initialization failed');
+      } else if (state.metadataStore === 'initializing') {
+        this.updateStatusBar('Loading metadata store...');
+      } else if (state.bm25Store === 'initializing') {
+        this.updateStatusBar('Loading BM25 store...');
+      } else if (checkSearchReady(state)) {
+        // Will be overwritten by IndexManager.updateStatus() soon
+        this.updateStatusBar('Ready');
+      }
+      // Note: embedder status updates are handled by LlamaCppEmbedder itself
+    });
+    this.register(() => unsubscribe());
+
     // Register commands immediately (lightweight)
     this.registerCommands();
     this.registerFileMenuHandlers();
@@ -469,8 +239,6 @@ export default class SonarPlugin extends Plugin {
 
     // Register views once
     this.registerViews();
-
-    this.setupConfigListeners();
 
     // Register quit event for cleanup when Obsidian closes
     // Note: onunload() is NOT called when Obsidian closes, only on plugin reload
@@ -490,49 +258,73 @@ export default class SonarPlugin extends Plugin {
       if (this.configManager.get('autoOpenRelatedNotes')) {
         this.activateRelatedNotesView();
       }
-      this.initializeAsync();
+      this.initializeAsync().then(success => {
+        if (!success) {
+          this.updateStatusBar('Failed to initialize');
+        }
+      });
     });
   }
 
-  private async initializeAsync(): Promise<void> {
-    const serverPath = this.configManager.get('llamacppServerPath');
-    const modelRepo = this.configManager.get('llamaEmbedderModelRepo');
-    const modelFile = this.configManager.get('llamaEmbedderModelFile');
-    const modelIdentifier = `${modelRepo}/${modelFile}`;
+  private createConfirmDownload(
+    modelType: string
+  ): (modelId: string) => Promise<boolean> {
+    return (modelId: string) => this.confirmModelDownload(modelType, modelId);
+  }
 
+  private async initializeAsync(): Promise<boolean> {
+    const serverPath = this.configManager.get('llamacppServerPath');
+
+    const embedderModelRepo =
+      this.configManager.get('llamaEmbedderModelRepo') ||
+      DEFAULT_SETTINGS.llamaEmbedderModelRepo;
+    const embedderModelFile =
+      this.configManager.get('llamaEmbedderModelFile') ||
+      DEFAULT_SETTINGS.llamaEmbedderModelFile;
+    const embedderModelIdentifier = `${embedderModelRepo}/${embedderModelFile}`;
     const embedder = (this.embedder = new LlamaCppEmbedder(
       serverPath,
-      modelRepo,
-      modelFile,
+      embedderModelRepo,
+      embedderModelFile,
       this.configManager,
       status => this.updateStatusBar(status),
-      (msg, duration) => new Notice(msg, duration)
+      status => sonarState.setEmbedderStatus(status),
+      (msg, duration) => new Notice(msg, duration),
+      this.createConfirmDownload('embedder')
     ));
 
-    const rerankerModelRepo = this.configManager.get('llamaRerankerModelRepo');
-    const rerankerModelFile = this.configManager.get('llamaRerankerModelFile');
+    const rerankerModelRepo =
+      this.configManager.get('llamaRerankerModelRepo') ||
+      DEFAULT_SETTINGS.llamaRerankerModelRepo;
+    const rerankerModelFile =
+      this.configManager.get('llamaRerankerModelFile') ||
+      DEFAULT_SETTINGS.llamaRerankerModelFile;
     const rerankerModelIdentifier = `${rerankerModelRepo}/${rerankerModelFile}`;
     const reranker = (this.reranker = new LlamaCppReranker(
       serverPath,
       rerankerModelRepo,
       rerankerModelFile,
       this.configManager,
-      (msg, duration) => new Notice(msg, duration)
+      status => sonarState.setRerankerStatus(status),
+      (msg, duration) => new Notice(msg, duration),
+      this.createConfirmDownload('reranker')
     ));
 
-    const [embedderSuccess] = await Promise.all([
-      this.initializeEmbedder(embedder, 'llama.cpp', modelIdentifier),
+    const [embedderInitialized] = await Promise.all([
+      this.initializeEmbedder(embedder, 'llama.cpp', embedderModelIdentifier),
       this.initializeReranker(reranker, rerankerModelIdentifier),
     ]);
-    if (!embedderSuccess) return;
+    if (!embedderInitialized) return false;
 
+    sonarState.setMetadataStoreStatus('initializing');
     try {
       this.metadataStore = await MetadataStore.initialize(
         this.app.vault.getName(),
-        modelIdentifier,
+        embedderModelIdentifier,
         this.configManager
       );
     } catch (error) {
+      sonarState.setMetadataStoreStatus('failed');
       this.error(`Failed to initialize metadata store: ${error}`);
       new Notice(
         'Failed to initialize metadata store.\n\n' +
@@ -540,17 +332,19 @@ export default class SonarPlugin extends Plugin {
           'You can change settings and run "Sonar: Reinitialize Sonar" command to retry.',
         0
       );
-      return;
+      return false;
     }
 
+    sonarState.setMetadataStoreStatus('ready');
+
     const db = this.metadataStore.getDB();
-
     const embeddingStore = new EmbeddingStore(db, this.configManager);
-
     let bm25Store: BM25Store;
+    sonarState.setBm25StoreStatus('initializing');
     try {
       bm25Store = await BM25Store.initialize(db, this.configManager);
     } catch (error) {
+      sonarState.setBm25StoreStatus('failed');
       this.error(`Failed to initialize BM25 store: ${error}`);
       new Notice(
         'Failed to initialize BM25 store.\n\n' +
@@ -558,8 +352,9 @@ export default class SonarPlugin extends Plugin {
           'You can change settings and run "Sonar: Reinitialize Sonar" command to retry.',
         0
       );
-      return;
+      return false;
     }
+    sonarState.setBm25StoreStatus('ready');
 
     const bm25Search = new BM25Search(
       bm25Store,
@@ -595,7 +390,6 @@ export default class SonarPlugin extends Plugin {
     try {
       await this.indexManager.onLayoutReady();
     } catch (error) {
-      this.updateStatusBar('Failed to initialize');
       this.error(`Failed to initialize Sonar: ${error}`);
       new Notice(
         'Failed to initialize Sonar.\n\n' +
@@ -603,33 +397,14 @@ export default class SonarPlugin extends Plugin {
           'You can change settings and run "Reinitialize Sonar" action/command to retry.',
         0
       );
-      return;
+      return false;
     }
-    this.notifyViewsInitialized();
 
     this.indexUpdateUnsubscribe = this.indexManager.onIndexUpdated(() => {
       this.semanticNoteFinder?.invalidateCache();
     });
-  }
 
-  private notifyViewsInitialized(): void {
-    const relatedNotesLeaves = this.app.workspace.getLeavesOfType(
-      RELATED_NOTES_VIEW_TYPE
-    );
-    relatedNotesLeaves.forEach(leaf => {
-      const view = leaf.view;
-      if (view instanceof RelatedNotesView) {
-        view.onSonarInitialized();
-      }
-    });
-
-    const ragLeaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
-    ragLeaves.forEach(leaf => {
-      const view = leaf.view;
-      if (view instanceof ChatView) {
-        view.onSonarInitialized();
-      }
-    });
+    return true;
   }
 
   private isInitialized(): boolean {
@@ -638,7 +413,38 @@ export default class SonarPlugin extends Plugin {
 
   private checkInitialized(): boolean {
     if (!this.isInitialized()) {
-      new Notice('Sonar is still initializing. Please wait...');
+      const state = getState();
+      if (state.embedder === 'failed') {
+        new Notice(
+          'Embedder initialization failed.\n\n' +
+            'Check llama.cpp configuration in Settings → Sonar, ' +
+            'then run "Reinitialize Sonar".'
+        );
+      } else if (state.metadataStore === 'failed') {
+        new Notice(
+          'Metadata store initialization failed.\n\n' +
+            'Check the console for details, ' +
+            'then run "Reinitialize Sonar".'
+        );
+      } else if (state.bm25Store === 'failed') {
+        new Notice(
+          'BM25 store initialization failed.\n\n' +
+            'Check the console for details, ' +
+            'then run "Reinitialize Sonar".'
+        );
+      } else if (
+        state.embedder !== 'ready' ||
+        state.metadataStore !== 'ready' ||
+        state.bm25Store !== 'ready'
+      ) {
+        new Notice('Sonar is still initializing. Please wait...');
+      } else {
+        new Notice(
+          'Sonar initialization failed.\n\n' +
+            'Check the console for details, ' +
+            'then run "Reinitialize Sonar".'
+        );
+      }
       return false;
     }
     return true;
@@ -931,8 +737,6 @@ export default class SonarPlugin extends Plugin {
   }
 
   async activateRelatedNotesView() {
-    if (!this.checkInitialized()) return;
-
     const { workspace } = this.app;
 
     let leaf: WorkspaceLeaf | null = null;
@@ -964,8 +768,6 @@ export default class SonarPlugin extends Plugin {
   }
 
   async activateChatView(): Promise<void> {
-    if (!this.checkInitialized()) return;
-
     const { workspace } = this.app;
 
     let leaf: WorkspaceLeaf | null = null;
@@ -1049,8 +851,6 @@ export default class SonarPlugin extends Plugin {
   }
 
   private async performCleanup(): Promise<void> {
-    this.configListeners.forEach(unsubscribe => unsubscribe());
-    this.configListeners = [];
     if (this.indexUpdateUnsubscribe) {
       this.indexUpdateUnsubscribe();
       this.indexUpdateUnsubscribe = null;
@@ -1064,11 +864,7 @@ export default class SonarPlugin extends Plugin {
     }
     // Run server cleanups in parallel to maximize chance of completion
     // before quit event terminates the process
-    await Promise.all([
-      this.embedder?.cleanup(),
-      this.reranker?.cleanup(),
-      this.chatModel?.cleanup(),
-    ]);
+    await Promise.all([this.embedder?.cleanup(), this.reranker?.cleanup()]);
   }
 
   async onunload() {

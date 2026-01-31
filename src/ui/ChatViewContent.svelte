@@ -2,7 +2,7 @@
   import { App, Notice } from 'obsidian';
   import type { Writable } from 'svelte/store';
   import type { ConfigManager } from '../ConfigManager';
-  import type { ChatTurn } from '../Chat';
+  import type { ChatTurn } from '../ChatManager';
   import type { ToolConfig, ToolPermissionRequest } from '../tools';
   import { MarkdownRenderingManager } from './MarkdownRenderingManager';
   import { isSendShortcut } from './ChatView';
@@ -218,11 +218,24 @@
   }
 
   function hasEnabledTools(): boolean {
-    return $store.tools.some(t => t.enabled);
+    return $store.tools.some(t => t.enabled && !t.unavailableReason);
   }
 
   function getEnabledToolCount(): number {
-    return $store.tools.filter(t => t.enabled).length;
+    return $store.tools.filter(t => t.enabled && !t.unavailableReason).length;
+  }
+
+  function getToolTooltip(tool: ToolConfig): string {
+    if (tool.unavailableReason) {
+      return `${tool.description}\n\n⚠ Unavailable: ${tool.unavailableReason}`;
+    }
+    return tool.description;
+  }
+
+  function handleToolClick(tool: ToolConfig): void {
+    // Don't toggle unavailable tools
+    if (tool.unavailableReason) return;
+    onToggleTool(tool.name);
   }
 
   function toggleToolsExpanded(): void {
@@ -283,9 +296,10 @@
             {#each getBuiltinTools() as tool (tool.name)}
               <button
                 class="tool-toggle"
-                class:active={tool.enabled}
-                onclick={() => onToggleTool(tool.name)}
-                title={tool.description}
+                class:active={tool.enabled && !tool.unavailableReason}
+                class:unavailable={!!tool.unavailableReason}
+                onclick={() => handleToolClick(tool)}
+                title={getToolTooltip(tool)}
               >
                 {tool.displayName}
               </button>
@@ -299,9 +313,10 @@
           {#each getExtensionTools() as tool (tool.name)}
             <button
               class="tool-toggle"
-              class:active={tool.enabled}
-              onclick={() => onToggleTool(tool.name)}
-              title={tool.description}
+              class:active={tool.enabled && !tool.unavailableReason}
+              class:unavailable={!!tool.unavailableReason}
+              onclick={() => handleToolClick(tool)}
+              title={getToolTooltip(tool)}
             >
               {tool.displayName}
             </button>
@@ -329,7 +344,7 @@
       <div class="empty-state">
         {#if $store.status === 'initializing'}
           <p class="thinking-indicator">Initializing...</p>
-          <p class="hint">Waiting for chat model to load.</p>
+          <p class="hint">Waiting for Sonar to initialize. This may take a moment if models are being downloaded.</p>
         {:else if hasEnabledTools()}
           <p>Ask a question about your notes.</p>
           <p class="hint">Context will be retrieved using enabled tools.</p>
@@ -618,6 +633,17 @@
 
   .tool-toggle.active:hover {
     background: var(--interactive-accent-hover);
+  }
+
+  .tool-toggle.unavailable {
+    opacity: 0.5;
+    cursor: not-allowed;
+    text-decoration: line-through;
+  }
+
+  .tool-toggle.unavailable:hover {
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
   }
 
   .tool-reload {

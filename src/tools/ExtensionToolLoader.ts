@@ -1,34 +1,24 @@
 import type { App, TFile } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import type { ConfigManager } from '../ConfigManager';
+import type { SearchManager } from '../SearchManager';
+import type { MetadataStore } from '../MetadataStore';
 import { WithLogging } from '../WithLogging';
-import type { Tool, ToolDefinition, ToolParameterSchema } from './Tool';
+import type { Tool, ToolDefinition } from './Tool';
+import type {
+  ExtensionToolContext,
+  ExtensionTool as ExtensionToolExport,
+} from '../../extension-tools/types';
+
+export type { ExtensionToolContext };
 
 /**
- * Context object passed to extension tool scripts
+ * Plugin resources accessible from extension tools
+ * Uses getters since some resources may not be available initially
  */
-export interface ExtensionToolContext {
-  app: App;
-  vault: App['vault'];
-  requestUrl: typeof requestUrl;
-  log: (message: string) => void;
-  warn: (message: string) => void;
-  error: (message: string) => void;
-}
-
-/**
- * Expected export structure from extension tool scripts
- */
-interface ExtensionToolExport {
-  definition: {
-    name: string;
-    description: string;
-    parameters: ToolParameterSchema;
-  };
-  displayName: string;
-  requiresPermission?: boolean;
-  defaultDisabled?: boolean;
-  execute: (args: Record<string, unknown>) => Promise<string>;
+export interface PluginResources {
+  getSearchManager: () => SearchManager | null;
+  getMetadataStore: () => MetadataStore | null;
 }
 
 /**
@@ -39,7 +29,8 @@ export class ExtensionToolLoader extends WithLogging {
 
   constructor(
     private app: App,
-    protected configManager: ConfigManager
+    protected configManager: ConfigManager,
+    private pluginResources: PluginResources
   ) {
     super();
   }
@@ -142,6 +133,7 @@ export class ExtensionToolLoader extends WithLogging {
       log: (msg: string) => console.log(`${prefix} ${msg}`),
       warn: (msg: string) => console.warn(`${prefix} ${msg}`),
       error: (msg: string) => console.error(`${prefix} ${msg}`),
+      plugin: this.pluginResources,
     };
   }
 
@@ -153,14 +145,13 @@ export class ExtensionToolLoader extends WithLogging {
     context: ExtensionToolContext
   ): ExtensionToolExport {
     // Create a function that wraps the script with module.exports pattern
-    // The script should assign to module.exports or return from a factory function
+    // Supports both CommonJS (module.exports = fn) and ES module default exports
     const wrappedCode = `
       const module = { exports: {} };
       const exports = module.exports;
       ${code}
-      return typeof module.exports === 'function'
-        ? module.exports(context)
-        : module.exports;
+      const exp = module.exports.default || module.exports;
+      return typeof exp === 'function' ? exp(context) : exp;
     `;
 
     const factory = new Function('context', wrappedCode);

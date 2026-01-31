@@ -15,7 +15,8 @@ beforeAll(async () => {
     serverPath,
     modelRepo,
     modelFile,
-    configManager
+    configManager,
+    () => {} // onStatusChange callback
   );
 
   console.log(`Initializing reranker: ${modelRepo}/${modelFile}...`);

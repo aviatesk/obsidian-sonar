@@ -12,6 +12,7 @@
     configManager: ConfigManager;
     placeholder?: string;
     titleEl: HTMLElement;
+    isRerankerReady: boolean;
     onQueryChange: (query: string) => void;
     onSearchImmediate: (query: string) => void;
     onRerankingToggle: (enabled: boolean) => void;
@@ -25,6 +26,7 @@
     configManager,
     placeholder = 'Enter your search query...',
     titleEl,
+    isRerankerReady,
     onQueryChange,
     onSearchImmediate,
     onRerankingToggle,
@@ -115,13 +117,15 @@
   {/if}
   <button
     class="rerank-toggle-btn"
-    class:active={enableReranking}
-    aria-label="Toggle reranking"
+    class:active={enableReranking && isRerankerReady}
+    class:disabled={!isRerankerReady}
+    aria-label={isRerankerReady ? 'Toggle reranking' : 'Reranker not available'}
+    disabled={!isRerankerReady}
     onclick={handleToggleReranking}
   >
     <span bind:this={rerankIcon}></span>
   </button>
-  {#if enableReranking}
+  {#if enableReranking && isRerankerReady}
     <button
       class="intermediate-toggle-btn"
       class:active={showIntermediateResults}
@@ -210,6 +214,17 @@
   .rerank-toggle-btn.active:hover {
     background: var(--interactive-accent-hover);
     border-color: var(--interactive-accent-hover);
+  }
+
+  .rerank-toggle-btn.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .rerank-toggle-btn.disabled:hover {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
   }
 
   .intermediate-toggle-btn {

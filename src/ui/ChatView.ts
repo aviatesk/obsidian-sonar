@@ -2,9 +2,21 @@ import { HoverPopover, ItemView, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
 import { Mic, Square, createElement } from 'lucide';
+import { sonarState } from '../SonarState';
+import { DEFAULT_SETTINGS } from '../config';
 import type { ConfigManager } from '../ConfigManager';
-import type { ChatTurn } from '../Chat';
-import type { ToolConfig, ToolPermissionRequest } from '../tools';
+import { ChatManager, type ChatTurn } from '../ChatManager';
+import { LlamaCppChat } from '../LlamaCppChat';
+import {
+  ToolRegistry,
+  createSearchVaultTool,
+  createReadFileTool,
+  createFetchUrlTool,
+  createEditNoteTool,
+  ExtensionToolLoader,
+  type ToolConfig,
+  type ToolPermissionRequest,
+} from '../tools';
 import { createComponentLogger, type ComponentLogger } from '../WithLogging';
 import ChatViewContent from './ChatViewContent.svelte';
 import { FileSuggestModal, getWikilinkForFile } from './FileSuggestModal';
@@ -54,6 +66,11 @@ export class ChatView extends ItemView {
   hoverPopover: HoverPopover | null = null; // HoverParent interface
   private abortController: AbortController | null = null;
   private permissionResolver: ((permitted: boolean) => void) | null = null;
+
+  // Chat model lifecycle - owned by this view
+  private chatModel: LlamaCppChat | null = null;
+  private chatManager: ChatManager | null = null;
+  private initializingChatModel = false;
 
   private chatViewStore = writable<ChatViewState>({
     status: 'initializing',
@@ -119,26 +136,217 @@ export class ChatView extends ItemView {
     this.mountComponent();
     this.createInputArea();
     this.registerKeyboardShortcuts();
+    this.setupSonarStateSubscription();
+    this.registerQuitHandler();
+  }
 
-    // Lazy-load chat model when view is opened
-    const result = await this.plugin.initializeChatModelLazy();
-    if (result === 'ready') {
+  private registerQuitHandler(): void {
+    // Cleanup chat model when Obsidian quits (onClose may not be called)
+    this.registerEvent(
+      this.app.workspace.on('quit', () => {
+        this.cleanupChatModel().catch(error => {
+          this.logger.error(`Cleanup during quit failed: ${error}`);
+        });
+      })
+    );
+  }
+
+  private setupSonarStateSubscription(): void {
+    this.sonarStateUnsubscribe = sonarState.subscribe(() => {
+      if (!this.chatManager && !this.initializingChatModel) {
+        this.initializeChatModel();
+      } else if (this.chatManager) {
+        // Update tool configs reactively when state changes
+        this.updateStore({ tools: this.getToolConfigs() });
+      }
+    });
+  }
+
+  /**
+   * Initialize chat model - called when view opens
+   * Chat works independently of searchManager; tools check availability at runtime
+   */
+  private async initializeChatModel(): Promise<void> {
+    // Already initialized and ready
+    if (this.chatManager) {
+      return;
+    }
+
+    // Prevent concurrent initialization
+    if (this.initializingChatModel) {
+      this.logger.log('Chat model initialization already in progress');
+      return;
+    }
+
+    this.initializingChatModel = true;
+
+    try {
+      // Clean up any partially initialized model
+      const oldModel = this.chatModel;
+      this.chatModel = null;
+      if (oldModel) {
+        await oldModel.cleanup();
+      }
+
+      const serverPath = this.configManager.get('llamacppServerPath');
+      const chatModelRepo =
+        this.configManager.get('llamaChatModelRepo') ||
+        DEFAULT_SETTINGS.llamaChatModelRepo;
+      const chatModelFile =
+        this.configManager.get('llamaChatModelFile') ||
+        DEFAULT_SETTINGS.llamaChatModelFile;
+      const chatModelIdentifier = `${chatModelRepo}/${chatModelFile}`;
+
+      this.logger.log(`Lazy-loading chat model: ${chatModelIdentifier}`);
+
+      const chatModel = (this.chatModel = new LlamaCppChat(
+        serverPath,
+        chatModelRepo,
+        chatModelFile,
+        this.configManager,
+        status => this.plugin.updateStatusBar(status),
+        () => {}, // No global state update needed
+        (msg, duration) => new Notice(msg, duration),
+        (modelId: string) => this.plugin.confirmModelDownload('chat', modelId)
+      ));
+
+      const success = await this.initializeLlamaCppChat(
+        chatModel,
+        chatModelIdentifier
+      );
+      if (!success) {
+        this.updateStore({
+          status: 'error',
+          errorMessage:
+            'Failed to initialize chat model. Check llama.cpp configuration in Settings → Sonar, then run Reinitialize Sonar.',
+        });
+        return;
+      }
+
+      await this.createChatManager();
+
+      const currentState = get(this.chatViewStore);
       this.updateStore({
         status: 'ready',
+        history: [],
         tools: this.getToolConfigs(),
+        enableThinking: currentState.enableThinking,
+        modelName: this.getShortModelName(),
       });
-    } else if (result === 'failed') {
+    } catch (error) {
+      this.logger.error(`Failed to initialize chat: ${error}`);
       this.updateStore({
         status: 'error',
-        errorMessage: 'Failed to initialize chat model',
+        errorMessage:
+          'Failed to initialize chat model. Check llama.cpp configuration in Settings → Sonar, then run Reinitialize Sonar.',
       });
+    } finally {
+      this.initializingChatModel = false;
     }
-    // If 'pending', keep 'initializing' state and wait for onSonarInitialized
+  }
+
+  private async initializeLlamaCppChat(
+    chatModel: LlamaCppChat,
+    modelDescription: string
+  ): Promise<boolean> {
+    try {
+      await chatModel.initialize();
+      this.logger.log(`Chat model initialized: ${modelDescription}`);
+      return true;
+    } catch (error) {
+      this.logger.warn(`Failed to initialize chat model: ${error}`);
+      this.chatModel = null;
+      await chatModel.cleanup();
+      return false;
+    }
+  }
+
+  /**
+   * Create ChatManager instance (requires chatModel to be ready)
+   * searchManager and metadataStore are optional - tools check availability at runtime
+   */
+  private async createChatManager(): Promise<void> {
+    if (!this.chatModel?.isReady()) {
+      this.logger.warn('Cannot create ChatManager: chat model not ready');
+      return;
+    }
+
+    const toolRegistry = new ToolRegistry();
+
+    // Register built-in tools
+    // Pass getter so search_vault can check availability at runtime
+    toolRegistry.register(
+      createSearchVaultTool({
+        getSearchManager: () => this.plugin.searchManager ?? null,
+      })
+    );
+    toolRegistry.register(
+      createReadFileTool({
+        app: this.app,
+        getMetadataStore: () => this.plugin.metadataStore ?? null,
+      })
+    );
+    toolRegistry.register(
+      createEditNoteTool({
+        app: this.app,
+        configManager: this.configManager,
+      })
+    );
+    toolRegistry.register(
+      createFetchUrlTool({
+        enabled: this.configManager.get('fetchUrlEnabled'),
+      })
+    );
+
+    // Register extension tools
+    const extensionCount = await this.loadExtensionTools(toolRegistry);
+
+    this.chatManager = new ChatManager(
+      this.chatModel,
+      toolRegistry,
+      this.configManager
+    );
+    this.logger.log(
+      `ChatManager initialized with ${toolRegistry.getAll().length} tools (${extensionCount} extensions)`
+    );
+  }
+
+  /**
+   * Load extension tools into a registry
+   */
+  private async loadExtensionTools(
+    toolRegistry: ToolRegistry
+  ): Promise<number> {
+    const loader = new ExtensionToolLoader(this.app, this.configManager, {
+      getSearchManager: () => this.plugin.searchManager ?? null,
+      getMetadataStore: () => this.plugin.metadataStore ?? null,
+    });
+    const tools = await loader.loadTools();
+    for (const tool of tools) {
+      toolRegistry.register(tool);
+    }
+    return tools.length;
+  }
+
+  /**
+   * Cleanup chat model when view is closed
+   */
+  private async cleanupChatModel(): Promise<void> {
+    const modelToCleanup = this.chatModel;
+
+    // Immediately clear references
+    this.chatManager = null;
+    this.chatModel = null;
+
+    if (modelToCleanup) {
+      this.logger.log('Cleaning up chat model...');
+      await modelToCleanup.cleanup();
+      this.logger.log('Chat model cleaned up');
+    }
   }
 
   private getToolConfigs(): ToolConfig[] {
-    const registry = this.plugin.chat?.getToolRegistry();
-    return registry?.getToolConfigs() ?? [];
+    return this.chatManager?.getToolRegistry().getToolConfigs() ?? [];
   }
 
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -211,7 +419,7 @@ export class ChatView extends ItemView {
   }
 
   private handleToggleTool(toolName: string): void {
-    const registry = this.plugin.chat?.getToolRegistry();
+    const registry = this.chatManager?.getToolRegistry();
     if (!registry) return;
 
     registry.toggle(toolName);
@@ -219,8 +427,16 @@ export class ChatView extends ItemView {
   }
 
   private async handleReloadExtensionTools(): Promise<void> {
-    const count = await this.plugin.reloadExtensionTools();
+    if (!this.chatManager) {
+      this.logger.warn('Cannot reload extension tools: Chat not initialized');
+      return;
+    }
+
+    const toolRegistry = this.chatManager.getToolRegistry();
+    toolRegistry.unregisterExtensionTools();
+    const count = await this.loadExtensionTools(toolRegistry);
     this.updateStore({ tools: this.getToolConfigs() });
+    this.logger.log(`Reloaded ${count} extension tools`);
     new Notice(`Reloaded ${count} extension tools`);
   }
 
@@ -254,6 +470,7 @@ export class ChatView extends ItemView {
   private voiceRecorder: VoiceRecorder | null = null;
   private autoSendOnStop = false;
   private storeUnsubscribe: (() => void) | null = null;
+  private sonarStateUnsubscribe: (() => void) | null = null;
 
   private createInputArea(): void {
     const inputContainer = this.contentEl.createDiv('rag-input-container');
@@ -376,9 +593,9 @@ export class ChatView extends ItemView {
 
   private submitMessage(): void {
     if (!this.inputEl) return;
-    // Prevent sending during processing
+    // Only allow sending when ready
     const currentState = get(this.chatViewStore);
-    if (currentState.status === 'processing') return;
+    if (currentState.status !== 'ready') return;
 
     const message = this.inputEl.value.trim();
     if (message) {
@@ -394,7 +611,7 @@ export class ChatView extends ItemView {
   }
 
   private async handleSendMessage(message: string): Promise<void> {
-    if (!this.plugin.chat) {
+    if (!this.chatManager) {
       this.logger.error('Chat not initialized');
       this.updateStore({
         status: 'error',
@@ -414,7 +631,7 @@ export class ChatView extends ItemView {
     });
 
     try {
-      await this.plugin.chat.chatStream(
+      await this.chatManager.chatStream(
         message,
         delta => {
           const currentState = get(this.chatViewStore);
@@ -450,7 +667,7 @@ export class ChatView extends ItemView {
 
       this.updateStore({
         status: 'ready',
-        history: this.plugin.chat.getHistory(),
+        history: this.chatManager.getHistory(),
         errorMessage: null,
         streamingContent: '',
         pendingUserMessage: null,
@@ -491,8 +708,8 @@ export class ChatView extends ItemView {
   }
 
   private handleClearHistory(): void {
-    if (this.plugin.chat) {
-      this.plugin.chat.clear();
+    if (this.chatManager) {
+      this.chatManager.clear();
       this.updateStore({
         history: [],
         errorMessage: null,
@@ -501,20 +718,20 @@ export class ChatView extends ItemView {
   }
 
   private handleDeleteTurn(index: number): void {
-    if (this.plugin.chat) {
-      this.plugin.chat.deleteTurn(index);
+    if (this.chatManager) {
+      this.chatManager.deleteTurn(index);
       this.updateStore({
-        history: this.plugin.chat.getHistory(),
+        history: this.chatManager.getHistory(),
       });
     }
   }
 
   private handleEditTurn(index: number, message: string): void {
-    if (!this.plugin.chat) return;
+    if (!this.chatManager) return;
     // Truncate history to the turn being edited
-    this.plugin.chat.truncateHistory(index);
+    this.chatManager.truncateHistory(index);
     this.updateStore({
-      history: this.plugin.chat.getHistory(),
+      history: this.chatManager.getHistory(),
     });
     this.handleSendMessage(message);
   }
@@ -617,38 +834,15 @@ export class ChatView extends ItemView {
     };
   }
 
-  async onSonarInitialized(): Promise<void> {
-    const currentState = get(this.chatViewStore);
-    // Retry lazy init if view was opened before Sonar finished initializing
-    if (currentState.status === 'initializing') {
-      const result = await this.plugin.initializeChatModelLazy();
-      switch (result) {
-        case 'ready':
-          this.updateStore({
-            status: 'ready',
-            errorMessage: null,
-            tools: this.getToolConfigs(),
-          });
-          break;
-        case 'failed':
-          this.updateStore({
-            status: 'error',
-            errorMessage: 'Failed to initialize chat model',
-          });
-          break;
-        case 'pending':
-          throw new Error(
-            'Unexpected pending state: Sonar should be initialized at this point'
-          );
-      }
-    }
-  }
-
   async onClose(): Promise<void> {
     this.unregisterKeyboardShortcuts();
     if (this.voiceRecorder) {
       this.voiceRecorder.cancelRecording();
       this.voiceRecorder = null;
+    }
+    if (this.sonarStateUnsubscribe) {
+      this.sonarStateUnsubscribe();
+      this.sonarStateUnsubscribe = null;
     }
     if (this.storeUnsubscribe) {
       this.storeUnsubscribe();
@@ -660,6 +854,6 @@ export class ChatView extends ItemView {
     }
 
     // Cleanup chat model to free memory
-    await this.plugin.cleanupChatModel();
+    await this.cleanupChatModel();
   }
 }

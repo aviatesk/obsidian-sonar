@@ -18,7 +18,7 @@ export default [
       'bench',
       'experiments',
       '.venv/**',
-      'scripts/**', // Extension tool example scripts (dynamically loaded)
+      'extension-tools/**/*.js', // Extension tool example scripts (dynamically loaded)
     ],
   },
 

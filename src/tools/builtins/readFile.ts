@@ -5,7 +5,7 @@ import type { MetadataStore } from '../../MetadataStore';
 
 export interface ReadFileDependencies {
   app: App;
-  metadataStore: MetadataStore | null;
+  getMetadataStore: () => MetadataStore | null;
 }
 
 const argsSchema = z.object({
@@ -59,14 +59,15 @@ export async function executeReadFile(
   }
 
   // For non-markdown files, try to get indexed content from MetadataStore
-  if (deps.metadataStore) {
+  const metadataStore = deps.getMetadataStore();
+  if (metadataStore) {
     // Try with the resolved path first, then the original input
     const pathsToTry = resolvedFile
       ? [resolvedFile.path, file]
       : [file, `${file}.pdf`];
 
     for (const path of pathsToTry) {
-      const chunks = await deps.metadataStore.getChunksByFile(path);
+      const chunks = await metadataStore.getChunksByFile(path);
       if (chunks.length > 0) {
         // Sort by page number (for PDFs) or chunk index
         const sortedChunks = chunks.sort((a, b) => {

@@ -1,5 +1,6 @@
 import type { ChildProcess } from 'child_process';
 import type { ConfigManager } from './ConfigManager';
+import type { ModelStatus } from './SonarState';
 import { WithLogging } from './WithLogging';
 import {
   isModelCached,
@@ -42,7 +43,7 @@ export class LlamaCppChat extends WithLogging {
   private serverProcess: ChildProcess | null = null;
   private port: number | null = null;
   private exitHandlerBound: (() => void) | null = null;
-  private ready = false;
+  private _status: ModelStatus = 'uninitialized';
 
   constructor(
     private serverPath: string,
@@ -50,38 +51,68 @@ export class LlamaCppChat extends WithLogging {
     private modelFile: string,
     protected configManager: ConfigManager,
     private statusCallback: (status: string) => void,
-    private showNotice?: (msg: string, duration?: number) => void
+    private onStatusChange: (status: ModelStatus) => void,
+    private showNotice?: (msg: string, duration?: number) => void,
+    private confirmDownload?: (modelId: string) => Promise<boolean>
   ) {
     super();
   }
 
-  private updateStatus(status: string): void {
+  private updateStatusBar(status: string): void {
     this.statusCallback(status);
   }
 
+  private setStatus(status: ModelStatus): void {
+    this._status = status;
+    this.onStatusChange(status);
+  }
+
+  get status(): ModelStatus {
+    return this._status;
+  }
+
   async initialize(): Promise<void> {
-    this.log(`Initializing with model: ${this.modelRepo}/${this.modelFile}`);
-    this.updateStatus('Chat: Initializing...');
+    this.setStatus('initializing');
+    try {
+      this.log(`Initializing with model: ${this.modelRepo}/${this.modelFile}`);
+      this.updateStatusBar('Chat: Initializing...');
 
-    if (!isModelCached(this.modelRepo, this.modelFile)) {
-      this.log(`Model not found in cache, downloading...`);
-      await downloadModel(this.modelRepo, this.modelFile, progress => {
-        if (progress.status === 'progress') {
-          const percent = progress.percent.toFixed(0);
-          this.updateStatus(`Chat: Loading ${percent}%`);
+      if (!isModelCached(this.modelRepo, this.modelFile)) {
+        const modelId = `${this.modelRepo}/${this.modelFile}`;
+
+        // Ask for confirmation before downloading
+        if (this.confirmDownload) {
+          const confirmed = await this.confirmDownload(modelId);
+          if (!confirmed) {
+            throw new Error(
+              `Download cancelled by user. ` +
+                `To use a different model, change the settings and reinitialize.`
+            );
+          }
         }
-      });
-      this.log(`Model downloaded`);
-    } else {
-      this.log(`Using cached model`);
+
+        this.log(`Model not found in cache, downloading...`);
+        await downloadModel(this.modelRepo, this.modelFile, progress => {
+          if (progress.status === 'progress') {
+            const percent = progress.percent.toFixed(0);
+            this.updateStatusBar(`Chat: Loading ${percent}%`);
+          }
+        });
+        this.log(`Model downloaded`);
+      } else {
+        this.log(`Using cached model`);
+      }
+
+      this.port = await findAvailablePort();
+      this.log(`Selected port: ${this.port}`);
+
+      await this.startServer();
+      await this.waitForReady();
+      this.log(`Initialized on port ${this.port}`);
+    } catch (error) {
+      this.setStatus('failed');
+      throw error;
     }
-
-    this.port = await findAvailablePort();
-    this.log(`Selected port: ${this.port}`);
-
-    await this.startServer();
-    await this.waitForReady();
-    this.log(`Initialized on port ${this.port}`);
   }
 
   private get serverUrl(): string {
@@ -121,7 +152,7 @@ export class LlamaCppChat extends WithLogging {
       logger: this.configManager.getLogger(),
       showNotice: this.showNotice,
       onExit: () => {
-        this.ready = false;
+        this.setStatus('failed');
       },
       serverType: 'llama.cpp chat server',
     });
@@ -132,11 +163,11 @@ export class LlamaCppChat extends WithLogging {
 
   private async waitForReady(): Promise<void> {
     await waitForServerReady(this.serverUrl, this.configManager.getLogger());
-    this.ready = true;
+    this.setStatus('ready');
   }
 
   isReady(): boolean {
-    return this.ready;
+    return this._status === 'ready';
   }
 
   /**
@@ -155,7 +186,7 @@ export class LlamaCppChat extends WithLogging {
     onDelta: (delta: ChatStreamDelta) => void,
     signal?: AbortSignal
   ): Promise<ChatStreamWithToolsResult> {
-    if (!this.ready || !this.port) {
+    if (this._status !== 'ready' || !this.port) {
       throw new Error('Chat server not initialized. Call initialize() first.');
     }
 
@@ -187,7 +218,7 @@ export class LlamaCppChat extends WithLogging {
    * @returns Promise that resolves to the token count
    */
   async countTokens(text: string): Promise<number> {
-    if (!this.ready || !this.port) {
+    if (this._status !== 'ready' || !this.port) {
       throw new Error('Chat server not initialized. Call initialize() first.');
     }
 
@@ -212,7 +243,7 @@ export class LlamaCppChat extends WithLogging {
     }
 
     this.port = null;
-    this.ready = false;
+    this.setStatus('uninitialized');
 
     this.log(`Completed cleanup`);
   }

@@ -42,7 +42,7 @@ export interface SonarSettings {
   // llama.cpp configuration
   // =======================
   llamacppServerPath: string; // Path to llama.cpp server binary (e.g., 'llama-server')
-  llamaEmbedderModelRepo: string; // HuggingFace repository for llama.cpp (e.g., 'BAAI/bge-m3-gguf')
+  llamaEmbedderModelRepo: string; // HuggingFace repository for llama.cpp (e.g., 'ggml-org/bge-m3-Q8_0-GGUF')
   llamaEmbedderModelFile: string; // GGUF filename in the repository (e.g., 'bge-m3-q8_0.gguf')
   llamaRerankerModelRepo: string; // HuggingFace repository for reranker (e.g., 'gpustack/bge-reranker-v2-m3-GGUF')
   llamaRerankerModelFile: string; // GGUF filename for reranker (e.g., 'bge-reranker-v2-m3-Q8_0.gguf')
@@ -70,8 +70,8 @@ export interface SonarSettings {
   // ----------------------
   // Edit note
   editNoteAutoAllow: boolean; // Skip permission prompt for edit_note tool (default: false)
-  // Web search
-  searxngUrl: string; // SearXNG instance URL (e.g., http://localhost:8080)
+  // Fetch URL
+  fetchUrlEnabled: boolean; // Enable fetch_url tool (default: false)
 
   // Extension tools
   // ---------------
@@ -163,8 +163,8 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   // ----------------------
   // Edit note
   editNoteAutoAllow: false,
-  // Web search
-  searxngUrl: 'http://localhost:8080',
+  // Fetch URL
+  fetchUrlEnabled: false,
   // Extension tools
   extensionToolsPath: '',
 

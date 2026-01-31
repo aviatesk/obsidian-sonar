@@ -1,6 +1,8 @@
 import type { ChildProcess } from 'child_process';
 import type { ConfigManager } from './ConfigManager';
-import { Embedder } from './Embedder';
+import type { ModelStatus } from './SonarState';
+import { WithLogging } from './WithLogging';
+import { progressiveWait } from './utils';
 import {
   isModelCached,
   downloadModel,
@@ -18,9 +20,10 @@ import {
  * Embedding generation using llama.cpp
  * Manages llama.cpp server process and uses its API for embeddings and tokenization
  */
-export class LlamaCppEmbedder extends Embedder {
+export class LlamaCppEmbedder extends WithLogging {
   protected readonly componentName = 'LlamaCppEmbedder';
 
+  private _status: ModelStatus = 'uninitialized';
   private serverProcess: ChildProcess | null = null;
   private port: number | null = null;
   private exitHandlerBound: (() => void) | null = null;
@@ -30,23 +33,83 @@ export class LlamaCppEmbedder extends Embedder {
     private serverPath: string,
     private modelRepo: string,
     private modelFile: string,
-    configManager: ConfigManager,
-    statusCallback: (status: string) => void,
-    private showNotice?: (msg: string, duration?: number) => void
+    protected configManager: ConfigManager,
+    private statusCallback: (status: string) => void,
+    private onStatusChange: (status: ModelStatus) => void,
+    private showNotice?: (msg: string, duration?: number) => void,
+    private confirmDownload?: (modelId: string) => Promise<boolean>
   ) {
-    super(configManager, statusCallback);
+    super();
   }
 
-  protected async startInitialization(): Promise<void> {
+  get status(): ModelStatus {
+    return this._status;
+  }
+
+  private setStatus(status: ModelStatus): void {
+    this._status = status;
+    this.onStatusChange(status);
+  }
+
+  private updateStatusBar(status: string): void {
+    this.statusCallback(status);
+  }
+
+  async initialize(): Promise<void> {
+    this.setStatus('initializing');
+    try {
+      this.updateStatusBar('Loading model...');
+      await this.startInitialization();
+
+      await progressiveWait({
+        checkReady: async () => {
+          if (await this.checkReady()) {
+            this.startHealthCheck();
+            this.log(`Initialized on port ${this.port}`);
+            this.setStatus('ready');
+            this.updateStatusBar('Ready');
+            return true;
+          }
+          return false;
+        },
+        onStillWaiting: () => {
+          this.log(
+            `Still waiting... (Model download may take several minutes on first run)`
+          );
+          this.updateStatusBar('Still loading...');
+        },
+      });
+    } catch (error) {
+      this.setStatus('failed');
+      this.error(
+        `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`
+      );
+      this.updateStatusBar('Failed to initialize');
+      throw error;
+    }
+  }
+
+  private async startInitialization(): Promise<void> {
     this.log(`Initializing with model: ${this.modelRepo}/${this.modelFile}`);
 
-    // Check if model is cached, download if not
     if (!isModelCached(this.modelRepo, this.modelFile)) {
+      const modelId = `${this.modelRepo}/${this.modelFile}`;
+
+      if (this.confirmDownload) {
+        const confirmed = await this.confirmDownload(modelId);
+        if (!confirmed) {
+          throw new Error(
+            `Download cancelled by user. ` +
+              `To use a different model, change the settings and reinitialize.`
+          );
+        }
+      }
+
       this.log(`Model not found in cache, downloading...`);
       await downloadModel(this.modelRepo, this.modelFile, progress => {
         if (progress.status === 'progress') {
           const percent = progress.percent.toFixed(0);
-          this.updateStatus(`Loading: ${percent}%`);
+          this.updateStatusBar(`Loading: ${percent}%`);
         }
       });
       this.log(`Model downloaded`);
@@ -123,16 +186,11 @@ export class LlamaCppEmbedder extends Embedder {
     return llamaServerHealthCheck(this.serverUrl);
   }
 
-  protected async checkReady(): Promise<boolean> {
+  private async checkReady(): Promise<boolean> {
     if (!this.port) {
       return false;
     }
     return await this.httpHealthCheck();
-  }
-
-  protected async onInitializationComplete(): Promise<void> {
-    this.startHealthCheck();
-    this.log(`Initialized on port ${this.port}`);
   }
 
   private async startServer(): Promise<void> {
@@ -188,7 +246,6 @@ export class LlamaCppEmbedder extends Embedder {
   }
 
   private startHealthCheck(): void {
-    // Check server health every 60 seconds
     this.healthCheckInterval = setInterval(async () => {
       if (!this.port) {
         return;
@@ -199,7 +256,7 @@ export class LlamaCppEmbedder extends Embedder {
         // Don't auto-restart for now, just log the issue
         // In the future, could implement auto-restart logic here
       }
-    }, 60000); // 60 seconds
+    }, 60000);
   }
 
   async getEmbeddings(texts: string[]): Promise<number[][]> {
@@ -228,7 +285,6 @@ export class LlamaCppEmbedder extends Embedder {
     if (!this.port) {
       throw new Error('Embedder not initialized. Call initialize() first.');
     }
-    // Decode each token ID individually to get individual token strings
     const decoded = await Promise.all(
       tokenIds.map(id => llamaServerDetokenize(this.serverUrl, [id]))
     );

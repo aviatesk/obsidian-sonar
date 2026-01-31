@@ -1,6 +1,7 @@
 <script lang="ts">
   import { App, Notice } from 'obsidian';
   import type { ConfigManager } from '../ConfigManager';
+  import { checkSearchReady, checkHasFailure, type SonarModelState } from '../SonarState';
   import { STATUS_DISPLAY_TEXT, type RelatedNotesStatus } from './RelatedNotesView';
   import SearchResults from './SearchResults.svelte';
   import KnowledgeGraph from './KnowledgeGraph.svelte';
@@ -10,21 +11,47 @@
   interface Props {
     app: App;
     configManager: ConfigManager;
-    store: any; // Svelte store
+    store: any; // Svelte store for view-specific state
+    sonarState: { subscribe: (fn: (value: SonarModelState) => void) => () => void };
     onRefresh: () => void;
     onHoverLink?: (event: MouseEvent, linktext: string) => void;
   }
 
-  let { app, configManager, store, onRefresh, onHoverLink }: Props = $props();
+  let { app, configManager, store, sonarState, onRefresh, onHoverLink }: Props = $props();
 
   const storeState = $derived($store);
+  const sonar = $derived($sonarState);
   const query = $derived(storeState.query);
   const results = $derived(storeState.results);
   const tokenCount = $derived(storeState.tokenCount);
-  const status = $derived(storeState.status as RelatedNotesStatus);
-  const statusText = $derived(STATUS_DISPLAY_TEXT[status]);
   const activeFile = $derived(storeState.activeFile);
   const hasQuery = $derived(query && query.trim().length > 0);
+
+  // Derive effective status: sonarState takes precedence over store status
+  const status: RelatedNotesStatus = $derived.by(() => {
+    if (checkHasFailure(sonar)) {
+      return 'initialization-failed';
+    }
+    if (!checkSearchReady(sonar)) {
+      return 'initializing';
+    }
+    return storeState.status as RelatedNotesStatus;
+  });
+  const statusText = $derived(STATUS_DISPLAY_TEXT[status]);
+
+  // Derive failure hint based on which component failed
+  const failureHint = $derived.by(() => {
+    if (sonar.embedder === 'failed') {
+      return 'Check llama.cpp configuration in Settings → Sonar, then run Reinitialize Sonar.';
+    }
+    if (sonar.metadataStore === 'failed') {
+      return 'Metadata store initialization failed. Check console for details, then run Reinitialize Sonar.';
+    }
+    if (sonar.bm25Store === 'failed') {
+      return 'BM25 store initialization failed. Check console for details, then run Reinitialize Sonar.';
+    }
+    return '';
+  });
   let showQuery = $state(configManager.get('showRelatedNotesQuery'));
   let showExcerpts = $state(configManager.get('showRelatedNotesExcerpts'));
   let showKnowledgeGraph = $state(configManager.get('showKnowledgeGraph'));
@@ -178,6 +205,13 @@
           showExcerpts={showExcerpts}
           {onHoverLink}
         />
+      </div>
+    {:else if status === 'initialization-failed'}
+      <div class="empty-state initialization-failed">
+        <div class="failed-message">
+          <span class="failed-title">Initialization failed</span>
+          <span class="failed-hint">{failureHint}</span>
+        </div>
       </div>
     {:else}
       <div class="empty-state">
@@ -381,5 +415,27 @@
     padding: 24px;
     color: var(--text-muted);
     font-size: 13px;
+  }
+
+  .empty-state.initialization-failed {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .failed-message {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .failed-title {
+    font-weight: 500;
+    color: var(--text-normal);
+  }
+
+  .failed-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
   }
 </style>

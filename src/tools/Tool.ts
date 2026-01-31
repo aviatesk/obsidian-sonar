@@ -35,6 +35,10 @@ export interface Tool {
   requiresPermission?: boolean;
   defaultDisabled?: boolean;
   execute: (args: Record<string, unknown>) => Promise<string>;
+  /**
+   * Returns the reason why the tool is unavailable, or undefined if available.
+   */
+  getUnavailableReason?: () => string | undefined;
 }
 
 /**
@@ -55,6 +59,11 @@ export interface ToolConfig {
   description: string;
   enabled: boolean;
   isBuiltin: boolean;
+  /**
+   * If set, the tool is unavailable and this is the reason.
+   * Unavailable tools should be grayed out in the UI.
+   */
+  unavailableReason?: string;
 }
 
 /**

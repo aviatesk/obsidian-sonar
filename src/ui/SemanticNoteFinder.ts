@@ -1,6 +1,7 @@
 import { App, HoverPopover, Modal, Notice, debounce } from 'obsidian';
 import { mount, unmount } from 'svelte';
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
+import { isRerankerReady } from '../SonarState';
 import { SearchManager, type SearchResult } from '../SearchManager';
 import { ConfigManager } from '../ConfigManager';
 import { createComponentLogger, type ComponentLogger } from '../WithLogging';
@@ -263,6 +264,7 @@ export class SemanticNoteFinder extends Modal {
         configManager: this.configManager,
         placeholder: 'Enter your search query...',
         titleEl: titleEl,
+        isRerankerReady: get(isRerankerReady),
         onQueryChange: (query: string) => {
           this.updateStore({ query });
           this.debouncedSearch(query);

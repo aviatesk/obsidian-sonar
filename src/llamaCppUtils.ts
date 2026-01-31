@@ -94,6 +94,13 @@ export async function downloadModel(
   return new Promise((resolve, reject) => {
     const curl = spawn('curl', [
       '-L', // Follow redirects
+      '--fail', // Fail on HTTP errors (4xx, 5xx)
+      '--connect-timeout',
+      '30', // 30 seconds to establish connection
+      '--speed-limit',
+      '1000', // Minimum 1KB/s
+      '--speed-time',
+      '60', // Fail if below speed-limit for 60 seconds
       '--progress-bar',
       '-o',
       modelPath,
@@ -154,7 +161,26 @@ export async function downloadModel(
       } else if (signal) {
         reject(new Error(`Download killed with signal ${signal}`));
       } else {
-        reject(new Error(`Download failed with exit code ${code}`));
+        // Provide helpful error messages for common curl exit codes
+        let message: string;
+        switch (code) {
+          case 6:
+            message = 'Could not resolve host (check internet connection)';
+            break;
+          case 7:
+            message = 'Failed to connect to server';
+            break;
+          case 22:
+            message =
+              'Model not found (HTTP 404) - check repository and filename';
+            break;
+          case 28:
+            message = 'Download timed out (connection too slow or stalled)';
+            break;
+          default:
+            message = `Download failed with exit code ${code}`;
+        }
+        reject(new Error(message));
       }
     });
   });

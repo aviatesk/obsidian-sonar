@@ -347,8 +347,10 @@ async function fetchEvents(app, startDate, endDate, log, warn) {
   return filtered;
 }
 
+/** @param {import('./types').ExtensionToolContext} ctx */
 module.exports = function (ctx) {
-  return {
+  /** @type {import('./types').ExtensionTool} */
+  const tool = {
     definition: {
       name: 'get_tasks',
       description:
@@ -371,6 +373,10 @@ module.exports = function (ctx) {
     },
     displayName: 'Tasks calendar',
     defaultDisabled: true,
+    getUnavailableReason: () => {
+      const plugin = ctx.app.plugins?.plugins?.['tasks-calendar'];
+      return plugin ? undefined : 'Tasks Calendar plugin not installed';
+    },
     execute: async args => {
       const startDate = args.start_date || getTodayString();
       const endDate = args.end_date || getTodayString();
@@ -390,4 +396,5 @@ module.exports = function (ctx) {
       return formatEventsForContext(events);
     },
   };
+  return tool;
 };

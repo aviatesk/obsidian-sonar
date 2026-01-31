@@ -14,8 +14,6 @@ export {
   executeSearchVault,
   createReadFileTool,
   executeReadFile,
-  createWebSearchTool,
-  executeWebSearch,
   createFetchUrlTool,
   executeFetchUrl,
   extractTextFromHtml,
@@ -25,10 +23,13 @@ export {
 export type {
   SearchVaultDependencies,
   ReadFileDependencies,
-  WebSearchDependencies,
+  FetchUrlDependencies,
   EditNoteDependencies,
 } from './builtins';
 
 // Extension tool loader
 export { ExtensionToolLoader } from './ExtensionToolLoader';
-export type { ExtensionToolContext } from './ExtensionToolLoader';
+export type {
+  ExtensionToolContext,
+  PluginResources,
+} from './ExtensionToolLoader';

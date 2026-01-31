@@ -11,6 +11,7 @@ import type { MarkdownPostProcessorContext } from 'obsidian';
 import { EditorView } from '@codemirror/view';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
+import { sonarState, isSearchReady, type SonarModelState } from '../SonarState';
 import type { SearchResult } from '../SearchManager';
 import { processQuery, type QueryOptions } from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';
@@ -25,6 +26,7 @@ export const RELATED_NOTES_VIEW_TYPE = 'related-notes-view';
 
 export type RelatedNotesStatus =
   | 'initializing'
+  | 'initialization-failed'
   | 'no-active-note'
   | 'processing'
   | 'unable-to-determine-position'
@@ -34,6 +36,7 @@ export type RelatedNotesStatus =
 
 export const STATUS_DISPLAY_TEXT: Record<RelatedNotesStatus, string> = {
   initializing: 'Initializing...',
+  'initialization-failed': 'Initialization failed',
   'no-active-note': 'No active note',
   processing: 'Processing...',
   'unable-to-determine-position': 'Unable to determine position',
@@ -72,9 +75,10 @@ export class RelatedNotesView extends ItemView {
   private debouncedScrollRefresh: () => void;
   private svelteComponent: any;
   private scrollUnsubscribe: (() => void) | null = null;
+  private sonarStateUnsubscribe: (() => void) | null = null;
   private relatedNotesStore = writable<RelatedNotesState>({
     ...EMPTY_STATE_BASE,
-    status: 'initializing',
+    status: 'no-active-note',
   });
 
   constructor(
@@ -128,6 +132,17 @@ export class RelatedNotesView extends ItemView {
     });
   }
 
+  private setupSonarStateSubscription(): void {
+    let wasSearchReady = false;
+    this.sonarStateUnsubscribe = isSearchReady.subscribe(ready => {
+      if (ready && !wasSearchReady) {
+        this.lastQuery = '';
+        this.refresh(true);
+      }
+      wasSearchReady = ready;
+    });
+  }
+
   getViewType(): string {
     return RELATED_NOTES_VIEW_TYPE;
   }
@@ -144,6 +159,8 @@ export class RelatedNotesView extends ItemView {
     const container = this.containerEl.children[1];
     container.empty();
     container.addClass('related-notes-view-container');
+
+    this.setupSonarStateSubscription();
 
     // Mount component once with reactive props
     this.mountComponent();
@@ -191,6 +208,9 @@ export class RelatedNotesView extends ItemView {
         app: this.app,
         configManager: this.configManager,
         store: this.relatedNotesStore,
+        sonarState: sonarState as {
+          subscribe: (fn: (value: SonarModelState) => void) => () => void;
+        },
         onRefresh: () => {
           this.manualRefresh();
         },
@@ -274,11 +294,8 @@ export class RelatedNotesView extends ItemView {
       this.searchAbortController = null;
     }
 
+    // Search not ready yet - UI state is handled by sonarState in Svelte
     if (!this.plugin.searchManager || !this.plugin.embedder) {
-      this.updateStore({
-        ...EMPTY_STATE_BASE,
-        status: 'initializing',
-      });
       return;
     }
 
@@ -404,11 +421,8 @@ export class RelatedNotesView extends ItemView {
     file: TFile,
     abortSignal: AbortSignal
   ): Promise<void> {
+    // Dependencies not ready yet - UI state is handled by sonarState in Svelte
     if (!this.plugin.metadataStore || !this.plugin.embedder) {
-      this.updateStore({
-        ...EMPTY_STATE_BASE,
-        status: 'initializing',
-      });
       return;
     }
 
@@ -548,22 +562,15 @@ export class RelatedNotesView extends ItemView {
     this.refresh(true);
   }
 
-  onSonarInitialized(): void {
-    const currentState = get(this.relatedNotesStore);
-    if (currentState.status === 'initializing') {
-      this.updateStore({
-        status: 'ready',
-      });
-      // Trigger initial search if there's an active file
-      this.refresh(true);
-    }
-  }
-
   async onClose(): Promise<void> {
     // Cancel pending requests to prevent sending to server
     if (this.plugin.searchManager)
       this.plugin.searchManager.cancelPendingRequests(COMPONENT_ID);
 
+    if (this.sonarStateUnsubscribe) {
+      this.sonarStateUnsubscribe();
+      this.sonarStateUnsubscribe = null;
+    }
     if (this.scrollUnsubscribe) {
       this.scrollUnsubscribe();
       this.scrollUnsubscribe = null;
