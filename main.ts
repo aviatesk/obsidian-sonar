@@ -23,7 +23,12 @@ import { CHAT_VIEW_TYPE, ChatView } from './src/ui/ChatView';
 import { BenchmarkRunner } from './src/BenchmarkRunner';
 import { isAudioExtension } from './src/audio';
 import { confirmAction } from './src/obsidian-utils';
-import { sonarState, getState } from './src/SonarState';
+import {
+  sonarState,
+  getState,
+  checkSearchReady,
+  checkHasFailure,
+} from './src/SonarState';
 
 export default class SonarPlugin extends Plugin {
   configManager!: ConfigManager;
@@ -206,6 +211,25 @@ export default class SonarPlugin extends Plugin {
     // UI elements - needed immediately
     this.statusBarItem = this.addStatusBarItem();
     this.updateStatusBar('Initializing...');
+
+    // Subscribe to state changes for reactive status bar updates
+    const unsubscribe = sonarState.subscribe(state => {
+      // Once indexManager is ready, it handles status bar updates
+      if (this.indexManager) return;
+
+      if (checkHasFailure(state)) {
+        this.updateStatusBar('Initialization failed');
+      } else if (state.metadataStore === 'initializing') {
+        this.updateStatusBar('Loading metadata store...');
+      } else if (state.bm25Store === 'initializing') {
+        this.updateStatusBar('Loading BM25 store...');
+      } else if (checkSearchReady(state)) {
+        // Will be overwritten by IndexManager.updateStatus() soon
+        this.updateStatusBar('Ready');
+      }
+      // Note: embedder status updates are handled by LlamaCppEmbedder itself
+    });
+    this.register(() => unsubscribe());
 
     // Register commands immediately (lightweight)
     this.registerCommands();
