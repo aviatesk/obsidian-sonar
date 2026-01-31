@@ -29,19 +29,9 @@ your machine.
 
 Before installing, ensure you have:
 
-- 32GB+ RAM recommended[^1]
-- GPU recommended (Metal on macOS, CUDA on Linux/Windows)[^2]
+- 32GB+ RAM recommended[^RAM-recommendation]
+- GPU recommended (Metal on macOS, CUDA on Linux/Windows)[^GPU-recommendation]
 - Node.js 18+
-
-[^1]:
-    The default models (BGE-M3 for embeddings, Qwen3-8B for chat) require
-    substantial memory. You can configure smaller models in settings to run on
-    machines with less RAM.
-
-[^2]:
-    GPU acceleration significantly improves performance for both indexing
-    (embedding generation) and agentic chat (LLM inference). Without a GPU,
-    these operations will be noticeably slower.
 
 ### 1. Install llama.cpp
 
@@ -93,10 +83,14 @@ cp main.js manifest.json styles.css /path/to/your/vault/.obsidian/plugins/obsidi
 
 ### Automatic indexing
 
-<!-- TODO: Screenshot of indexing progress in status bar -->
-
 Sonar automatically indexes your vault in the background. When you create or
 edit notes, they are re-indexed to keep search results up to date.
+
+Sonar shows the indexing status in the status bar as follows:
+
+<img width="600" alt="Progress status during chunking" src="https://github.com/user-attachments/assets/71f621f8-1a73-4d5c-bbeb-b517ddc0fa01" />
+<img width="600" alt="Progress status during embedding vector generation" src="https://github.com/user-attachments/assets/c804ccd2-f4a3-4a8f-9360-90303bacb4c0" />
+<img width="600" alt="Status bar after indexing completed" src="https://github.com/user-attachments/assets/6e23fe7a-0f70-4336-b5b4-1ddc6b5ab280" />
 
 Files are split into chunks and converted to vector embeddings, which are stored
 locally in an IndexedDB database along with a BM25 index for hybrid search.
@@ -125,16 +119,20 @@ locally in an IndexedDB database along with a BM25 index for hybrid search.
 
 **Configuration** (in **Settings → Sonar**):
 
-- **Embedder model**: Specify model repository and file. Default:
+- **Embedder model**[^model-change]: Specify model repository and file. Default:
   [`ggml-org/bge-m3-Q8_0-GGUF`](https://huggingface.co/ggml-org/bge-m3-Q8_0-GGUF).
   Models are cached in `~/Library/Caches/llama.cpp/` (macOS),
   `~/.cache/llama.cpp/` (Linux), or `%LOCALAPPDATA%\llama.cpp` (Windows). If a
   model is not cached, a confirmation dialog will ask you to permit the
   download.
-
-After changing model settings, run `Sonar: Reinitialize Sonar` from the command
-palette (or click **Reinitialize Sonar** in **Settings → Sonar → Actions**) to
-apply the new configuration.
+- **Index path**: Limit indexing to a specific folder (e.g., `notes/`). Leave
+  empty to index the entire vault.
+- **Excluded paths**: Comma-separated list of paths to exclude from indexing
+  (e.g., `templates/, daily/`). Paths are matched as prefixes.
+- **Auto index**: When enabled (default), Sonar automatically indexes new and
+  modified files. When disabled, you must manually run
+  `Sonar: Sync search index with vault` or `Sonar: Index current file` to update
+  the index.
 
 #### Audio transcription
 
@@ -168,11 +166,11 @@ huggingface-cli download ggerganov/whisper.cpp \
 
 ### Semantic note finder
 
-<!-- TODO: Screenshot of Semantic Note Finder modal -->
-
 Find notes by meaning using natural language queries. Unlike keyword search,
 semantic search understands concepts and returns relevant results even when
 exact words don't match.
+
+<img width="600" alt="Semantic note finder for 'Sonar agentic RAG'" src="https://github.com/user-attachments/assets/da452a91-ec19-44dd-a799-177e777f03ad" />
 
 1. Run `Sonar: Open Semantic note finder` from the command palette
 2. Type your query in natural language
@@ -183,17 +181,18 @@ for best results. Toggle reranking via the sparkles icon in the search bar.
 
 **Configuration** (in **Settings → Sonar**):
 
-- **Reranker model**: Specify model repository and file. Default:
+- **Reranker model**[^model-change]: Specify model repository and file. Default:
   [`gpustack/bge-reranker-v2-m3-GGUF`](https://huggingface.co/gpustack/bge-reranker-v2-m3-GGUF)
 
 ### Related notes view
 
-<!-- TODO: Screenshot of Related Notes sidebar view -->
-<!-- TODO: Screenshot of knowledge graph visualization -->
-
 Discover notes related to what you're currently reading. The panel updates
 automatically as you edit, scroll, or switch notes — showing results relevant to
 your current context.
+
+|                                                       Related notes with hover preview                                                        |                                                  Knowledge graph visualization                                                  |
+| :-------------------------------------------------------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------------: |
+| <img width="600" alt="Related notes view with hover" src="https://github.com/user-attachments/assets/5deeee7e-e681-4f65-8fb6-d62aa3449860" /> | <img width="600" alt="Knowledge graph" src="https://github.com/user-attachments/assets/47cde290-76d9-4324-822f-e3c3700ba6c7" /> |
 
 1. Run `Sonar: Open related notes view` from the command palette
 2. The sidebar shows notes semantically related to your current note
@@ -208,11 +207,12 @@ your current context.
 
 ### Agentic assistant chat
 
-<!-- TODO: Screenshot of chat view with conversation -->
-<!-- TODO: Screenshot showing tool use (e.g., searching vault) -->
-
 Chat with an AI assistant that has access to your knowledge base. The assistant
 can search your vault, read files, edit notes, and search the web.
+
+|                                                         Simple vault integration demo                                                         |                                              [Extension tools](./extension-tools/README.md) demo (web search via SearXNG)                                               |
+| :-------------------------------------------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
+| <img width="600" alt="Simple vault integration demo" src="https://github.com/user-attachments/assets/13065ee7-72ec-48cf-9661-22e2c2ca522a" /> | <img width="600" alt="Extension tool (web_search, fetch_url) integration demo" src="https://github.com/user-attachments/assets/f337e917-1224-4741-ab74-65ff20f4b6c4" /> |
 
 1. Run `Sonar: Open chat view` from the command palette
 2. Type your question or request
@@ -223,7 +223,7 @@ whisper.cpp ([setup](#audio-transcription)).
 
 **Configuration** (in **Settings → Sonar**):
 
-- **Chat model**: Specify model repository and file. Default:
+- **Chat model**[^model-change]: Specify model repository and file. Default:
   [`bartowski/Qwen3-8B-GGUF`](https://huggingface.co/bartowski/Qwen3-8B-GGUF)
 
 #### Tools
@@ -234,12 +234,12 @@ decides when to use tools based on your request.
 
 **Built-in tools**:
 
-| Tool           | Description                               |
-| -------------- | ----------------------------------------- |
-| `search_vault` | Search your knowledge base semantically   |
-| `read_file`    | Read content from markdown, PDF, or audio |
-| `edit_note`    | Create or modify notes in your vault      |
-| `fetch_url`    | Fetch and extract text from a web page    |
+| Tool           | Description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| `search_vault` | Search your knowledge base semantically                      |
+| `read_file`    | Read content from markdown, PDF, or audio                    |
+| `edit_note`    | Create or modify notes in your vault                         |
+| `fetch_url`    | Fetch and extract text from a web page (disabled by default) |
 
 **Extension tools**: Extend the assistant with custom tools. Several example
 tools are provided in the
@@ -272,3 +272,20 @@ Built with:
 - [whisper.cpp](https://github.com/ggerganov/whisper.cpp) — Audio transcription
 - [Svelte](https://svelte.dev/) — Reactive UI components
 - [Obsidian API](https://docs.obsidian.md/) — Vault integration
+
+<!-- Foot notes -->
+
+[^RAM-recommendation]:
+    The default models (BGE-M3 for embeddings, Qwen3-8B for chat) require
+    substantial memory. You can configure smaller models in settings to run on
+    machines with less RAM.
+
+[^GPU-recommendation]:
+    GPU acceleration significantly improves performance for both indexing
+    (embedding generation) and agentic chat (LLM inference). Without a GPU,
+    these operations will be noticeably slower.
+
+[^model-change]:
+    After changing model settings, run `Sonar: Reinitialize Sonar` from the
+    command palette (or select **Reinitialize Sonar** in **Settings → Sonar →
+    Actions**) to apply the new configuration.
