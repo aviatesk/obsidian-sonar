@@ -147,7 +147,7 @@ export default class SonarPlugin extends Plugin {
     }
 
     this.reinitializing = true;
-    this.updateStatusBar('Reinitializing...');
+    sonarState.setStatusBarText('Reinitializing...');
 
     try {
       this.log('Reinitializing Sonar...');
@@ -185,17 +185,13 @@ export default class SonarPlugin extends Plugin {
       sonarState.reset();
 
       const success = await this.initializeAsync();
-      if (!success) {
-        this.updateStatusBar('Failed to reinitialize');
-        return;
-      }
+      if (!success) return;
 
       this.log('Sonar reinitialized successfully');
       new Notice('Sonar reinitialized successfully');
     } catch (error) {
       this.error(`Failed to reinitialize Sonar: ${error}`);
       new Notice('Failed to reinitialize Sonar - check console');
-      this.updateStatusBar('Failed to reinitialize');
     } finally {
       this.reinitializing = false;
     }
@@ -210,24 +206,20 @@ export default class SonarPlugin extends Plugin {
 
     // UI elements - needed immediately
     this.statusBarItem = this.addStatusBarItem();
-    this.updateStatusBar('Initializing...');
 
     // Subscribe to state changes for reactive status bar updates
     const unsubscribe = sonarState.subscribe(state => {
-      // Once indexManager is ready, it handles status bar updates
-      if (this.indexManager) return;
-
+      // Derive final status from ModelStatus (failures take priority)
       if (checkHasFailure(state)) {
         this.updateStatusBar('Initialization failed');
-      } else if (state.metadataStore === 'initializing') {
-        this.updateStatusBar('Loading metadata store...');
-      } else if (state.bm25Store === 'initializing') {
-        this.updateStatusBar('Loading BM25 store...');
-      } else if (checkSearchReady(state)) {
-        // Will be overwritten by IndexManager.updateStatus() soon
-        this.updateStatusBar('Ready');
+        return;
       }
-      // Note: embedder status updates are handled by LlamaCppEmbedder itself
+      if (checkSearchReady(state)) {
+        // Once ready, IndexManager takes over status bar updates
+        // via statusBarText for showing index progress
+      }
+      // Show progress text from components
+      this.updateStatusBar(state.statusBarText, state.statusBarTooltip);
     });
     this.register(() => unsubscribe());
 
@@ -258,11 +250,7 @@ export default class SonarPlugin extends Plugin {
       if (this.configManager.get('autoOpenRelatedNotes')) {
         this.activateRelatedNotesView();
       }
-      this.initializeAsync().then(success => {
-        if (!success) {
-          this.updateStatusBar('Failed to initialize');
-        }
-      });
+      this.initializeAsync();
     });
   }
 
@@ -287,7 +275,6 @@ export default class SonarPlugin extends Plugin {
       embedderModelRepo,
       embedderModelFile,
       this.configManager,
-      status => this.updateStatusBar(status),
       status => sonarState.setEmbedderStatus(status),
       (msg, duration) => new Notice(msg, duration),
       this.createConfirmDownload('embedder')
@@ -317,6 +304,7 @@ export default class SonarPlugin extends Plugin {
     if (!embedderInitialized) return false;
 
     sonarState.setMetadataStoreStatus('initializing');
+    sonarState.setStatusBarText('Loading metadata store...');
     try {
       this.metadataStore = await MetadataStore.initialize(
         this.app.vault.getName(),
@@ -341,6 +329,7 @@ export default class SonarPlugin extends Plugin {
     const embeddingStore = new EmbeddingStore(db, this.configManager);
     let bm25Store: BM25Store;
     sonarState.setBm25StoreStatus('initializing');
+    sonarState.setStatusBarText('Loading BM25 store...');
     try {
       bm25Store = await BM25Store.initialize(db, this.configManager);
     } catch (error) {
@@ -383,8 +372,7 @@ export default class SonarPlugin extends Plugin {
       this.embedder,
       this.app.vault,
       this.app.workspace,
-      this.configManager,
-      (text: string, tooltip?: string) => this.updateStatusBar(text, tooltip)
+      this.configManager
     );
 
     try {

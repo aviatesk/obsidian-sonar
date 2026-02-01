@@ -7,6 +7,8 @@ export interface SonarModelState {
   reranker: ModelStatus;
   metadataStore: ModelStatus;
   bm25Store: ModelStatus;
+  statusBarText: string;
+  statusBarTooltip?: string;
 }
 
 const initialState: SonarModelState = {
@@ -14,6 +16,7 @@ const initialState: SonarModelState = {
   reranker: 'uninitialized',
   metadataStore: 'uninitialized',
   bm25Store: 'uninitialized',
+  statusBarText: 'Initializing...',
 };
 
 function createSonarState() {
@@ -36,6 +39,14 @@ function createSonarState() {
 
     setBm25StoreStatus(status: ModelStatus) {
       update(state => ({ ...state, bm25Store: status }));
+    },
+
+    setStatusBarText(text: string, tooltip?: string) {
+      update(state => ({
+        ...state,
+        statusBarText: text,
+        statusBarTooltip: tooltip,
+      }));
     },
 
     reset() {

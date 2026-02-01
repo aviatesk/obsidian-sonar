@@ -204,8 +204,6 @@ export class ChatView extends ItemView {
         chatModelRepo,
         chatModelFile,
         this.configManager,
-        status => this.plugin.updateStatusBar(status),
-        () => {}, // No global state update needed
         (msg, duration) => new Notice(msg, duration),
         (modelId: string) => this.plugin.confirmModelDownload('chat', modelId)
       ));

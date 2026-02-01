@@ -17,7 +17,6 @@ export async function setupTestEmbedder(): Promise<LlamaCppEmbedder> {
     modelRepo,
     modelFile,
     configManager,
-    () => {},
     () => {}
   );
 

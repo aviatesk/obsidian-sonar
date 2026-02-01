@@ -26,6 +26,7 @@ import {
   countNaNValues,
 } from './utils';
 import { WithLogging } from './WithLogging';
+import { sonarState } from './SonarState';
 import { ChunkId } from './chunkId';
 import {
   extractTextFromBuffer,
@@ -83,7 +84,6 @@ export class IndexManager extends WithLogging {
   private isReady: boolean = false;
   private previousActiveFile: TFile | null = null;
   private debouncedProcess: () => void;
-  private statusBarCallback: (text: string, tooltip?: string) => void;
   private pdfjsLib: PdfjsLib | null = null;
   private indexUpdateListeners: Set<IndexUpdateListener> = new Set();
 
@@ -94,11 +94,9 @@ export class IndexManager extends WithLogging {
     private embedder: LlamaCppEmbedder,
     private vault: Vault,
     private workspace: Workspace,
-    protected configManager: ConfigManager,
-    statusBarCallback: (text: string, tooltip?: string) => void
+    protected configManager: ConfigManager
   ) {
     super();
-    this.statusBarCallback = statusBarCallback;
     this.debouncedProcess = debounce(
       () => this.processPendingOperations(),
       AUTO_INDEX_DEBOUNCE_MS,
@@ -1200,7 +1198,7 @@ And then reinitialize Sonar via "Reinitialize Sonar" action/command`,
       }
       text = `Indexed (${stats.totalFiles}/${indexableCount})`;
     }
-    this.statusBarCallback(text, tooltip);
+    sonarState.setStatusBarText(text, tooltip);
   }
 
   async getStats(): Promise<{ totalChunks: number; totalFiles: number }> {

@@ -1,7 +1,9 @@
 import type { ChildProcess } from 'child_process';
 import type { ConfigManager } from './ConfigManager';
-import type { ModelStatus } from './SonarState';
+import { sonarState } from './SonarState';
 import { WithLogging } from './WithLogging';
+
+type ModelStatus = 'uninitialized' | 'initializing' | 'ready' | 'failed';
 import {
   isModelCached,
   downloadModel,
@@ -50,8 +52,6 @@ export class LlamaCppChat extends WithLogging {
     private modelRepo: string,
     private modelFile: string,
     protected configManager: ConfigManager,
-    private statusCallback: (status: string) => void,
-    private onStatusChange: (status: ModelStatus) => void,
     private showNotice?: (msg: string, duration?: number) => void,
     private confirmDownload?: (modelId: string) => Promise<boolean>
   ) {
@@ -59,12 +59,11 @@ export class LlamaCppChat extends WithLogging {
   }
 
   private updateStatusBar(status: string): void {
-    this.statusCallback(status);
+    sonarState.setStatusBarText(status);
   }
 
   private setStatus(status: ModelStatus): void {
     this._status = status;
-    this.onStatusChange(status);
   }
 
   get status(): ModelStatus {
@@ -164,6 +163,7 @@ export class LlamaCppChat extends WithLogging {
   private async waitForReady(): Promise<void> {
     await waitForServerReady(this.serverUrl, this.configManager.getLogger());
     this.setStatus('ready');
+    this.updateStatusBar('Chat: Ready');
   }
 
   isReady(): boolean {

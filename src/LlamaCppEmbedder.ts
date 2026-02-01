@@ -1,6 +1,6 @@
 import type { ChildProcess } from 'child_process';
 import type { ConfigManager } from './ConfigManager';
-import type { ModelStatus } from './SonarState';
+import { sonarState, type ModelStatus } from './SonarState';
 import { WithLogging } from './WithLogging';
 import { progressiveWait } from './utils';
 import {
@@ -34,7 +34,6 @@ export class LlamaCppEmbedder extends WithLogging {
     private modelRepo: string,
     private modelFile: string,
     protected configManager: ConfigManager,
-    private statusCallback: (status: string) => void,
     private onStatusChange: (status: ModelStatus) => void,
     private showNotice?: (msg: string, duration?: number) => void,
     private confirmDownload?: (modelId: string) => Promise<boolean>
@@ -52,7 +51,7 @@ export class LlamaCppEmbedder extends WithLogging {
   }
 
   private updateStatusBar(status: string): void {
-    this.statusCallback(status);
+    sonarState.setStatusBarText(status);
   }
 
   async initialize(): Promise<void> {
@@ -84,7 +83,6 @@ export class LlamaCppEmbedder extends WithLogging {
       this.error(
         `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`
       );
-      this.updateStatusBar('Failed to initialize');
       throw error;
     }
   }
