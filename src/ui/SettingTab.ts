@@ -213,6 +213,25 @@ export class SettingTab extends PluginSettingTab {
     });
     this.statsDiv = statsDiv;
     this.updateStats();
+
+    new Setting(statsContainer).addButton(button =>
+      button.setButtonText('Copy').onClick(async () => {
+        const statsText = this.getStatsText();
+        if (statsText) {
+          await navigator.clipboard.writeText(statsText);
+          new Notice('Statistics copied to clipboard');
+        }
+      })
+    );
+  }
+
+  private getStatsText(): string | null {
+    if (!this.statsDiv) return null;
+    const lines: string[] = [];
+    this.statsDiv.querySelectorAll('p').forEach(p => {
+      lines.push(p.textContent ?? '');
+    });
+    return lines.join('\n');
   }
 
   private createIndexConfigSection(containerEl: HTMLElement): void {
