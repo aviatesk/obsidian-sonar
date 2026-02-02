@@ -673,9 +673,10 @@ Answer:`;
 
   /**
    * Evaluate generated answer against ground truth.
-   * Following CRAG paper's two-step evaluation:
-   * 1. Rule-based exact match
-   * 2. LLM-as-judge (only if exact match fails)
+   * Following CRAG's evaluation approach:
+   * 1. Rule-based: Check for "i don't know" patterns → missing
+   * 2. Rule-based: Exact match with expected/alt answers → correct
+   * 3. LLM-as-judge: Binary evaluation (correct/incorrect) for remaining cases
    */
   private async evaluate(
     question: string,
@@ -750,29 +751,33 @@ Answer:`;
 
   /**
    * LLM-as-judge evaluation (Step 2 of CRAG evaluation).
-   * Uses OpenAI API with gpt-4o-mini.
-   * Note: CRAG paper uses gpt-3.5-turbo + llama-3-70B average.
+   * Uses OpenAI API with gpt-4o-mini for binary (correct/incorrect) evaluation.
+   *
+   * Note: Missing detection is handled by rule-based evaluation before this.
+   * This method only evaluates whether the prediction matches the ground truth.
+   * CRAG paper uses gpt-3.5-turbo + llama-3-70B average.
    */
   private async evaluateWithLLM(
     question: string,
     generated: string,
     expected: string,
     openaiApiKey: string
-  ): Promise<EvaluationResult> {
+  ): Promise<'correct' | 'incorrect'> {
     const expectedStr =
       typeof expected === 'string' ? expected : JSON.stringify(expected);
     const prompt =
-      `Question: ${question} ` +
-      `Ground truth: ${expectedStr} ` +
-      `Prediction: ${generated} ` +
-      `Evaluate the prediction. Answer with just one word: correct, incorrect, or missing ` +
-      `(use "missing" if the prediction declines to answer or says "I don't know")`;
+      `Question: ${question}\n` +
+      `Ground truth: ${expectedStr}\n` +
+      `Prediction: ${generated}\n\n` +
+      `Does the prediction match the ground truth? ` +
+      `Respond with JSON: {"score": 1} if correct, {"score": 0} if incorrect.`;
 
     const requestBody = {
       model: EVALUATION_MODEL,
       temperature: 0,
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 10,
+      max_tokens: 20,
+      response_format: { type: 'json_object' },
     };
 
     let response: RequestUrlResponse;
@@ -799,21 +804,15 @@ Answer:`;
     }
 
     const result = response.json;
-    const content = result.choices?.[0]?.message?.content
-      ?.toLowerCase()
-      ?.trim();
+    const content = result.choices?.[0]?.message?.content?.trim();
 
-    if (content?.includes('missing')) {
-      return 'missing';
-    } else if (content?.includes('incorrect')) {
+    try {
+      const parsed = JSON.parse(content);
+      return parsed.score === 1 ? 'correct' : 'incorrect';
+    } catch {
+      this.warn(`Failed to parse evaluation response: "${content}"`);
       return 'incorrect';
-    } else if (content?.includes('correct')) {
-      return 'correct';
     }
-
-    // If response is ambiguous, default to incorrect
-    this.warn(`Ambiguous evaluation response: "${content}"`);
-    return 'incorrect';
   }
 
   private calculateSummary(
