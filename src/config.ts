@@ -113,6 +113,14 @@ export interface SonarSettings {
   cragSampleSize: number; // Number of samples to process (0 = all)
   cragSampleOffset: number; // Number of samples to skip (for resuming)
   cragOpenaiApiKey: string; // OpenAI API key for LLM-as-judge evaluation
+
+  // CRAG Unified benchmark configuration (Benchmark B)
+  // ===================================================
+  cragUnifiedCorpusPath: string; // Path to corpus.jsonl file (absolute or vault-relative)
+  cragUnifiedQueriesPath: string; // Path to queries.jsonl file (absolute or vault-relative)
+  cragUnifiedOutputDir: string; // Path to directory for benchmark output (absolute or vault-relative)
+  cragUnifiedSampleSize: number; // Number of queries to process (0 = all)
+  cragUnifiedSampleOffset: number; // Number of queries to skip (for resuming)
 }
 
 export const DEFAULT_SETTINGS: SonarSettings = {
@@ -212,4 +220,12 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   cragSampleSize: 0,
   cragSampleOffset: 0,
   cragOpenaiApiKey: '',
+
+  // CRAG Unified benchmark configuration
+  // =====================================
+  cragUnifiedCorpusPath: '',
+  cragUnifiedQueriesPath: '',
+  cragUnifiedOutputDir: '',
+  cragUnifiedSampleSize: 0,
+  cragUnifiedSampleOffset: 0,
 };
