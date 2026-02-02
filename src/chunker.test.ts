@@ -335,6 +335,75 @@ content under H4`;
         expect(Array.isArray(chunk.headings)).toBe(true);
       });
     });
+
+    it('assigns headings to chunk AFTER the heading line is added', async () => {
+      // This test verifies the heading tracking bug fix:
+      // When a chunk boundary occurs right after a heading line,
+      // the heading should be included in the NEW chunk (where it appears),
+      // not the previous chunk.
+      const content = `# Section One
+content for section one line one
+content for section one line two
+content for section one line three
+# Section Two
+content for section two`;
+
+      // Use small maxChunkSize to force chunk boundary near heading
+      const maxChunkSize = 15;
+      const chunks = await createChunks(content, maxChunkSize, 0, embedder);
+
+      expect(chunks.length).toBeGreaterThan(1);
+
+      // Find the chunk containing "Section Two" heading
+      const sectionTwoChunk = chunks.find(c =>
+        c.content.includes('# Section Two')
+      );
+      expect(sectionTwoChunk).toBeDefined();
+
+      // The chunk containing "# Section Two" should have "Section Two" in its headings
+      if (sectionTwoChunk) {
+        expect(sectionTwoChunk.headings).toContain('Section Two');
+      }
+
+      // Find the chunk containing only Section One content (before Section Two)
+      const sectionOneOnlyChunk = chunks.find(
+        c =>
+          c.content.includes('section one') &&
+          !c.content.includes('Section Two')
+      );
+
+      // If there's a chunk with only Section One content, it should NOT have Section Two heading
+      if (sectionOneOnlyChunk) {
+        expect(sectionOneOnlyChunk.headings).not.toContain('Section Two');
+      }
+    });
+
+    it('correctly assigns headings when chunk splits within batch', async () => {
+      // Test heading assignment during Phase 2 (line-by-line processing)
+      const content = `# Title
+## Subtitle
+paragraph one with some text here
+## Another Subtitle
+paragraph two with more text`;
+
+      const maxChunkSize = 12;
+      const chunks = await createChunks(content, maxChunkSize, 0, embedder);
+
+      expect(chunks.length).toBeGreaterThan(1);
+
+      // Each chunk's headings should reflect the heading context AT that chunk
+      for (const chunk of chunks) {
+        if (chunk.content.includes('Another Subtitle')) {
+          expect(chunk.headings).toContain('Another Subtitle');
+        }
+        if (
+          chunk.content.includes('Subtitle') &&
+          !chunk.content.includes('Another')
+        ) {
+          expect(chunk.headings).toContain('Subtitle');
+        }
+      }
+    });
   });
 
   describe('content preservation', () => {
@@ -406,6 +475,37 @@ content two`;
       const combined = chunks.map(c => c.content).join('\n');
       expect(combined).toContain('content one');
       expect(combined).toContain('content two');
+    });
+
+    it('handles forceSubdivide without infinite loop when word boundary adjustment fails', async () => {
+      // This tests the safety check in forceSubdivide that prevents infinite loops
+      // when the binary search finds a split position but word boundary adjustment
+      // would result in no progress (adjustedSplit <= pos)
+      const longWordNoSpaces = 'a'.repeat(300);
+      const content = longWordNoSpaces;
+
+      const maxChunkSize = 5;
+      const chunks = await createChunks(content, maxChunkSize, 0, embedder);
+
+      // Should complete without hanging and produce multiple chunks
+      expect(chunks.length).toBeGreaterThan(1);
+      await assertMaxChunkSize(chunks, maxChunkSize);
+
+      // All content should be preserved
+      const combined = chunks.map(c => c.content).join('');
+      expect(combined).toBe(longWordNoSpaces);
+    });
+
+    it('handles extremely small maxChunkSize without infinite loop', async () => {
+      const content = 'hello world test';
+
+      // Very small chunk size forces many subdivisions
+      const maxChunkSize = 2;
+      const chunks = await createChunks(content, maxChunkSize, 0, embedder);
+
+      expect(chunks.length).toBeGreaterThan(1);
+      await assertMaxChunkSize(chunks, maxChunkSize);
+      assertContentPreserved(chunks, ['hello', 'world', 'test']);
     });
   });
 
