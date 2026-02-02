@@ -52,9 +52,8 @@ export class SettingTab extends PluginSettingTab {
     const { createRetrievalBenchmarkSettings } = await import(
       '../../retrieval-bench/src/settings'
     );
-    const { createCragBenchmarkSettings } = await import(
-      '../../rag-bench/src/settings'
-    );
+    const { createCragBenchmarkSettings, createCragUnifiedBenchmarkSettings } =
+      await import('../../rag-bench/src/settings');
     createRetrievalBenchmarkSettings(
       this.app,
       this.plugin,
@@ -62,6 +61,12 @@ export class SettingTab extends PluginSettingTab {
       this.configManager
     );
     createCragBenchmarkSettings(
+      this.app,
+      this.plugin,
+      containerEl,
+      this.configManager
+    );
+    createCragUnifiedBenchmarkSettings(
       this.app,
       this.plugin,
       containerEl,

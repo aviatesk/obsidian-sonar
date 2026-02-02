@@ -594,11 +594,13 @@ export default class SonarPlugin extends Plugin {
     const { registerRetrievalBenchmarkCommands } = await import(
       './retrieval-bench/src/index'
     );
-    const { registerCragBenchmarkCommands } = await import(
-      './rag-bench/src/index'
-    );
+    const {
+      registerCragBenchmarkCommands,
+      registerCragUnifiedBenchmarkCommands,
+    } = await import('./rag-bench/src/index');
     registerRetrievalBenchmarkCommands(this);
     registerCragBenchmarkCommands(this);
+    registerCragUnifiedBenchmarkCommands(this);
   }
 
   private registerFileMenuHandlers(): void {

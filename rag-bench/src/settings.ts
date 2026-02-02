@@ -97,3 +97,104 @@ export function createCragBenchmarkSettings(
     inputEl.type = 'password';
   }
 }
+
+export function createCragUnifiedBenchmarkSettings(
+  app: App,
+  plugin: SonarPlugin,
+  containerEl: HTMLElement,
+  configManager: ConfigManager
+): void {
+  const details = containerEl.createEl('details', {
+    cls: 'sonar-settings-section',
+  });
+  details.createEl('summary', {
+    text: 'CRAG Unified benchmark (Sonar vs Cloud)',
+  });
+  const container = details.createDiv();
+
+  const corpusPathSetting = new Setting(container).setName('Corpus path');
+  renderMarkdownDesc(
+    app,
+    plugin,
+    corpusPathSetting.descEl,
+    'Path to `corpus.jsonl` file for CRAG Unified benchmark.'
+  );
+  corpusPathSetting.addText(text =>
+    text
+      .setPlaceholder('rag-bench/datasets/crag-unified/corpus.jsonl')
+      .setValue(configManager.get('cragUnifiedCorpusPath'))
+      .onChange(
+        async value => await configManager.set('cragUnifiedCorpusPath', value)
+      )
+  );
+
+  const queriesPathSetting = new Setting(container).setName('Queries path');
+  renderMarkdownDesc(
+    app,
+    plugin,
+    queriesPathSetting.descEl,
+    'Path to `queries.jsonl` file for CRAG Unified benchmark.'
+  );
+  queriesPathSetting.addText(text =>
+    text
+      .setPlaceholder('rag-bench/datasets/crag-unified/queries.jsonl')
+      .setValue(configManager.get('cragUnifiedQueriesPath'))
+      .onChange(
+        async value => await configManager.set('cragUnifiedQueriesPath', value)
+      )
+  );
+
+  const outputDirSetting = new Setting(container).setName('Output directory');
+  renderMarkdownDesc(
+    app,
+    plugin,
+    outputDirSetting.descEl,
+    'Path to directory for benchmark output files.'
+  );
+  outputDirSetting.addText(text =>
+    text
+      .setPlaceholder('rag-bench/runs/crag-unified')
+      .setValue(configManager.get('cragUnifiedOutputDir'))
+      .onChange(
+        async value => await configManager.set('cragUnifiedOutputDir', value)
+      )
+  );
+
+  const sampleSizeSetting = new Setting(container).setName('Sample size');
+  renderMarkdownDesc(
+    app,
+    plugin,
+    sampleSizeSetting.descEl,
+    'Number of queries to process (`0` = all queries).'
+  );
+  sampleSizeSetting.addText(text =>
+    text
+      .setPlaceholder('0')
+      .setValue(String(configManager.get('cragUnifiedSampleSize')))
+      .onChange(async value => {
+        const num = parseInt(value, 10);
+        if (!isNaN(num) && num >= 0) {
+          await configManager.set('cragUnifiedSampleSize', num);
+        }
+      })
+  );
+
+  const sampleOffsetSetting = new Setting(container).setName('Sample offset');
+  renderMarkdownDesc(
+    app,
+    plugin,
+    sampleOffsetSetting.descEl,
+    'Number of queries to skip (for resuming from a specific point).'
+  );
+  sampleOffsetSetting.addText(text =>
+    text
+      .setPlaceholder('0')
+      .setValue(String(configManager.get('cragUnifiedSampleOffset')))
+      .onChange(async value => {
+        const num = parseInt(value, 10);
+        if (!isNaN(num) && num >= 0) {
+          await configManager.set('cragUnifiedSampleOffset', num);
+        }
+      })
+  );
+}
