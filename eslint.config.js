@@ -16,6 +16,7 @@ export default [
       'main.js',
       'src/generated/**',
       'bench',
+      'rag-bench',
       'experiments',
       '.venv/**',
       'extension-tools/**/*.js', // Extension tool example scripts (dynamically loaded)

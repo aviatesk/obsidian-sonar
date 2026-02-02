@@ -26,7 +26,8 @@ def main():
         "--input-dir",
         type=str,
         default=None,
-        help="Input directory containing *.txt files (default: bench/debug/sample_texts)",
+        help="Input directory containing *.txt files "
+        "(default: bench/debug/sample_texts)",
     )
     parser.add_argument(
         "--output-dir",
