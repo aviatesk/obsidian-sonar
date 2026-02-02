@@ -1,0 +1,134 @@
+{
+  "total": 100,
+  "correct": 40,
+  "missing": 31,
+  "incorrect": 29,
+  "accuracy": 0.4,
+  "hallucination": 0.29,
+  "score": 0.11,
+  "avg_indexing_time_ms": 72601.82,
+  "avg_retrieval_time_ms": 10136.3,
+  "avg_generation_time_ms": 26328.25,
+  "total_time_sec": 11006.534,
+  "by_domain": {
+    "music": {
+      "total": 14,
+      "correct": 7,
+      "missing": 1,
+      "incorrect": 6,
+      "accuracy": 0.5,
+      "hallucination": 0.42857142857142855,
+      "score": 0.07142857142857142
+    },
+    "open": {
+      "total": 19,
+      "correct": 11,
+      "missing": 4,
+      "incorrect": 4,
+      "accuracy": 0.5789473684210527,
+      "hallucination": 0.21052631578947367,
+      "score": 0.3684210526315789
+    },
+    "sports": {
+      "total": 25,
+      "correct": 6,
+      "missing": 9,
+      "incorrect": 10,
+      "accuracy": 0.24,
+      "hallucination": 0.4,
+      "score": -0.16
+    },
+    "finance": {
+      "total": 27,
+      "correct": 10,
+      "missing": 10,
+      "incorrect": 7,
+      "accuracy": 0.37037037037037035,
+      "hallucination": 0.25925925925925924,
+      "score": 0.1111111111111111
+    },
+    "movie": {
+      "total": 15,
+      "correct": 6,
+      "missing": 7,
+      "incorrect": 2,
+      "accuracy": 0.4,
+      "hallucination": 0.13333333333333333,
+      "score": 0.26666666666666666
+    }
+  },
+  "by_question_type": {
+    "simple": {
+      "total": 27,
+      "correct": 17,
+      "missing": 5,
+      "incorrect": 5,
+      "accuracy": 0.6296296296296297,
+      "hallucination": 0.18518518518518517,
+      "score": 0.4444444444444444
+    },
+    "false_premise": {
+      "total": 14,
+      "correct": 4,
+      "missing": 6,
+      "incorrect": 4,
+      "accuracy": 0.2857142857142857,
+      "hallucination": 0.2857142857142857,
+      "score": 0.0
+    },
+    "simple_w_condition": {
+      "total": 15,
+      "correct": 4,
+      "missing": 8,
+      "incorrect": 3,
+      "accuracy": 0.26666666666666666,
+      "hallucination": 0.2,
+      "score": 0.06666666666666667
+    },
+    "comparison": {
+      "total": 13,
+      "correct": 3,
+      "missing": 7,
+      "incorrect": 3,
+      "accuracy": 0.23076923076923078,
+      "hallucination": 0.23076923076923078,
+      "score": 0.0
+    },
+    "multi-hop": {
+      "total": 6,
+      "correct": 3,
+      "missing": 0,
+      "incorrect": 3,
+      "accuracy": 0.5,
+      "hallucination": 0.5,
+      "score": 0.0
+    },
+    "set": {
+      "total": 9,
+      "correct": 3,
+      "missing": 1,
+      "incorrect": 5,
+      "accuracy": 0.3333333333333333,
+      "hallucination": 0.5555555555555556,
+      "score": -0.2222222222222222
+    },
+    "post-processing": {
+      "total": 6,
+      "correct": 2,
+      "missing": 1,
+      "incorrect": 3,
+      "accuracy": 0.3333333333333333,
+      "hallucination": 0.5,
+      "score": -0.16666666666666666
+    },
+    "aggregation": {
+      "total": 10,
+      "correct": 4,
+      "missing": 3,
+      "incorrect": 3,
+      "accuracy": 0.4,
+      "hallucination": 0.3,
+      "score": 0.1
+    }
+  }
+}
