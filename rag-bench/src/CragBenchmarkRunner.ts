@@ -55,11 +55,23 @@ interface CragResult {
   expected: string;
   generated: string;
   evaluation: EvaluationResult;
+  domain: string;
+  question_type: string;
   indexing_time_ms: number;
   retrieval_time_ms: number;
   generation_time_ms: number;
   total_time_ms: number;
   chunk_count: number;
+}
+
+interface BreakdownStats {
+  total: number;
+  correct: number;
+  missing: number;
+  incorrect: number;
+  accuracy: number;
+  hallucination: number;
+  score: number;
 }
 
 interface CragSummary {
@@ -74,6 +86,8 @@ interface CragSummary {
   avg_retrieval_time_ms: number;
   avg_generation_time_ms: number;
   total_time_sec: number;
+  by_domain: Record<string, BreakdownStats>;
+  by_question_type: Record<string, BreakdownStats>;
 }
 
 export interface CragBenchmarkConfig {
@@ -459,6 +473,8 @@ export class CragBenchmarkRunner extends WithLogging {
         expected: sample.answer,
         generated,
         evaluation,
+        domain: sample.domain,
+        question_type: sample.question_type,
         indexing_time_ms: indexingTimeMs,
         retrieval_time_ms: retrievalTimeMs,
         generation_time_ms: generationTimeMs,
@@ -837,6 +853,13 @@ Answer:`;
         ? results.reduce((sum, r) => sum + r.generation_time_ms, 0) / total
         : 0;
 
+    // Calculate breakdowns
+    const byDomain = this.calculateBreakdown(results, r => r.domain);
+    const byQuestionType = this.calculateBreakdown(
+      results,
+      r => r.question_type
+    );
+
     return {
       total,
       correct,
@@ -849,6 +872,44 @@ Answer:`;
       avg_retrieval_time_ms: avgRetrievalTime,
       avg_generation_time_ms: avgGenerationTime,
       total_time_sec: totalTimeMs / 1000,
+      by_domain: byDomain,
+      by_question_type: byQuestionType,
     };
+  }
+
+  private calculateBreakdown(
+    results: CragResult[],
+    keyFn: (r: CragResult) => string
+  ): Record<string, BreakdownStats> {
+    const groups: Record<string, CragResult[]> = {};
+
+    for (const r of results) {
+      const key = keyFn(r) || 'unknown';
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(r);
+    }
+
+    const breakdown: Record<string, BreakdownStats> = {};
+
+    for (const [key, group] of Object.entries(groups)) {
+      const total = group.length;
+      const correct = group.filter(r => r.evaluation === 'correct').length;
+      const missing = group.filter(r => r.evaluation === 'missing').length;
+      const incorrect = group.filter(r => r.evaluation === 'incorrect').length;
+
+      breakdown[key] = {
+        total,
+        correct,
+        missing,
+        incorrect,
+        accuracy: total > 0 ? correct / total : 0,
+        hallucination: total > 0 ? incorrect / total : 0,
+        score: total > 0 ? (correct - incorrect) / total : 0,
+      };
+    }
+
+    return breakdown;
   }
 }
