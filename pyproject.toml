@@ -47,5 +47,5 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.basedpyright]
-include = ["bench", "rag-bench"]
+include = ["retrieval-bench", "rag-bench"]
 typeCheckingMode = "standard"
