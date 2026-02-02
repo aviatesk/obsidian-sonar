@@ -586,8 +586,8 @@ export default class SonarPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: 'run-benchmark',
-      name: 'Run benchmark (BM25, Vector, Hybrid)',
+      id: 'run-retrieval-benchmark',
+      name: 'Run retrieval benchmark (BM25, Vector, Hybrid)',
       callback: async () => {
         if (!this.checkInitialized()) return;
         const benchmarkRunner = new BenchmarkRunner(
@@ -605,8 +605,8 @@ export default class SonarPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: 'run-benchmark-with-reranking',
-      name: 'Run benchmark with reranking (BM25, Vector, Hybrid, Hybrid+Rerank)',
+      id: 'run-retrieval-benchmark-with-reranking',
+      name: 'Run retrieval benchmark with reranking (BM25, Vector, Hybrid, Hybrid+Rerank)',
       callback: async () => {
         if (!this.checkInitialized()) return;
         const benchmarkRunner = new BenchmarkRunner(
