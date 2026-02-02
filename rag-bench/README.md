@@ -178,13 +178,13 @@ Results are also logged to the developer console.
 
 All baseline results are from CRAG paper (Table 5).
 
-| Configuration                          | Accuracy  | Hallucination | Score     |
-| -------------------------------------- | --------- | ------------- | --------- |
-| GPT-4 Turbo (No RAG)[^no-rag]          | 33.5%     | 13.5%         | 20.0%     |
-| Llama 3 70B (No RAG)[^no-rag]          | 32.3%     | 28.9%         | 3.4%      |
-| GPT-4 Turbo + Naive RAG                | 43.6%     | 30.1%         | 13.4%     |
-| Llama 3 70B + Naive RAG                | 40.6%     | 31.6%         | 9.1%      |
-| **Sonar (local)[^llm-as-judge-model]** | **40.0%** | **29.0%**     | **11.0%** |
+| Configuration                 | Accuracy                           | Hallucination | Score     |
+| ----------------------------- | ---------------------------------- | ------------- | --------- |
+| GPT-4 Turbo (No RAG)[^no-rag] | 33.5%                              | 13.5%         | 20.0%     |
+| Llama 3 70B (No RAG)[^no-rag] | 32.3%                              | 28.9%         | 3.4%      |
+| GPT-4 Turbo + Naive RAG       | 43.6%                              | 30.1%         | 13.4%     |
+| Llama 3 70B + Naive RAG       | 40.6%                              | 31.6%         | 9.1%      |
+| \*\*Sonar Qwen 8B + RAG       | **40.0%**[^llm-as-judge-model]\*\* | **29.0%**     | **11.0%** |
 
 [^no-rag]:
     "No RAG" uses only the LLM's parametric knowledge without retrieved context.
