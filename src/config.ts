@@ -99,15 +99,15 @@ export interface SonarSettings {
   statusBarMaxLength: number; // Maximum characters in status bar (0 = no limit)
   debugMode: LogLevel; // Logging verbosity level
 
-  // Benchmark configuration
-  // =======================
+  // Benchmark configuration (optional, only used in development builds)
+  // ===================================================================
   benchmarkQueriesPath: string; // Path to queries.jsonl file (absolute or vault-relative)
   benchmarkQrelsPath: string; // Path to qrels.tsv file (absolute or vault-relative)
   benchmarkOutputDir: string; // Path to directory for TREC output files (absolute or vault-relative)
   benchmarkTopK: number; // Number of documents to return for benchmarks (default: 100)
 
-  // CRAG benchmark configuration
-  // ============================
+  // CRAG benchmark configuration (optional, only used in development builds)
+  // ========================================================================
   cragDataPath: string; // Path to CRAG data.jsonl file (absolute or vault-relative)
   cragOutputDir: string; // Path to directory for CRAG benchmark output (absolute or vault-relative)
   cragSampleSize: number; // Number of samples to process (0 = all)

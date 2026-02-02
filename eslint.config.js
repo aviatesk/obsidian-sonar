@@ -15,9 +15,9 @@ export default [
       'node_modules/**',
       'main.js',
       'src/generated/**',
-      'retrieval-bench',
-      'rag-bench',
-      'experiments',
+      'retrieval-bench/**',
+      'rag-bench/**',
+      'experiments/**',
       '.venv/**',
       'extension-tools/**/*.js', // Extension tool example scripts (dynamically loaded)
     ],

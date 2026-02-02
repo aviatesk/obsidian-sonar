@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "build:with-benchmark": "tsc -noEmit -skipLibCheck && INCLUDE_BENCHMARK=true node esbuild.config.mjs production",
     "clean": "rm main.js",
     "dev": "node esbuild.config.mjs",
+    "dev:with-benchmark": "INCLUDE_BENCHMARK=true node esbuild.config.mjs",
     "deploy": "./deploy.sh",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
     "sonar": "npx tsx scripts/sonar.ts",

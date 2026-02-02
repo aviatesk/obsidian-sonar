@@ -2,11 +2,11 @@ import { Notice, requestUrl, type RequestUrlResponse } from 'obsidian';
 import { createReadStream, promises as fs } from 'fs';
 import { join, isAbsolute } from 'path';
 import { createInterface } from 'readline';
-import { WithLogging } from './WithLogging';
-import type { ConfigManager } from './ConfigManager';
-import type { LlamaCppEmbedder } from './LlamaCppEmbedder';
-import type { LlamaCppReranker } from './LlamaCppReranker';
-import type { LlamaCppChat, ChatMessageExtended } from './LlamaCppChat';
+import { WithLogging } from '../../src/WithLogging';
+import type { ConfigManager } from '../../src/ConfigManager';
+import type { LlamaCppEmbedder } from '../../src/LlamaCppEmbedder';
+import type { LlamaCppReranker } from '../../src/LlamaCppReranker';
+import type { LlamaCppChat, ChatMessageExtended } from '../../src/LlamaCppChat';
 import {
   MetadataStore,
   type ChunkMetadata,
@@ -18,14 +18,14 @@ import {
   STORE_BM25_DOC_TOKENS,
   STORE_FAILED_FILES,
   INDEX_FILE_PATH,
-} from './MetadataStore';
-import { EmbeddingStore } from './EmbeddingStore';
-import { BM25Store } from './BM25Store';
-import { EmbeddingSearch } from './EmbeddingSearch';
-import { BM25Search } from './BM25Search';
-import { SearchManager, type ChunkResult } from './SearchManager';
-import { createChunks } from './chunker';
-import { ChunkId } from './chunkId';
+} from '../../src/MetadataStore';
+import { EmbeddingStore } from '../../src/EmbeddingStore';
+import { BM25Store } from '../../src/BM25Store';
+import { EmbeddingSearch } from '../../src/EmbeddingSearch';
+import { BM25Search } from '../../src/BM25Search';
+import { SearchManager, type ChunkResult } from '../../src/SearchManager';
+import { createChunks } from '../../src/chunker';
+import { ChunkId } from '../../src/chunkId';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 const EVALUATION_MODEL = 'gpt-4o-mini';

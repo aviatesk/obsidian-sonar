@@ -39,7 +39,34 @@ export class SettingTab extends PluginSettingTab {
     this.createChunkingConfigSection(containerEl);
     this.createSearchParamsSection(containerEl);
     this.createLoggingConfigSection(containerEl);
-    this.createBenchmarkConfigSection(containerEl);
+
+    // Benchmark settings are only available in development builds
+    if (process.env.INCLUDE_BENCHMARK === 'true') {
+      this.createBenchmarkConfigSection(containerEl);
+    }
+  }
+
+  private async createBenchmarkConfigSection(
+    containerEl: HTMLElement
+  ): Promise<void> {
+    const { createRetrievalBenchmarkSettings } = await import(
+      '../../retrieval-bench/src/settings'
+    );
+    const { createCragBenchmarkSettings } = await import(
+      '../../rag-bench/src/settings'
+    );
+    createRetrievalBenchmarkSettings(
+      this.app,
+      this.plugin,
+      containerEl,
+      this.configManager
+    );
+    createCragBenchmarkSettings(
+      this.app,
+      this.plugin,
+      containerEl,
+      this.configManager
+    );
   }
 
   hide(): void {
@@ -1158,84 +1185,6 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
         .onChange(
           async value =>
             await this.configManager.set('audioTranscriptionLanguage', value)
-        )
-    );
-  }
-
-  private createBenchmarkConfigSection(containerEl: HTMLElement): void {
-    const benchmarkDetails = containerEl.createEl('details', {
-      cls: 'sonar-settings-section',
-    });
-    benchmarkDetails.createEl('summary', { text: 'Benchmark configuration' });
-    const benchmarkContainer = benchmarkDetails.createDiv();
-
-    const queriesPathSetting = new Setting(benchmarkContainer).setName(
-      'Benchmark queries path'
-    );
-    this.renderMarkdownDesc(
-      queriesPathSetting.descEl,
-      'Path to `queries.jsonl` file for benchmarks. Can be absolute or relative to vault root.'
-    );
-    queriesPathSetting.addText(text =>
-      text
-        .setPlaceholder(
-          'bench/queries.jsonl or /absolute/path/to/queries.jsonl'
-        )
-        .setValue(this.configManager.get('benchmarkQueriesPath'))
-        .onChange(
-          async value =>
-            await this.configManager.set('benchmarkQueriesPath', value)
-        )
-    );
-
-    const qrelsPathSetting = new Setting(benchmarkContainer).setName(
-      'Benchmark qrels path'
-    );
-    this.renderMarkdownDesc(
-      qrelsPathSetting.descEl,
-      'Path to `qrels.tsv` file for benchmarks. Can be absolute or relative to vault root.'
-    );
-    qrelsPathSetting.addText(text =>
-      text
-        .setPlaceholder('bench/qrels.tsv or /absolute/path/to/qrels.tsv')
-        .setValue(this.configManager.get('benchmarkQrelsPath'))
-        .onChange(
-          async value =>
-            await this.configManager.set('benchmarkQrelsPath', value)
-        )
-    );
-
-    const outputDirSetting = new Setting(benchmarkContainer).setName(
-      'Benchmark output directory'
-    );
-    this.renderMarkdownDesc(
-      outputDirSetting.descEl,
-      'Path to directory for TREC output files. Can be absolute or relative to vault root.'
-    );
-    outputDirSetting.addText(text =>
-      text
-        .setPlaceholder('bench/output or /absolute/path/to/output')
-        .setValue(this.configManager.get('benchmarkOutputDir'))
-        .onChange(
-          async value =>
-            await this.configManager.set('benchmarkOutputDir', value)
-        )
-    );
-
-    const topKSetting = new Setting(benchmarkContainer).setName(
-      'Benchmark top K'
-    );
-    this.renderMarkdownDesc(
-      topKSetting.descEl,
-      'Number of documents to return for benchmarks (default: `100`).'
-    );
-    topKSetting.addSlider(slider =>
-      slider
-        .setLimits(10, 1000, 10)
-        .setValue(this.configManager.get('benchmarkTopK'))
-        .setDynamicTooltip()
-        .onChange(
-          async value => await this.configManager.set('benchmarkTopK', value)
         )
     );
   }

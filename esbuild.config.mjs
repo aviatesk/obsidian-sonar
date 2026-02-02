@@ -29,6 +29,13 @@ To view the source, visit: https://github.com/aviatesk/obsidian-sonar
 `;
 
 const prod = process.argv[2] === 'production';
+const includeBenchmark = process.env.INCLUDE_BENCHMARK === 'true';
+
+// Mark benchmark paths as external when not including benchmarks
+// This prevents esbuild from bundling benchmark code in production builds
+const benchmarkExternals = includeBenchmark
+  ? []
+  : ['./retrieval-bench/*', './rag-bench/*'];
 
 const context = await esbuild.context({
   banner: {
@@ -51,6 +58,7 @@ const context = await esbuild.context({
     '@lezer/highlight',
     '@lezer/lr',
     ...builtins,
+    ...benchmarkExternals,
   ],
   format: 'cjs',
   target: 'es2018',
@@ -63,6 +71,11 @@ const context = await esbuild.context({
   logLevel: 'info',
   sourcemap: prod ? false : 'inline',
   treeShaking: true,
+  define: {
+    'process.env.INCLUDE_BENCHMARK': JSON.stringify(
+      includeBenchmark ? 'true' : 'false'
+    ),
+  },
   outfile: 'main.js',
   minify: prod,
 });
