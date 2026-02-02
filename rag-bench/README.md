@@ -94,19 +94,31 @@ Evaluate the prediction. Answer with just one word: correct, incorrect, or missi
 uv sync
 ```
 
-### Step 2: Download and preprocess CRAG data
+### Step 2: Download and process CRAG data
+
+First, download the raw CRAG data:
 
 ```bash
 cd rag-bench
-uv run scripts/download_crag.py --output-dir datasets/crag
+uv run scripts/download_crag.py
 ```
 
-Options:
+This downloads and extracts raw data to `datasets/crag-raw/`.
 
+Then, process the raw data into the benchmark format:
+
+```bash
+uv run scripts/build_crag.py
+```
+
+Options for `build_crag.py`:
+
+- `--input-dir`: Input directory for raw data (default: `datasets/crag-raw`)
+- `--output-dir`: Output directory for processed data (default: `datasets/crag`)
 - `--sample-size N`: Process only N samples (for testing)
 - `--seed N`: Random seed for sampling (default: 42)
 
-Output: `datasets/crag/data.jsonl`
+Output: `datasets/crag/data.jsonl`, `datasets/crag/metadata.jsonl`
 
 ### Step 3: Configure Sonar
 
