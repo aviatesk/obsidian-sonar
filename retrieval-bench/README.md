@@ -3,6 +3,20 @@
 Benchmark comparing Sonar (Obsidian plugin) against Elasticsearch and Weaviate
 on multilingual and long document retrieval tasks.
 
+## Purpose
+
+Validate that Sonar's retrieval implementation works correctly by comparing
+against established search backends
+([Elasticsearch](https://www.elastic.co/elasticsearch/),
+[Weaviate](https://weaviate.io/)) on standard benchmarks. This is primarily a
+correctness check, not a claim of superiority.
+
+Key questions:
+
+- Does Sonar's hybrid search (BM25 + vector) produce reasonable results?
+- How does the accuracy compare to production-grade search engines?
+- Does reranking improve retrieval quality as expected?
+
 ## Overview
 
 ### Benchmark datasets
