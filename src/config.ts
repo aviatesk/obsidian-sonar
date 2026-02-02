@@ -105,6 +105,14 @@ export interface SonarSettings {
   benchmarkQrelsPath: string; // Path to qrels.tsv file (absolute or vault-relative)
   benchmarkOutputDir: string; // Path to directory for TREC output files (absolute or vault-relative)
   benchmarkTopK: number; // Number of documents to return for benchmarks (default: 100)
+
+  // CRAG benchmark configuration
+  // ============================
+  cragDataPath: string; // Path to CRAG data.jsonl file (absolute or vault-relative)
+  cragOutputDir: string; // Path to directory for CRAG benchmark output (absolute or vault-relative)
+  cragSampleSize: number; // Number of samples to process (0 = all)
+  cragSampleOffset: number; // Number of samples to skip (for resuming)
+  cragOpenaiApiKey: string; // OpenAI API key for LLM-as-judge evaluation
 }
 
 export const DEFAULT_SETTINGS: SonarSettings = {
@@ -196,4 +204,12 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   benchmarkQrelsPath: '',
   benchmarkOutputDir: '',
   benchmarkTopK: 100,
+
+  // CRAG benchmark configuration
+  // ============================
+  cragDataPath: '',
+  cragOutputDir: '',
+  cragSampleSize: 0,
+  cragSampleOffset: 0,
+  cragOpenaiApiKey: '',
 };

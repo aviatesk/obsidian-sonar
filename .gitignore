@@ -1,6 +1,7 @@
 # Sonar
 scripts
 !bench/scripts
+!rag-bench/scripts
 
 # Node
 node_modules/

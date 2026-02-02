@@ -13,6 +13,7 @@ dependencies = [
     "weaviate-client>=3.25.0",
     "sentence-transformers>=2.2.0",
     "tinysegmenter>=0.3",
+    "datasets>=2.14.0",
 ]
 
 [project.optional-dependencies]
@@ -46,5 +47,5 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.basedpyright]
-include = ["bench"]
+include = ["bench", "rag-bench"]
 typeCheckingMode = "standard"
