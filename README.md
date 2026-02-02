@@ -253,10 +253,12 @@ instructions.
 
 See [CLAUDE.md](./CLAUDE.md) for detailed development guidelines.
 
-## Benchmark
+## Benchmarks
 
-See [retrieval-bench/README.md](./retrieval-bench/README.md) for benchmarks on
-accuracy and performance.
+- [retrieval-bench](./retrieval-bench/README.md): Retrieval accuracy and
+  performance using TREC-style evaluation
+- [rag-bench](./rag-bench/README.md): End-to-end RAG accuracy using the
+  [CRAG](https://github.com/facebookresearch/CRAG) dataset
 
 ## License
 
