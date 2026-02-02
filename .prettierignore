@@ -6,8 +6,8 @@ src/generated/**/*
 data.json
 data.*.json
 
-bench/**/*
-!bench/README.md
+retrieval-bench/**/*
+!retrieval-bench/README.md
 
 rag-bench/datasets/**/*
 rag-bench/vaults/**/*

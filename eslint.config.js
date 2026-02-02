@@ -15,7 +15,7 @@ export default [
       'node_modules/**',
       'main.js',
       'src/generated/**',
-      'bench',
+      'retrieval-bench',
       'rag-bench',
       'experiments',
       '.venv/**',

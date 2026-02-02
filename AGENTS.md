@@ -24,7 +24,7 @@ npm run check:svelte  # Svelte check -- included in `npm run check`
 npm run check:tsc     # Strict type checking (no `skipLibCheck`) -- included in `npm run check`
 ```
 
-For Python files in `bench/scripts/`:
+For Python files in `retrieval-bench/scripts/`:
 
 ```bash
 uv run basedpyright   # Type checking for Python code
@@ -64,8 +64,8 @@ npm run test:ui     # Run tests with interactive browser UI
        with 0 warnings, and strict TypeScript type checking without
        `skipLibCheck`)
     4. Run `npm run fix` to adjust code style if needed
-  - For Python files in `bench/scripts/`: Run `uv run basedpyright` and
-    `uv run ruff check .`
+  - For Python files in `retrieval-bench/scripts/`: Run `uv run basedpyright`
+    and `uv run ruff check .`
 - Keep the plugin small. Avoid large dependencies. Prefer browser-compatible
   packages.
 - Avoid Node/Electron APIs where possible.

@@ -255,8 +255,8 @@ See [CLAUDE.md](./CLAUDE.md) for detailed development guidelines.
 
 ## Benchmark
 
-See [bench/README.md](./bench/README.md) for benchmarks on accuracy and
-performance.
+See [retrieval-bench/README.md](./retrieval-bench/README.md) for benchmarks on
+accuracy and performance.
 
 ## License
 

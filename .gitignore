@@ -1,6 +1,6 @@
 # Sonar
 scripts
-!bench/scripts
+!retrieval-bench/scripts
 !rag-bench/scripts
 
 # Node

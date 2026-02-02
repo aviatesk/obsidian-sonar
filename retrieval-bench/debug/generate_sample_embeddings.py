@@ -27,13 +27,13 @@ def main():
         type=str,
         default=None,
         help="Input directory containing *.txt files "
-        "(default: bench/debug/sample_texts)",
+        "(default: script_dir/sample_texts/)",
     )
     parser.add_argument(
         "--output-dir",
         type=str,
         default=None,
-        help="Output directory (default: bench/debug/sample_embeddings/)",
+        help="Output directory (default: script_dir/sample_embeddings/)",
     )
 
     args = parser.parse_args()

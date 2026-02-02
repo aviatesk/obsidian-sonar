@@ -97,7 +97,7 @@ def main():
         default=None,
         help=(
             "Input directory containing embedding files. "
-            "If not provided, uses bench/debug/sample_embeddings/"
+            "If not provided, uses script_dir/sample_embeddings/"
         ),
     )
 

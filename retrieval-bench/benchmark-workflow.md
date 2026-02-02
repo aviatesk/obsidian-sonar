@@ -7,7 +7,7 @@
   - macOS: `brew install --cask docker`
   - Or download from <https://www.docker.com/products/docker-desktop/>
 
-> [!NOTE] All commands below should be run from this directory (`/bench`).
+> [!NOTE] All commands below should be run from this directory (`/retrieval-bench`).
 
 ## Step 1: Install Python dependencies
 
@@ -227,9 +227,9 @@ cp ../main.js ../manifest.json ../styles.css data.json $VAULT/.obsidian/plugins/
 
 # Edit data.json to set benchmark paths (use vault-relative or absolute paths)
 # Set the following fields:
-#   "benchmarkQueriesPath": "/absolute/path/to/bench/datasets/processed/dataset/queries.jsonl"
-#   "benchmarkQrelsPath": "/absolute/path/to/bench/datasets/processed/dataset/qrels.tsv"
-#   "benchmarkOutputDir": "/absolute/path/to/bench/runs"
+#   "benchmarkQueriesPath": "/absolute/path/to/retrieval-bench/datasets/processed/dataset/queries.jsonl"
+#   "benchmarkQrelsPath": "/absolute/path/to/retrieval-bench/datasets/processed/dataset/qrels.tsv"
+#   "benchmarkOutputDir": "/absolute/path/to/retrieval-bench/runs"
 # Copy benchmark configuration
 cp data.json $VAULT/.obsidian/plugins/sonar/data.json
 
