@@ -20,9 +20,6 @@ import { EmbeddingStore } from './src/EmbeddingStore';
 import { LlamaCppEmbedder } from './src/LlamaCppEmbedder';
 import { LlamaCppReranker } from './src/LlamaCppReranker';
 import { CHAT_VIEW_TYPE, ChatView } from './src/ui/ChatView';
-import { BenchmarkRunner } from './src/BenchmarkRunner';
-import { CragBenchmarkRunner } from './src/CragBenchmarkRunner';
-import { LlamaCppChat } from './src/LlamaCppChat';
 import { isAudioExtension } from './src/audio';
 import { confirmAction } from './src/obsidian-utils';
 import {
@@ -587,105 +584,21 @@ export default class SonarPlugin extends Plugin {
       },
     });
 
-    this.addCommand({
-      id: 'run-retrieval-benchmark',
-      name: 'Run retrieval benchmark (BM25, Vector, Hybrid)',
-      callback: async () => {
-        if (!this.checkInitialized()) return;
-        const benchmarkRunner = new BenchmarkRunner(
-          this.app,
-          this.configManager,
-          this.searchManager!,
-          this.indexManager!
-        );
-        try {
-          await benchmarkRunner.runBenchmark(false);
-        } catch (error) {
-          this.error(`Benchmark failed: ${error}`);
-        }
-      },
-    });
+    // Register benchmark commands conditionally (only in development builds)
+    if (process.env.INCLUDE_BENCHMARK === 'true') {
+      this.registerBenchmarkCommands();
+    }
+  }
 
-    this.addCommand({
-      id: 'run-retrieval-benchmark-with-reranking',
-      name: 'Run retrieval benchmark with reranking (BM25, Vector, Hybrid, Hybrid+Rerank)',
-      callback: async () => {
-        if (!this.checkInitialized()) return;
-        const benchmarkRunner = new BenchmarkRunner(
-          this.app,
-          this.configManager,
-          this.searchManager!,
-          this.indexManager!
-        );
-        try {
-          await benchmarkRunner.runBenchmark(true);
-        } catch (error) {
-          this.error(`Benchmark failed: ${error}`);
-        }
-      },
-    });
-
-    this.addCommand({
-      id: 'run-crag-benchmark',
-      name: 'Run CRAG benchmark (end-to-end RAG)',
-      callback: async () => {
-        if (!this.checkInitialized()) return;
-
-        const dataPath = this.configManager.get('cragDataPath');
-        const outputDir = this.configManager.get('cragOutputDir');
-
-        if (!dataPath || !outputDir) {
-          new Notice(
-            'CRAG benchmark paths not configured.\n' +
-              'Set cragDataPath and cragOutputDir in settings.'
-          );
-          return;
-        }
-
-        // Initialize chat model for answer generation
-        const serverPath = this.configManager.get('llamacppServerPath');
-        const chatModelRepo =
-          this.configManager.get('llamaChatModelRepo') ||
-          DEFAULT_SETTINGS.llamaChatModelRepo;
-        const chatModelFile =
-          this.configManager.get('llamaChatModelFile') ||
-          DEFAULT_SETTINGS.llamaChatModelFile;
-
-        const chatModel = new LlamaCppChat(
-          serverPath,
-          chatModelRepo,
-          chatModelFile,
-          this.configManager,
-          (msg, duration) => new Notice(msg, duration),
-          (modelId: string) => this.confirmModelDownload('chat', modelId)
-        );
-
-        try {
-          new Notice('Initializing chat model for CRAG benchmark...');
-          await chatModel.initialize();
-
-          const vaultBasePath = (this.app.vault.adapter as any).basePath || '';
-          const benchmarkRunner = new CragBenchmarkRunner(
-            this.configManager,
-            this.embedder!,
-            this.reranker!,
-            chatModel,
-            vaultBasePath
-          );
-
-          await benchmarkRunner.runBenchmark({
-            dataPath,
-            outputDir,
-            sampleSize: this.configManager.get('cragSampleSize'),
-          });
-        } catch (error) {
-          this.error(`CRAG benchmark failed: ${error}`);
-          new Notice(`CRAG benchmark failed: ${error}`);
-        } finally {
-          await chatModel.cleanup();
-        }
-      },
-    });
+  private async registerBenchmarkCommands(): Promise<void> {
+    const { registerRetrievalBenchmarkCommands } = await import(
+      './retrieval-bench/src/index'
+    );
+    const { registerCragBenchmarkCommands } = await import(
+      './rag-bench/src/index'
+    );
+    registerRetrievalBenchmarkCommands(this);
+    registerCragBenchmarkCommands(this);
   }
 
   private registerFileMenuHandlers(): void {

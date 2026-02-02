@@ -30,6 +30,13 @@
     "noFallthroughCasesInSwitch": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": ["src/**/*.ts", "cli/**/*.ts", "main.ts", "**/*.svelte"],
+  "include": [
+    "src/**/*.ts",
+    "cli/**/*.ts",
+    "main.ts",
+    "**/*.svelte",
+    "retrieval-bench/src/**/*.ts",
+    "rag-bench/src/**/*.ts"
+  ],
   "exclude": ["node_modules", "out", "experiments"]
 }

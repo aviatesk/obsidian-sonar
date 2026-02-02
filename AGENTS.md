@@ -11,8 +11,12 @@ instructions.
 ## Build
 
 ```bash
-npm run build         # Quick build with type checking (`skipLibCheck` enabled)
+npm run build                 # Production build (without benchmark code)
+npm run build:with-benchmark  # Development build (includes benchmark code)
 ```
+
+Benchmark code is excluded from production builds to keep the plugin small. Use
+`build:with-benchmark` when you need to run retrieval or RAG benchmarks.
 
 ## Code quality checks
 
@@ -201,6 +205,37 @@ format conventions:
 - Avoid long-running tasks during `onload`; use lazy initialization.
 - Batch disk access and avoid excessive vault scans.
 - Debounce/throttle expensive operations in response to file system events.
+
+### Benchmark code structure
+
+Benchmark code is separated from the main plugin to keep production builds
+small. The code is conditionally compiled using the `INCLUDE_BENCHMARK`
+environment variable.
+
+```
+retrieval-bench/
+  src/
+    BenchmarkRunner.ts   # Retrieval-only benchmarks (BM25, Vector, Hybrid)
+    settings.ts          # Settings UI for retrieval benchmarks
+    index.ts             # Command registration
+  scripts/               # Python scripts for data processing
+
+rag-bench/
+  src/
+    CragBenchmarkRunner.ts  # End-to-end RAG benchmarks (CRAG)
+    settings.ts             # Settings UI for CRAG benchmarks
+    index.ts                # Command registration
+```
+
+Build commands:
+
+- `npm run build` - Production build without benchmark code
+- `npm run build:with-benchmark` - Includes benchmark code
+- `npm run dev:with-benchmark` - Watch mode with benchmark code
+
+Benchmark settings in `src/config.ts` are optional fields that only appear in
+development builds. The settings UI sections are conditionally loaded via
+dynamic imports when `process.env.INCLUDE_BENCHMARK === 'true'`.
 
 ### Versioning & releases
 

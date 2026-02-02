@@ -1,9 +1,9 @@
 import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
-import { WithLogging } from './WithLogging';
-import type { ConfigManager } from './ConfigManager';
-import type { SearchManager, SearchOptions } from './SearchManager';
-import type { IndexManager } from './IndexManager';
+import { WithLogging } from '../../src/WithLogging';
+import type { ConfigManager } from '../../src/ConfigManager';
+import type { SearchManager, SearchOptions } from '../../src/SearchManager';
+import type { IndexManager } from '../../src/IndexManager';
 import { join, dirname, isAbsolute } from 'path';
 import { promises as fs } from 'fs';
 
@@ -42,7 +42,7 @@ interface RunEvaluation {
  * Benchmark runner for evaluating Sonar against other retrieval systems.
  * Reads queries from JSONL file, runs searches, outputs TREC format results.
  */
-export class BenchmarkRunner extends WithLogging {
+export class RetrievalBenchmarkRunner extends WithLogging {
   protected readonly componentName = 'BenchmarkRunner';
 
   constructor(
@@ -290,7 +290,7 @@ export class BenchmarkRunner extends WithLogging {
   ): Promise<TrecResult[]> {
     // Use smaller topK for chunk reranking to limit reranker input size
     // TODO: Add dedicated config for chunk reranking limit
-    const topK = this.configManager.get('benchmarkTopK') / 10;
+    const topK = (this.configManager.get('benchmarkTopK')) / 10;
     const results: TrecResult[] = [];
 
     for (const query of queries) {

@@ -7,8 +7,9 @@ generates correct answers.
 ## Purpose
 
 Demonstrate Sonar's RAG accuracy numerically by comparing against published
-baselines. Unlike the retrieval-only benchmarks in `retrieval-bench/`, this
-evaluates the complete pipeline: retrieval → reranking → LLM answer generation.
+baselines. Unlike the retrieval-only benchmarks in
+[`retrieval-bench`](../retrieval-bench/README.md), this evaluates the complete
+pipeline: retrieval → reranking → LLM answer generation.
 
 Key questions:
 
