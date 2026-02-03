@@ -54,7 +54,13 @@ export async function executeReadFile(
 
     const wikilink = resolvedFile.path.replace(/\.md$/, '');
     return (
-      `[File Content: ${resolvedFile.path}]\n` + `[[${wikilink}]]\n\n${content}`
+      `[File name: ${resolvedFile.path}]\n` +
+      `[[${wikilink}]]\n` +
+      `[The complete file content is provided below. ` +
+      `If this contains the information needed to answer the user's question, ` +
+      `respond immediately without calling any more tools. ` +
+      `Do NOT use search_vault to find sections within this file.]\n\n` +
+      content
     );
   }
 
@@ -84,8 +90,13 @@ export async function executeReadFile(
         const fileType = path.split('.').pop()?.toUpperCase() || 'FILE';
 
         return (
-          `[File Content: ${path}]\n` +
-          `(Extracted text from indexed ${fileType} file)\n\n${content}`
+          `[File name: ${path}]\n` +
+          `(Extracted text from indexed ${fileType} file)\n` +
+          `[The complete file content is provided below. ` +
+          `If this contains the information needed to answer the user's question, ` +
+          `respond immediately without calling any more tools. ` +
+          `Do NOT use search_vault to find sections within this file.]\n\n` +
+          content
         );
       }
     }
@@ -105,7 +116,8 @@ export function createReadFileTool(deps: ReadFileDependencies): Tool {
         'Read the content of a file by its title or path.\n' +
         '- Markdown files (.md): Read directly from vault\n' +
         '- PDF and other indexed files: Read extracted text from index\n' +
-        'Use this to check file content before editing, or when user references a file.',
+        'Use this to check file content before editing, or when user references a file.\n' +
+        'Once a file is successfully read, do NOT call this tool again for the same file.',
       parameters: {
         type: 'object',
         properties: {
