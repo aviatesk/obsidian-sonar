@@ -652,9 +652,8 @@ export default class SonarPlugin extends Plugin {
   }
 
   private async registerBenchmarkCommands(): Promise<void> {
-    const { registerRetrievalBenchmarkCommands } = await import(
-      './retrieval-bench/src/index'
-    );
+    const { registerRetrievalBenchmarkCommands } =
+      await import('./retrieval-bench/src/index');
     const {
       registerCragBenchmarkCommands,
       registerCragUnifiedBenchmarkCommands,

@@ -6,7 +6,7 @@
   import type { ToolConfig, ToolPermissionRequest } from '../tools';
   import { MarkdownRenderingManager } from './MarkdownRenderingManager';
   import { isSendShortcut } from './ChatView';
-  import { onDestroy, tick } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
   import { Copy, Pencil, RefreshCw, Trash2, Wrench, createElement } from 'lucide';
 
   type ProcessingPhase =
@@ -50,9 +50,12 @@
 
   // Use a different class from SemanticNoteFinder's 'result-excerpt-markdown'
   // to avoid inheriting its margin-resetting styles
-  const markdownManager = new MarkdownRenderingManager(app, configManager, {
-    cssClass: 'chat-result-excerpt-markdown',
-  });
+  const markdownManager = untrack(
+    () =>
+      new MarkdownRenderingManager(app, configManager, {
+        cssClass: 'chat-result-excerpt-markdown',
+      })
+  );
 
   onDestroy(() => {
     markdownManager.cleanup();

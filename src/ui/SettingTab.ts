@@ -49,9 +49,8 @@ export class SettingTab extends PluginSettingTab {
   private async createBenchmarkConfigSection(
     containerEl: HTMLElement
   ): Promise<void> {
-    const { createRetrievalBenchmarkSettings } = await import(
-      '../../retrieval-bench/src/settings'
-    );
+    const { createRetrievalBenchmarkSettings } =
+      await import('../../retrieval-bench/src/settings');
     const { createCragBenchmarkSettings, createCragUnifiedBenchmarkSettings } =
       await import('../../rag-bench/src/settings');
     createRetrievalBenchmarkSettings(

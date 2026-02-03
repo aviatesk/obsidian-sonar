@@ -6,7 +6,7 @@
   import SearchResults from './SearchResults.svelte';
   import KnowledgeGraph from './KnowledgeGraph.svelte';
   import { RefreshCw, Eye, EyeOff, FileText, ChartNetwork, createElement } from 'lucide';
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
 
   interface Props {
     app: App;
@@ -52,9 +52,9 @@
     }
     return '';
   });
-  let showQuery = $state(configManager.get('showRelatedNotesQuery'));
-  let showExcerpts = $state(configManager.get('showRelatedNotesExcerpts'));
-  let showKnowledgeGraph = $state(configManager.get('showKnowledgeGraph'));
+  let showQuery = $state(untrack(() => configManager.get('showRelatedNotesQuery')));
+  let showExcerpts = $state(untrack(() => configManager.get('showRelatedNotesExcerpts')));
+  let showKnowledgeGraph = $state(untrack(() => configManager.get('showKnowledgeGraph')));
   let refreshIcon: HTMLElement;
   let eyeIcon: HTMLElement;
   let excerptIcon: HTMLElement;

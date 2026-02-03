@@ -1,6 +1,6 @@
 <script lang="ts">
   import { App } from 'obsidian';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { Sparkles, Zap, createElement } from 'lucide';
   import SearchResults from './SearchResults.svelte';
 
@@ -41,8 +41,10 @@
   const isSearching = $derived(storeState.isSearching);
   const isReranking = $derived(storeState.isReranking);
 
-  let enableReranking = $state(configManager.get('enableSearchReranking'));
-  let showIntermediateResults = $state(configManager.get('showIntermediateResults'));
+  let enableReranking = $state(untrack(() => configManager.get('enableSearchReranking')));
+  let showIntermediateResults = $state(
+    untrack(() => configManager.get('showIntermediateResults'))
+  );
   let inputEl: HTMLInputElement;
   let searchInputContainer: HTMLDivElement;
   let rerankIcon = $state<HTMLElement | undefined>(undefined);

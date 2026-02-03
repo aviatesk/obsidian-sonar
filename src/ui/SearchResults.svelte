@@ -2,7 +2,7 @@
   import { App, TFile } from 'obsidian';
   import type { SearchResult } from '../SearchManager';
   import { MarkdownRenderingManager } from './MarkdownRenderingManager';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import type { ConfigManager } from '../ConfigManager';
 
   interface Props {
@@ -27,7 +27,9 @@
     showExcerpts = true,
   }: Props = $props();
 
-  const markdownManager = new MarkdownRenderingManager(app, configManager, { maxLength });
+  const markdownManager = untrack(
+    () => new MarkdownRenderingManager(app, configManager, { maxLength })
+  );
 
   onDestroy(() => {
     markdownManager.cleanup();
