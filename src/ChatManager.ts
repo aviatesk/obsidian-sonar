@@ -37,11 +37,13 @@ ${toolDescriptions}
 
 Guidelines:
 - Use tools to gather information before answering questions.
-- If initial results are insufficient, try different search queries or parameters.
-- You can call the same tool multiple times or combine multiple tools.
+- If tool call results are insufficient, try different tools or different parameters.
+- You can call the same tool multiple times or combine multiple tools, but only call the same tool when there's a clear purpose and with different parameters.
 - Before editing a note, ALWAYS use read_file first to check if it exists and understand its current content. This helps you choose the correct operation (create/overwrite/append/prepend).
-- Tool results include status info (e.g., [Iteration 2/5, context budget: 4000/8192 tokens remaining]). Once you have enough information to answer the question, stop calling tools and respond immediately. If the context budget is low, additional tool calls may be truncated.
-- Do not answer with incomplete information. If you cannot find what you need after multiple attempts, say so honestly.
+- Tool results include status info (e.g., [Iteration 2/5, context budget: 4000/8192 tokens remaining]). Once you have enough information, stop calling tools and respond immediately.
+- Do NOT retry the same tool with the same arguments.
+- If context budget is exhausted, answer with the information you have.
+- Do NOT answer with incomplete information. If you cannot find what you need after multiple attempts, say so honestly.
 - Always respond in the same language as the user's question.`;
 }
 
@@ -176,7 +178,10 @@ export class ChatManager extends WithLogging {
     }
 
     // Leave room for the truncation notice
-    const truncationNotice = '\n\n[truncated due to context limit]';
+    const truncationNotice =
+      '\n\n[Content truncated due to context limit. ' +
+      'Use this partial information or respond based on what you have. ' +
+      'Retrying the same tool will not retrieve more content.]';
     const availableChars = estimatedMaxChars - truncationNotice.length;
 
     if (availableChars <= 0) {
@@ -271,6 +276,29 @@ export class ChatManager extends WithLogging {
         onToolCall?.(toolName, 'calling');
 
         let result: string;
+
+        // Skip tool execution if budget is already exhausted
+        const remainingBudgetBefore = toolResultsBudget - toolResultsTokensUsed;
+        if (remainingBudgetBefore <= 0) {
+          this.log(
+            `Skipping tool ${toolName}: context budget exhausted (${remainingBudgetBefore}/${toolResultsBudget})`
+          );
+          const skipMessage =
+            '[Context budget exhausted. Tool was not executed. ' +
+            'Use the information already gathered to respond. ' +
+            'Do NOT retry this or other tools.]';
+          const skipMessageTokens =
+            await this.chatModel.countTokens(skipMessage);
+          toolResultsTokensUsed += skipMessageTokens;
+          onToolCall?.(toolName, 'done');
+
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: skipMessage,
+          });
+          continue;
+        }
 
         if (tool?.requiresPermission && onPermissionRequest) {
           const args = JSON.parse(toolCall.function.arguments) as Record<
