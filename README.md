@@ -86,11 +86,11 @@ cp main.js manifest.json styles.css /path/to/your/vault/.obsidian/plugins/obsidi
 Sonar automatically indexes your vault in the background. When you create or
 edit notes, they are re-indexed to keep search results up to date.
 
-Sonar shows the indexing status in the status bar as follows:
-
-<img width="600" alt="Progress status during chunking" src="https://github.com/user-attachments/assets/71f621f8-1a73-4d5c-bbeb-b517ddc0fa01" />
-<img width="600" alt="Progress status during embedding vector generation" src="https://github.com/user-attachments/assets/c804ccd2-f4a3-4a8f-9360-90303bacb4c0" />
-<img width="600" alt="Status bar after indexing completed" src="https://github.com/user-attachments/assets/6e23fe7a-0f70-4336-b5b4-1ddc6b5ab280" />
+> _Sonar shows the indexing status in the status bar as follows_
+>
+> <img width="600" alt="Progress status during chunking" src="https://github.com/user-attachments/assets/71f621f8-1a73-4d5c-bbeb-b517ddc0fa01" />
+> <img width="600" alt="Progress status during embedding vector generation" src="https://github.com/user-attachments/assets/c804ccd2-f4a3-4a8f-9360-90303bacb4c0" />
+> <img width="600" alt="Status bar after indexing completed" src="https://github.com/user-attachments/assets/6e23fe7a-0f70-4336-b5b4-1ddc6b5ab280" />
 
 Files are split into chunks and converted to vector embeddings, which are stored
 locally in an IndexedDB database along with a BM25 index for hybrid search.
@@ -170,7 +170,11 @@ Find notes by meaning using natural language queries. Unlike keyword search,
 semantic search understands concepts and returns relevant results even when
 exact words don't match.
 
-<img width="600" alt="Semantic note finder for 'Sonar agentic RAG'" src="https://github.com/user-attachments/assets/da452a91-ec19-44dd-a799-177e777f03ad" />
+> _Searching for "Sonar agentic RAG" with reranking enabled_
+>
+> <img width="600" alt="Semantic note finder for 'Sonar agentic RAG'" src="https://github.com/user-attachments/assets/da452a91-ec19-44dd-a799-177e777f03ad" />
+
+**Getting started:**
 
 1. Run `Sonar: Open Semantic note finder` from the command palette
 2. Type your query in natural language
@@ -190,9 +194,15 @@ Discover notes related to what you're currently reading. The panel updates
 automatically as you edit, scroll, or switch notes — showing results relevant to
 your current context.
 
-|                                                       Related notes with hover preview                                                        |                                                  Knowledge graph visualization                                                  |
-| :-------------------------------------------------------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------------: |
-| <img width="600" alt="Related notes view with hover" src="https://github.com/user-attachments/assets/5deeee7e-e681-4f65-8fb6-d62aa3449860" /> | <img width="600" alt="Knowledge graph" src="https://github.com/user-attachments/assets/47cde290-76d9-4324-822f-e3c3700ba6c7" /> |
+> _Auto-following mode: Related notes based on current cursor position_
+>
+> <img width="600" alt="Auto-following mode" src="https://github.com/user-attachments/assets/5deeee7e-e681-4f65-8fb6-d62aa3449860" />
+>
+> _Edit mode: Manually editing query with knowledge graph visualization_
+>
+> <img width="600" alt="Edit mode with knowledge graph" src="https://github.com/user-attachments/assets/34e69fc9-16b3-463b-8698-085e67bab104" />
+
+**Getting started:**
 
 1. Run `Sonar: Open related notes view` from the command palette
 2. The sidebar shows notes semantically related to your current note
@@ -200,19 +210,31 @@ your current context.
 
 **Options** (toggle via toolbar icons or in **Settings → Sonar**):
 
+- **Query visibility** (eye icon): Show/hide the current search query
+- **Excerpts** (file icon): Show matching text snippets for context
 - **Knowledge graph** (graph icon): Toggle graph visualization to see note
   relationships
-- **Excerpts** (file icon): Show matching text snippets for context
 - **Reranking** (sparkles icon): Enable for higher quality results (slower)
+
+**Query editing**: When the query is visible, click the pencil icon to enter
+edit mode. This freezes auto-updates and lets you search with a custom query.
+Click again to resume automatic context tracking.
 
 ### Agentic assistant chat
 
 Chat with an AI assistant that has access to your knowledge base. The assistant
 can search your vault, read files, edit notes, and search the web.
 
-|                                                         Simple vault integration demo                                                         |                                              [Extension tools](./extension-tools/README.md) demo (web search via SearXNG)                                               |
-| :-------------------------------------------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
-| <img width="600" alt="Simple vault integration demo" src="https://github.com/user-attachments/assets/13065ee7-72ec-48cf-9661-22e2c2ca522a" /> | <img width="600" alt="Extension tool (web_search, fetch_url) integration demo" src="https://github.com/user-attachments/assets/f337e917-1224-4741-ab74-65ff20f4b6c4" /> |
+> _Vault integration: Search your knowledge base and get grounded answers_
+>
+> <img width="600" alt="Vault integration demo" src="https://github.com/user-attachments/assets/13065ee7-72ec-48cf-9661-22e2c2ca522a" />
+>
+> _[Extension tools](./extension-tools/README.md): Agent performs web search via
+> SearXNG_
+>
+> <img width="600" alt="Extension tools demo" src="https://github.com/user-attachments/assets/f337e917-1224-4741-ab74-65ff20f4b6c4" />
+
+**Getting started:**
 
 1. Run `Sonar: Open chat view` from the command palette
 2. Type your question or request
