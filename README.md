@@ -291,7 +291,10 @@ See [CLAUDE.md](./CLAUDE.md) for detailed development guidelines.
 - [retrieval-bench](./retrieval-bench/README.md): Retrieval accuracy and
   performance using TREC-style evaluation
 - [rag-bench](./rag-bench/README.md): End-to-end RAG accuracy using the
-  [CRAG](https://github.com/facebookresearch/CRAG) dataset
+  [CRAG](https://github.com/facebookresearch/CRAG) dataset. Results show Sonar
+  with a local 8B model achieves comparable accuracy (43%) to a cloud
+  configuration using `gpt-4.1-mini` (42%) on a 60K-page corpus, with lower
+  hallucination rate (32% vs 35%)
 
 ## License
 
