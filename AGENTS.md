@@ -239,14 +239,48 @@ dynamic imports when `process.env.INCLUDE_BENCHMARK === 'true'`.
 
 ### Versioning & releases
 
-- Bump `version` in `manifest.json` (SemVer) and update `versions.json` to map
-  plugin version → minimum app version.
-- Create a GitHub release whose tag exactly matches `manifest.json`'s `version`.
-  Do not use a leading `v`.
-- Attach `manifest.json`, `main.js`, and `styles.css` (if present) to the
-  release as individual assets.
-- After the initial release, follow the process to add/update your plugin in the
-  community catalog as required.
+Version information:
+
+- `manifest.json`: Contains `version` (SemVer) and `minAppVersion`
+- `versions.json`: Maps plugin version → minimum Obsidian app version. Only
+  update when `minAppVersion` changes.
+- `CHANGELOG.md`: Document changes under `## Unreleased`, then rename to version
+  number on release
+
+Release assets (uploaded to GitHub Release):
+
+- `main.js` (required)
+- `manifest.json` (required)
+- `styles.css` (if present)
+
+#### Release flow
+
+1. Run the prepare-release script:
+
+   ```bash
+   ./scripts/prepare-release.sh [major|minor|patch]
+   ```
+
+   This automatically:
+   - Bumps `version` in `manifest.json`
+   - Updates `CHANGELOG.md` (renames Unreleased, updates diff links)
+
+2. Review changes, then commit and tag:
+
+   ```bash
+   git add manifest.json CHANGELOG.md
+   git commit -m "release: Bump version to X.Y.Z"
+   git tag X.Y.Z
+   git push origin master --tags
+   ```
+
+3. GitHub Actions (`.github/workflows/release.yml`):
+   - Triggers on tag push matching `[0-9]+.[0-9]+.[0-9]+`
+   - Runs `npm run build`
+   - Extracts release notes from `CHANGELOG.md`
+   - Creates GitHub Release with `main.js`, `manifest.json`, `styles.css`
+
+Note: Update `versions.json` manually if `minAppVersion` changes.
 
 ### Security, privacy, and compliance
 

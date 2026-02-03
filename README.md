@@ -284,7 +284,7 @@ instructions.
 
 ## Development
 
-See [CLAUDE.md](./CLAUDE.md) for detailed development guidelines.
+See [AGENTS.md](./AGENTS.md) for detailed development guidelines.
 
 ## Benchmarks
 
