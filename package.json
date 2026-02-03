@@ -4,6 +4,9 @@
   "description": "Deep knowledge retrieval for Obsidian, completely offline",
   "main": "main.js",
   "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "build:with-benchmark": "tsc -noEmit -skipLibCheck && INCLUDE_BENCHMARK=true node esbuild.config.mjs production",
