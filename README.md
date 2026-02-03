@@ -300,12 +300,9 @@ later (AGPL-3.0-or-later). See [LICENSE](./LICENSE) for details.
 
 ## Acknowledgments
 
-Built with:
-
-- [llama.cpp](https://github.com/ggerganov/llama.cpp) — Local LLM inference
-- [whisper.cpp](https://github.com/ggerganov/whisper.cpp) — Audio transcription
-- [Svelte](https://svelte.dev/) — Reactive UI components
-- [Obsidian API](https://docs.obsidian.md/) — Vault integration
+This project was selected for
+[IPA MITOU Advanced 2025](https://www.ipa.go.jp/jinzai/mitou/advanced/2025first/koubokekka.html)
+and developed with their support.
 
 <!-- Foot notes -->
 
