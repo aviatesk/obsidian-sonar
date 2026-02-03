@@ -369,14 +369,14 @@ Output files in `runs/crag-unified/`:
 
 #### Overall comparison
 
-| Metric        | Sonar       | Cloud (OpenAI) | Diff         |
-| ------------- | ----------- | -------------- | ------------ |
-| Accuracy      | 43%         | 42%            | +1%          |
-| Hallucination | 32%         | 35%            | -3% (better) |
-| Score         | 11%         | 7%             | +4%          |
-| Indexing time | N/A         | 1,133s         | -            |
-| Query time    | 33.5s/query | 1.7s/query     | -            |
-| API cost      | $0          | $2.66          | -            |
+| Metric        | Sonar       | Cloud (OpenAI) |
+| ------------- | ----------- | -------------- |
+| Accuracy      | 43%         | 42%            |
+| Hallucination | 32%         | 35%            |
+| Score         | 11%         | 7%             |
+| Indexing time | 6,245s      | 1,133s         |
+| Query time    | 33.5s/query | 1.7s/query     |
+| API cost      | $0          | $2.66          |
 
 #### Key findings
 
@@ -388,8 +388,9 @@ Output files in `runs/crag-unified/`:
   resulting in a higher overall score (+4%).
 
 - **Trade-off: speed vs cost**: Cloud is ~20x faster per query (1.7s vs 33.5s)
-  but costs $2.66/100 queries. Sonar is free but slower due to local LLM
-  inference.
+  but costs $2.66/100 queries. Sonar is free but slower due to limited machine
+  resources. Initial indexing is also slower (6,245s vs 1,133s), but this is a
+  one-time cost.
 
 <details>
 <summary>Breakdown by domain and question type</summary>
