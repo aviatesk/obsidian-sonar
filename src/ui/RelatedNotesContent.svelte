@@ -1,12 +1,10 @@
 <script lang="ts">
-  import { App, Notice } from 'obsidian';
+  import { App, Notice, setIcon, debounce } from 'obsidian';
   import type { ConfigManager } from '../ConfigManager';
   import { checkSearchReady, checkHasFailure, type SonarModelState } from '../SonarState';
   import { STATUS_DISPLAY_TEXT, type RelatedNotesStatus } from './RelatedNotesView';
   import SearchResults from './SearchResults.svelte';
   import KnowledgeGraph from './KnowledgeGraph.svelte';
-  import { RefreshCw, Eye, EyeOff, FileText, ChartNetwork, Sparkles, Pencil, createElement } from 'lucide';
-  import { debounce } from 'obsidian';
 
   type QueryMode = 'default' | 'editing';
   import { onMount, onDestroy, untrack } from 'svelte';
@@ -81,22 +79,14 @@
   // eyeIcon needs $effect because it changes reactively with showQuery state
   $effect(() => {
     if (eyeIcon) {
-      const icon = createElement(showQuery ? Eye : EyeOff);
-      icon.setAttribute('width', '16');
-      icon.setAttribute('height', '16');
-      // eslint-disable-next-line svelte/no-dom-manipulating
-      eyeIcon.replaceChildren(icon);
+      setIcon(eyeIcon, showQuery ? 'eye' : 'eye-off');
     }
   });
 
   // editIcon needs $effect because it's inside a conditionally rendered block
   $effect(() => {
     if (editIcon && editIcon.childElementCount === 0) {
-      const icon = createElement(Pencil);
-      icon.setAttribute('width', '16');
-      icon.setAttribute('height', '16');
-      // eslint-disable-next-line svelte/no-dom-manipulating
-      editIcon.appendChild(icon);
+      setIcon(editIcon, 'pencil');
     }
   });
 
@@ -110,35 +100,19 @@
   // Static icons only need onMount
   onMount(() => {
     if (refreshIcon) {
-      const icon = createElement(RefreshCw);
-      icon.setAttribute('width', '16');
-      icon.setAttribute('height', '16');
-      // eslint-disable-next-line svelte/no-dom-manipulating
-      refreshIcon.appendChild(icon);
+      setIcon(refreshIcon, 'refresh-cw');
     }
 
     if (excerptIcon) {
-      const icon = createElement(FileText);
-      icon.setAttribute('width', '16');
-      icon.setAttribute('height', '16');
-      // eslint-disable-next-line svelte/no-dom-manipulating
-      excerptIcon.appendChild(icon);
+      setIcon(excerptIcon, 'file-text');
     }
 
     if (graphIcon) {
-      const icon = createElement(ChartNetwork);
-      icon.setAttribute('width', '16');
-      icon.setAttribute('height', '16');
-      // eslint-disable-next-line svelte/no-dom-manipulating
-      graphIcon.appendChild(icon);
+      setIcon(graphIcon, 'git-fork');
     }
 
     if (rerankIcon) {
-      const icon = createElement(Sparkles);
-      icon.setAttribute('width', '16');
-      icon.setAttribute('height', '16');
-      // eslint-disable-next-line svelte/no-dom-manipulating
-      rerankIcon.appendChild(icon);
+      setIcon(rerankIcon, 'sparkles');
     }
 
     // Subscribe to config changes from Settings UI

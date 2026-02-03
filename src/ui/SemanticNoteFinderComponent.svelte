@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { App } from 'obsidian';
+  import { App, setIcon } from 'obsidian';
   import { onMount, untrack } from 'svelte';
-  import { Sparkles, Zap, createElement } from 'lucide';
   import SearchResults from './SearchResults.svelte';
 
   import type { ConfigManager } from '../ConfigManager';
@@ -52,18 +51,10 @@
 
   onMount(() => {
     if (rerankIcon) {
-      const icon = createElement(Sparkles);
-      icon.setAttribute('width', '14');
-      icon.setAttribute('height', '14');
-      // eslint-disable-next-line svelte/no-dom-manipulating
-      rerankIcon.appendChild(icon);
+      setIcon(rerankIcon, 'sparkles');
     }
     if (intermediateIcon) {
-      const icon = createElement(Zap);
-      icon.setAttribute('width', '14');
-      icon.setAttribute('height', '14');
-      // eslint-disable-next-line svelte/no-dom-manipulating
-      intermediateIcon.appendChild(icon);
+      setIcon(intermediateIcon, 'zap');
     }
   });
 

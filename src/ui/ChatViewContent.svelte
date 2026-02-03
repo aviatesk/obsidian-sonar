@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { App, Notice } from 'obsidian';
+  import { App, Notice, setIcon } from 'obsidian';
   import type { Writable } from 'svelte/store';
   import type { ConfigManager } from '../ConfigManager';
   import type { ChatTurn } from '../ChatManager';
@@ -7,7 +7,6 @@
   import { MarkdownRenderingManager } from './MarkdownRenderingManager';
   import { isSendShortcut } from './ChatView';
   import { onDestroy, tick, untrack } from 'svelte';
-  import { Copy, Pencil, RefreshCw, Trash2, Wrench, createElement } from 'lucide';
 
   type ProcessingPhase =
     | { type: 'calling_tool'; toolName: string }
@@ -177,11 +176,8 @@
     }
   }
 
-  function setupIcon(node: HTMLElement, IconComponent: typeof Copy) {
-    const icon = createElement(IconComponent);
-    icon.setAttribute('width', '14');
-    icon.setAttribute('height', '14');
-    node.appendChild(icon);
+  function setupIcon(node: HTMLElement, iconName: string) {
+    setIcon(node, iconName);
   }
 
   async function handleCopy(text: string) {
@@ -262,7 +258,7 @@
       {/if}
       {#if $store.tools.length > 0}
         <button class="tools-header" onclick={toggleToolsExpanded}>
-          <span class="tools-icon" use:setupIcon={Wrench}></span>
+          <span class="tools-icon" use:setupIcon={'wrench'}></span>
           <span class="tools-label">Tools</span>
           <span class="tools-count">{getEnabledToolCount()}/{$store.tools.length}</span>
           <span class="tools-chevron" class:expanded={toolsExpanded}>▸</span>
@@ -329,7 +325,7 @@
             onclick={onReloadExtensionTools}
             title="Reload extension tools"
           >
-            <span use:setupIcon={RefreshCw}></span>
+            <span use:setupIcon={'refresh-cw'}></span>
           </button>
         </div>
       </div>
@@ -380,7 +376,7 @@
                   onclick={() => handleDelete(index)}
                   disabled={$store.status === 'processing'}
                 >
-                  <span use:setupIcon={Trash2}></span>
+                  <span use:setupIcon={'trash-2'}></span>
                 </button>
                 <button
                   class="action-btn"
@@ -388,7 +384,7 @@
                   onclick={() => startEditing(index, turn.userMessage)}
                   disabled={$store.status === 'processing'}
                 >
-                  <span use:setupIcon={Pencil}></span>
+                  <span use:setupIcon={'pencil'}></span>
                 </button>
                 <button
                   class="action-btn"
@@ -396,7 +392,7 @@
                   onclick={() => handleCopy(turn.userMessage)}
                   disabled={$store.status === 'processing'}
                 >
-                  <span use:setupIcon={Copy}></span>
+                  <span use:setupIcon={'copy'}></span>
                 </button>
               </div>
               <div class="message-content" use:setMessageElement={turn.userMessage}></div>
@@ -413,7 +409,7 @@
                 onclick={() => handleCopy(turn.assistantMessage)}
                 disabled={$store.status === 'processing'}
               >
-                <span use:setupIcon={Copy}></span>
+                <span use:setupIcon={'copy'}></span>
               </button>
             </div>
           </div>
@@ -426,13 +422,13 @@
         <div class="message-row">
           <div class="message-actions disabled">
             <button class="action-btn" disabled aria-label="Delete">
-              <span use:setupIcon={Trash2}></span>
+              <span use:setupIcon={'trash-2'}></span>
             </button>
             <button class="action-btn" disabled aria-label="Edit">
-              <span use:setupIcon={Pencil}></span>
+              <span use:setupIcon={'pencil'}></span>
             </button>
             <button class="action-btn" disabled aria-label="Copy">
-              <span use:setupIcon={Copy}></span>
+              <span use:setupIcon={'copy'}></span>
             </button>
           </div>
           <div class="message-content" use:setMessageElement={$store.pendingUserMessage}></div>
@@ -464,7 +460,7 @@
           </div>
           <div class="message-actions disabled">
             <button class="action-btn" disabled aria-label="Copy">
-              <span use:setupIcon={Copy}></span>
+              <span use:setupIcon={'copy'}></span>
             </button>
           </div>
         </div>

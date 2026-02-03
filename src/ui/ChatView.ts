@@ -1,7 +1,13 @@
-import { HoverPopover, ItemView, Notice, TFile, WorkspaceLeaf } from 'obsidian';
+import {
+  HoverPopover,
+  ItemView,
+  Notice,
+  setIcon,
+  TFile,
+  WorkspaceLeaf,
+} from 'obsidian';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
-import { Mic, Square, createElement } from 'lucide';
 import { sonarState } from '../SonarState';
 import { DEFAULT_SETTINGS } from '../config';
 import type { ConfigManager } from '../ConfigManager';
@@ -738,8 +744,7 @@ export class ChatView extends ItemView {
     if (!this.recordButton) return;
     this.recordButton.empty();
     if (iconType === 'none') return;
-    const IconComponent = iconType === 'mic' ? Mic : Square;
-    this.recordButton.appendChild(createElement(IconComponent));
+    setIcon(this.recordButton, iconType === 'mic' ? 'mic' : 'square');
   }
 
   private updateRecordButtonState(state: RecordingState): void {
