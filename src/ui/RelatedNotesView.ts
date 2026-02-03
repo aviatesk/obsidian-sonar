@@ -154,10 +154,24 @@ export class RelatedNotesView extends ItemView {
     this.sonarStateUnsubscribe = isSearchReady.subscribe(ready => {
       if (ready && !wasSearchReady) {
         this.lastQuery = '';
-        this.refresh(true);
+        this.refreshWhenReady();
       }
       wasSearchReady = ready;
     });
+  }
+
+  private async refreshWhenReady(): Promise<void> {
+    // Wait for searchManager to be available (it's created after embedder/stores are ready)
+    const maxAttempts = 10;
+    const delayMs = 500;
+    for (let i = 0; i < maxAttempts; i++) {
+      if (this.plugin.searchManager && this.plugin.embedder) {
+        this.refresh(true);
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    this.logger.warn('searchManager not available after waiting');
   }
 
   getViewType(): string {
