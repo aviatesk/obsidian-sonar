@@ -130,6 +130,12 @@ export class RelatedNotesView extends ItemView {
     this.configManager.subscribe('maxQueryTokens', () => {
       this.debouncedRefresh();
     });
+
+    this.configManager.subscribe('searchResultsCount', () => {
+      // Reset lastQuery to force re-search even with same query
+      this.lastQuery = '';
+      this.debouncedRefresh();
+    });
   }
 
   private setupSonarStateSubscription(): void {

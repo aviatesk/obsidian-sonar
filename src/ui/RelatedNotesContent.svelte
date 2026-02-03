@@ -6,7 +6,7 @@
   import SearchResults from './SearchResults.svelte';
   import KnowledgeGraph from './KnowledgeGraph.svelte';
   import { RefreshCw, Eye, EyeOff, FileText, ChartNetwork, createElement } from 'lucide';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
 
   interface Props {
     app: App;
@@ -59,6 +59,7 @@
   let eyeIcon: HTMLElement;
   let excerptIcon: HTMLElement;
   let graphIcon: HTMLElement;
+  let unsubscribers: (() => void)[] = [];
 
   // eyeIcon needs $effect because it changes reactively with showQuery state
   $effect(() => {
@@ -96,6 +97,27 @@
       // eslint-disable-next-line svelte/no-dom-manipulating
       graphIcon.appendChild(icon);
     }
+
+    // Subscribe to config changes from Settings UI
+    unsubscribers.push(
+      configManager.subscribe('showRelatedNotesQuery', (_, value) => {
+        showQuery = value as boolean;
+      })
+    );
+    unsubscribers.push(
+      configManager.subscribe('showRelatedNotesExcerpts', (_, value) => {
+        showExcerpts = value as boolean;
+      })
+    );
+    unsubscribers.push(
+      configManager.subscribe('showKnowledgeGraph', (_, value) => {
+        showKnowledgeGraph = value as boolean;
+      })
+    );
+  });
+
+  onDestroy(() => {
+    unsubscribers.forEach(unsub => unsub());
   });
 
   function handleRefresh() {
