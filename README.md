@@ -1,6 +1,6 @@
 # Obsidian Sonar
 
-**Deep knowledge retrieval for Obsidian, completely offline.**
+> **Deep knowledge retrieval for Obsidian, completely offline.**
 
 Like sonar detecting hidden objects beneath the surface, Sonar discovers
 meaningful connections across your notes through semantic search and AI-powered
