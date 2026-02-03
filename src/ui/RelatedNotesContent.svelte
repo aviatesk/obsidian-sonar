@@ -5,7 +5,10 @@
   import { STATUS_DISPLAY_TEXT, type RelatedNotesStatus } from './RelatedNotesView';
   import SearchResults from './SearchResults.svelte';
   import KnowledgeGraph from './KnowledgeGraph.svelte';
-  import { RefreshCw, Eye, EyeOff, FileText, ChartNetwork, Sparkles, createElement } from 'lucide';
+  import { RefreshCw, Eye, EyeOff, FileText, ChartNetwork, Sparkles, Pencil, createElement } from 'lucide';
+  import { debounce } from 'obsidian';
+
+  type QueryMode = 'default' | 'editing';
   import { onMount, onDestroy, untrack } from 'svelte';
 
   interface Props {
@@ -16,10 +19,12 @@
     isRerankerReady: { subscribe: (fn: (value: boolean) => void) => () => void };
     onRefresh: () => void;
     onRerankingToggle: (enabled: boolean) => void;
+    onSetQueryMode: (mode: QueryMode) => void;
+    onQueryChange: (query: string) => void;
     onHoverLink?: (event: MouseEvent, linktext: string) => void;
   }
 
-  let { app, configManager, store, sonarState, isRerankerReady, onRefresh, onRerankingToggle, onHoverLink }: Props = $props();
+  let { app, configManager, store, sonarState, isRerankerReady, onRefresh, onRerankingToggle, onSetQueryMode, onQueryChange, onHoverLink }: Props = $props();
 
   const storeState = $derived($store);
   const sonar = $derived($sonarState);
@@ -29,6 +34,7 @@
   const tokenCount = $derived(storeState.tokenCount);
   const activeFile = $derived(storeState.activeFile);
   const isReranking = $derived(storeState.isReranking);
+  const queryMode = $derived(storeState.queryMode as QueryMode);
   const hasQuery = $derived(query && query.trim().length > 0);
 
   // Derive effective status: sonarState takes precedence over store status
@@ -60,12 +66,17 @@
   let showExcerpts = $state(untrack(() => configManager.get('showRelatedNotesExcerpts')));
   let showKnowledgeGraph = $state(untrack(() => configManager.get('showKnowledgeGraph')));
   let enableReranking = $state(untrack(() => configManager.get('enableRelatedNotesReranking')));
+  let editedQuery = $state('');
   let refreshIcon: HTMLElement;
   let eyeIcon: HTMLElement;
   let excerptIcon: HTMLElement;
   let graphIcon: HTMLElement;
   let rerankIcon: HTMLElement;
+  let editIcon = $state<HTMLElement | undefined>(undefined);
   let unsubscribers: (() => void)[] = [];
+
+  const SEARCH_DEBOUNCE_MS = 300;
+  const debouncedSearch = debounce((q: string) => onQueryChange(q), SEARCH_DEBOUNCE_MS, true);
 
   // eyeIcon needs $effect because it changes reactively with showQuery state
   $effect(() => {
@@ -75,6 +86,24 @@
       icon.setAttribute('height', '16');
       // eslint-disable-next-line svelte/no-dom-manipulating
       eyeIcon.replaceChildren(icon);
+    }
+  });
+
+  // editIcon needs $effect because it's inside a conditionally rendered block
+  $effect(() => {
+    if (editIcon && editIcon.childElementCount === 0) {
+      const icon = createElement(Pencil);
+      icon.setAttribute('width', '16');
+      icon.setAttribute('height', '16');
+      // eslint-disable-next-line svelte/no-dom-manipulating
+      editIcon.appendChild(icon);
+    }
+  });
+
+  // Sync editedQuery with query when entering editing mode
+  $effect(() => {
+    if (queryMode === 'editing') {
+      editedQuery = query;
     }
   });
 
@@ -167,6 +196,19 @@
     enableReranking = !enableReranking;
     onRerankingToggle(enableReranking);
   }
+
+  function handleToggleEdit() {
+    if (queryMode === 'editing') {
+      onSetQueryMode('default');
+    } else {
+      onSetQueryMode('editing');
+    }
+  }
+
+  function handleQueryInput(event: Event) {
+    editedQuery = (event.target as HTMLTextAreaElement).value;
+    debouncedSearch(editedQuery);
+  }
 </script>
 
 <div class="related-notes-view">
@@ -230,15 +272,33 @@
   </div>
 
   <div class="related-notes-content">
-    {#if hasQuery && showQuery}
-      <div class="current-query">
+    {#if (hasQuery || queryMode !== 'default') && showQuery}
+      <div class="current-query" class:editing={queryMode === 'editing'}>
         <div class="query-header">
-          <h4>Search Query</h4>
-          <span class="query-length">{`${tokenCount} tokens`}</span>
+          <h4>Search Query <span class="query-length">({tokenCount} tokens)</span></h4>
+          <div class="query-header-right">
+            <button
+              class="query-mode-button"
+              class:active={queryMode === 'editing'}
+              aria-label={queryMode === 'editing' ? 'Resume auto-update' : 'Edit query (freezes context)'}
+              onclick={handleToggleEdit}
+            >
+              <span bind:this={editIcon}></span>
+            </button>
+          </div>
         </div>
-        <div class="query-text">
-          {query}
-        </div>
+        {#if queryMode === 'editing'}
+          <textarea
+            class="query-input"
+            value={editedQuery}
+            oninput={handleQueryInput}
+            placeholder="Enter search query..."
+          ></textarea>
+        {:else}
+          <div class="query-text">
+            {query}
+          </div>
+        {/if}
       </div>
     {/if}
 
@@ -403,12 +463,44 @@
     letter-spacing: 0.5px;
   }
 
+  .query-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
   .query-length {
     font-size: 10px;
-    padding: 2px 6px;
-    background: var(--background-modifier-border);
+    font-weight: 400;
     color: var(--text-muted);
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
+  .query-mode-button {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px;
     border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+  }
+
+  .query-mode-button:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+  }
+
+  .query-mode-button.active {
+    color: var(--interactive-accent);
+  }
+
+  .current-query.editing {
+    border-color: var(--interactive-accent);
   }
 
   .query-text {
@@ -436,6 +528,26 @@
 
   .query-text::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
+  }
+
+  .query-input {
+    width: 100%;
+    min-height: 60px;
+    max-height: 120px;
+    padding: 8px;
+    font-size: 12px;
+    color: var(--text-normal);
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    resize: vertical;
+    line-height: 1.5;
+    font-family: inherit;
+  }
+
+  .query-input:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
   }
 
   .related-notes-results {

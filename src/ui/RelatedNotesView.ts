@@ -50,6 +50,8 @@ export const STATUS_DISPLAY_TEXT: Record<RelatedNotesStatus, string> = {
   error: 'Failed to search',
 };
 
+export type QueryMode = 'default' | 'editing';
+
 interface RelatedNotesState {
   query: string;
   results: SearchResult[];
@@ -57,9 +59,10 @@ interface RelatedNotesState {
   status: RelatedNotesStatus;
   activeFile: string | null;
   isReranking: boolean;
+  queryMode: QueryMode;
 }
 
-const EMPTY_STATE_BASE: Omit<RelatedNotesState, 'status'> = {
+const EMPTY_STATE_BASE: Omit<RelatedNotesState, 'status' | 'queryMode'> = {
   query: '',
   results: [],
   tokenCount: 0,
@@ -86,6 +89,7 @@ export class RelatedNotesView extends ItemView {
   private relatedNotesStore = writable<RelatedNotesState>({
     ...EMPTY_STATE_BASE,
     status: 'no-active-note',
+    queryMode: 'default',
   });
 
   constructor(
@@ -235,6 +239,17 @@ export class RelatedNotesView extends ItemView {
           this.lastQuery = '';
           this.refresh(true);
         },
+        onSetQueryMode: (mode: QueryMode) => {
+          const currentMode = get(this.relatedNotesStore).queryMode;
+          this.updateStore({ queryMode: mode });
+          if (mode === 'default' && currentMode !== 'default') {
+            this.lastQuery = '';
+            this.refresh(true);
+          }
+        },
+        onQueryChange: (newQuery: string) => {
+          this.searchWithCustomQuery(newQuery);
+        },
         onHoverLink: (event: MouseEvent, linktext: string) =>
           this.handleHoverLink(event, linktext),
       },
@@ -310,6 +325,12 @@ export class RelatedNotesView extends ItemView {
   }
 
   private async refresh(preferCursor: boolean = false): Promise<void> {
+    // Skip auto-refresh when in editing mode (user controls the query)
+    const currentState = get(this.relatedNotesStore);
+    if (currentState.queryMode !== 'default') {
+      return;
+    }
+
     if (this.searchAbortController) {
       this.searchAbortController.abort();
       this.searchAbortController = null;
@@ -665,8 +686,125 @@ export class RelatedNotesView extends ItemView {
   }
 
   private manualRefresh(): void {
-    this.lastQuery = '';
-    this.refresh(true);
+    const currentState = get(this.relatedNotesStore);
+    if (currentState.queryMode === 'editing') {
+      // When editing, re-search with the current edited query
+      this.searchWithCustomQuery(currentState.query);
+    } else {
+      this.lastQuery = '';
+      this.refresh(true);
+    }
+  }
+
+  private async searchWithCustomQuery(query: string): Promise<void> {
+    if (!this.plugin.searchManager || !this.plugin.embedder) {
+      return;
+    }
+
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      this.updateStore({
+        query: '',
+        results: [],
+        tokenCount: 0,
+        status: 'no-content',
+      });
+      return;
+    }
+
+    if (this.searchAbortController) {
+      this.searchAbortController.abort();
+    }
+    this.searchAbortController = new AbortController();
+    const searchAbortSignal = this.searchAbortController.signal;
+
+    this.updateStore({
+      query: trimmedQuery,
+      status: 'processing',
+    });
+
+    try {
+      const tokenCount = await this.plugin.embedder.countTokens(trimmedQuery);
+      const queryLabel = truncateQuery(trimmedQuery);
+      const activeFile = this.app.workspace.getActiveFile();
+
+      const searchStart = performance.now();
+      const searchResults = await this.plugin.searchManager.search(
+        COMPONENT_ID,
+        trimmedQuery,
+        {
+          topK: this.configManager.get('searchResultsCount'),
+          excludeFilePath: activeFile?.path,
+        }
+      );
+      const searchTime = performance.now() - searchStart;
+
+      if (searchResults === null || searchAbortSignal.aborted) {
+        return;
+      }
+
+      this.logger.log(
+        `Searched ${queryLabel} in ${formatDuration(searchTime)}`
+      );
+
+      const enableReranking = this.configManager.get(
+        'enableRelatedNotesReranking'
+      );
+      const topK = this.configManager.get('searchResultsCount');
+
+      if (enableReranking && this.plugin.searchManager) {
+        this.updateStore({
+          query: trimmedQuery,
+          results: searchResults,
+          tokenCount: tokenCount,
+          status: 'ready',
+          isReranking: true,
+        });
+
+        const rerankStart = performance.now();
+        const rerankedResults = await this.plugin.searchManager.rerank(
+          COMPONENT_ID,
+          trimmedQuery,
+          searchResults,
+          topK
+        );
+        const rerankTime = performance.now() - rerankStart;
+
+        if (searchAbortSignal.aborted) {
+          return;
+        }
+
+        if (rerankedResults) {
+          this.logger.log(
+            `Reranked ${queryLabel} in ${formatDuration(rerankTime)}`
+          );
+          this.updateStore({
+            results: rerankedResults,
+            isReranking: false,
+          });
+        } else {
+          this.updateStore({
+            isReranking: false,
+          });
+        }
+      } else {
+        this.updateStore({
+          query: trimmedQuery,
+          results: searchResults,
+          tokenCount: tokenCount,
+          status: 'ready',
+        });
+      }
+    } catch (err) {
+      if (searchAbortSignal.aborted) {
+        return;
+      }
+      this.logger.error(`Error searching with custom query: ${err}`);
+      new Notice('Failed to search');
+      this.updateStore({
+        status: 'error',
+      });
+    }
   }
 
   async onClose(): Promise<void> {

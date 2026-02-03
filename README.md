@@ -190,9 +190,9 @@ Discover notes related to what you're currently reading. The panel updates
 automatically as you edit, scroll, or switch notes — showing results relevant to
 your current context.
 
-|                                                       Related notes with hover preview                                                        |                                                  Knowledge graph visualization                                                  |
-| :-------------------------------------------------------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------------: |
-| <img width="600" alt="Related notes view with hover" src="https://github.com/user-attachments/assets/5deeee7e-e681-4f65-8fb6-d62aa3449860" /> | <img width="600" alt="Knowledge graph" src="https://github.com/user-attachments/assets/47cde290-76d9-4324-822f-e3c3700ba6c7" /> |
+|                                                    Auto-following mode (default)                                                    |                                                     Edit mode with knowledge graph enabled                                                     |
+| :---------------------------------------------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------------------------------------------------------: |
+| <img width="600" alt="Auto-following mode" src="https://github.com/user-attachments/assets/5deeee7e-e681-4f65-8fb6-d62aa3449860" /> | <img width="600" alt="Edit mode with knowledge graph" src="https://github.com/user-attachments/assets/34e69fc9-16b3-463b-8698-085e67bab104" /> |
 
 1. Run `Sonar: Open related notes view` from the command palette
 2. The sidebar shows notes semantically related to your current note
@@ -200,10 +200,15 @@ your current context.
 
 **Options** (toggle via toolbar icons or in **Settings → Sonar**):
 
+- **Query visibility** (eye icon): Show/hide the current search query
+- **Excerpts** (file icon): Show matching text snippets for context
 - **Knowledge graph** (graph icon): Toggle graph visualization to see note
   relationships
-- **Excerpts** (file icon): Show matching text snippets for context
 - **Reranking** (sparkles icon): Enable for higher quality results (slower)
+
+**Query editing**: When the query is visible, click the pencil icon to enter
+edit mode. This freezes auto-updates and lets you search with a custom query.
+Click again to resume automatic context tracking.
 
 ### Agentic assistant chat
 
