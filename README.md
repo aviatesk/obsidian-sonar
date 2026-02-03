@@ -203,7 +203,7 @@ your current context.
 - **Knowledge graph** (graph icon): Toggle graph visualization to see note
   relationships
 - **Excerpts** (file icon): Show matching text snippets for context
-- **Reranking**: Enable for higher quality results (slower, settings only)
+- **Reranking** (sparkles icon): Enable for higher quality results (slower)
 
 ### Agentic assistant chat
 

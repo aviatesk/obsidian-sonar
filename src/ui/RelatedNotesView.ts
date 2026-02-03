@@ -11,7 +11,12 @@ import type { MarkdownPostProcessorContext } from 'obsidian';
 import { EditorView } from '@codemirror/view';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
-import { sonarState, isSearchReady, type SonarModelState } from '../SonarState';
+import {
+  sonarState,
+  isSearchReady,
+  isRerankerReady,
+  type SonarModelState,
+} from '../SonarState';
 import type { SearchResult } from '../SearchManager';
 import { processQuery, type QueryOptions } from '../QueryProcessor';
 import { ConfigManager } from '../ConfigManager';
@@ -51,6 +56,7 @@ interface RelatedNotesState {
   tokenCount: number;
   status: RelatedNotesStatus;
   activeFile: string | null;
+  isReranking: boolean;
 }
 
 const EMPTY_STATE_BASE: Omit<RelatedNotesState, 'status'> = {
@@ -58,6 +64,7 @@ const EMPTY_STATE_BASE: Omit<RelatedNotesState, 'status'> = {
   results: [],
   tokenCount: 0,
   activeFile: null,
+  isReranking: false,
 };
 
 const COMPONENT_ID = 'RelatedNotesView';
@@ -217,8 +224,16 @@ export class RelatedNotesView extends ItemView {
         sonarState: sonarState as {
           subscribe: (fn: (value: SonarModelState) => void) => () => void;
         },
+        isRerankerReady: isRerankerReady as {
+          subscribe: (fn: (value: boolean) => void) => () => void;
+        },
         onRefresh: () => {
           this.manualRefresh();
+        },
+        onRerankingToggle: (enabled: boolean) => {
+          this.configManager.set('enableRelatedNotesReranking', enabled);
+          this.lastQuery = '';
+          this.refresh(true);
         },
         onHoverLink: (event: MouseEvent, linktext: string) =>
           this.handleHoverLink(event, linktext),
@@ -395,13 +410,56 @@ export class RelatedNotesView extends ItemView {
           `Searched ${queryLabel} in ${formatDuration(searchTime)}`
         );
 
-        this.updateStore({
-          query: query,
-          results: searchResults,
-          tokenCount: tokenCount,
-          status: 'ready',
-          activeFile: activeFile.path,
-        });
+        const enableReranking = this.configManager.get(
+          'enableRelatedNotesReranking'
+        );
+        const topK = this.configManager.get('searchResultsCount');
+
+        if (enableReranking && this.plugin.searchManager) {
+          this.updateStore({
+            query: query,
+            results: searchResults,
+            tokenCount: tokenCount,
+            status: 'ready',
+            activeFile: activeFile.path,
+            isReranking: true,
+          });
+
+          const rerankStart = performance.now();
+          const rerankedResults = await this.plugin.searchManager.rerank(
+            COMPONENT_ID,
+            query,
+            searchResults,
+            topK
+          );
+          const rerankTime = performance.now() - rerankStart;
+
+          if (searchAbortSignal.aborted) {
+            return;
+          }
+
+          if (rerankedResults) {
+            this.logger.log(
+              `Reranked ${queryLabel} in ${formatDuration(rerankTime)}`
+            );
+            this.updateStore({
+              results: rerankedResults,
+              isReranking: false,
+            });
+          } else {
+            this.updateStore({
+              isReranking: false,
+            });
+          }
+        } else {
+          this.updateStore({
+            query: query,
+            results: searchResults,
+            tokenCount: tokenCount,
+            status: 'ready',
+            activeFile: activeFile.path,
+          });
+        }
       } else {
         this.updateStore({
           ...EMPTY_STATE_BASE,
@@ -506,13 +564,56 @@ export class RelatedNotesView extends ItemView {
         `Searched ${queryLabel} in ${formatDuration(searchTime)}`
       );
 
-      this.updateStore({
-        query: query,
-        results: searchResults,
-        tokenCount: tokenCount,
-        status: 'ready',
-        activeFile: file.path,
-      });
+      const enableReranking = this.configManager.get(
+        'enableRelatedNotesReranking'
+      );
+      const topK = this.configManager.get('searchResultsCount');
+
+      if (enableReranking && this.plugin.searchManager) {
+        this.updateStore({
+          query: query,
+          results: searchResults,
+          tokenCount: tokenCount,
+          status: 'ready',
+          activeFile: file.path,
+          isReranking: true,
+        });
+
+        const rerankStart = performance.now();
+        const rerankedResults = await this.plugin.searchManager.rerank(
+          COMPONENT_ID,
+          query,
+          searchResults,
+          topK
+        );
+        const rerankTime = performance.now() - rerankStart;
+
+        if (abortSignal.aborted) {
+          return;
+        }
+
+        if (rerankedResults) {
+          this.logger.log(
+            `Reranked ${queryLabel} in ${formatDuration(rerankTime)}`
+          );
+          this.updateStore({
+            results: rerankedResults,
+            isReranking: false,
+          });
+        } else {
+          this.updateStore({
+            isReranking: false,
+          });
+        }
+      } else {
+        this.updateStore({
+          query: query,
+          results: searchResults,
+          tokenCount: tokenCount,
+          status: 'ready',
+          activeFile: file.path,
+        });
+      }
     } catch (err) {
       if (abortSignal.aborted) {
         return;

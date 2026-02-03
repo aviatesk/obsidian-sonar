@@ -5,7 +5,7 @@
   import { STATUS_DISPLAY_TEXT, type RelatedNotesStatus } from './RelatedNotesView';
   import SearchResults from './SearchResults.svelte';
   import KnowledgeGraph from './KnowledgeGraph.svelte';
-  import { RefreshCw, Eye, EyeOff, FileText, ChartNetwork, createElement } from 'lucide';
+  import { RefreshCw, Eye, EyeOff, FileText, ChartNetwork, Sparkles, createElement } from 'lucide';
   import { onMount, onDestroy, untrack } from 'svelte';
 
   interface Props {
@@ -13,18 +13,22 @@
     configManager: ConfigManager;
     store: any; // Svelte store for view-specific state
     sonarState: { subscribe: (fn: (value: SonarModelState) => void) => () => void };
+    isRerankerReady: { subscribe: (fn: (value: boolean) => void) => () => void };
     onRefresh: () => void;
+    onRerankingToggle: (enabled: boolean) => void;
     onHoverLink?: (event: MouseEvent, linktext: string) => void;
   }
 
-  let { app, configManager, store, sonarState, onRefresh, onHoverLink }: Props = $props();
+  let { app, configManager, store, sonarState, isRerankerReady, onRefresh, onRerankingToggle, onHoverLink }: Props = $props();
 
   const storeState = $derived($store);
   const sonar = $derived($sonarState);
+  const rerankerReady = $derived($isRerankerReady);
   const query = $derived(storeState.query);
   const results = $derived(storeState.results);
   const tokenCount = $derived(storeState.tokenCount);
   const activeFile = $derived(storeState.activeFile);
+  const isReranking = $derived(storeState.isReranking);
   const hasQuery = $derived(query && query.trim().length > 0);
 
   // Derive effective status: sonarState takes precedence over store status
@@ -55,10 +59,12 @@
   let showQuery = $state(untrack(() => configManager.get('showRelatedNotesQuery')));
   let showExcerpts = $state(untrack(() => configManager.get('showRelatedNotesExcerpts')));
   let showKnowledgeGraph = $state(untrack(() => configManager.get('showKnowledgeGraph')));
+  let enableReranking = $state(untrack(() => configManager.get('enableRelatedNotesReranking')));
   let refreshIcon: HTMLElement;
   let eyeIcon: HTMLElement;
   let excerptIcon: HTMLElement;
   let graphIcon: HTMLElement;
+  let rerankIcon: HTMLElement;
   let unsubscribers: (() => void)[] = [];
 
   // eyeIcon needs $effect because it changes reactively with showQuery state
@@ -98,6 +104,14 @@
       graphIcon.appendChild(icon);
     }
 
+    if (rerankIcon) {
+      const icon = createElement(Sparkles);
+      icon.setAttribute('width', '16');
+      icon.setAttribute('height', '16');
+      // eslint-disable-next-line svelte/no-dom-manipulating
+      rerankIcon.appendChild(icon);
+    }
+
     // Subscribe to config changes from Settings UI
     unsubscribers.push(
       configManager.subscribe('showRelatedNotesQuery', (_, value) => {
@@ -112,6 +126,11 @@
     unsubscribers.push(
       configManager.subscribe('showKnowledgeGraph', (_, value) => {
         showKnowledgeGraph = value as boolean;
+      })
+    );
+    unsubscribers.push(
+      configManager.subscribe('enableRelatedNotesReranking', (_, value) => {
+        enableReranking = value as boolean;
       })
     );
   });
@@ -142,16 +161,22 @@
     showKnowledgeGraph = !showKnowledgeGraph;
     configManager.set('showKnowledgeGraph', showKnowledgeGraph);
   }
+
+  function handleToggleReranking() {
+    if (!rerankerReady) return;
+    enableReranking = !enableReranking;
+    onRerankingToggle(enableReranking);
+  }
 </script>
 
 <div class="related-notes-view">
   <div class="related-notes-header">
     <div class="status-container">
       <div class="status-indicator">
-        {#if status === 'processing'}
+        {#if status === 'processing' || isReranking}
           <span class="spinner"></span>
         {/if}
-        <span>{statusText}</span>
+        <span>{isReranking ? 'Reranking...' : statusText}</span>
       </div>
 
       <div class="controls-container">
@@ -180,6 +205,17 @@
           onclick={handleToggleGraph}
         >
           <span bind:this={graphIcon}></span>
+        </button>
+
+        <button
+          class="icon-button toggle-rerank-btn"
+          class:active={enableReranking && rerankerReady}
+          class:disabled={!rerankerReady}
+          aria-label={rerankerReady ? 'Toggle reranking' : 'Reranker not available'}
+          disabled={!rerankerReady}
+          onclick={handleToggleReranking}
+        >
+          <span bind:this={rerankIcon}></span>
         </button>
 
         <button
@@ -321,6 +357,17 @@
   .icon-button.active:hover {
     background: var(--interactive-accent-hover);
     border-color: var(--interactive-accent-hover);
+  }
+
+  .icon-button.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .icon-button.disabled:hover {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
   }
 
   .related-notes-content {
