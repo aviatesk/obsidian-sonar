@@ -27,11 +27,13 @@ your machine.
 
 ## Installation
 
-Before installing, ensure you have:
+Sonar runs entirely on your local machine — all embedding, reranking, and LLM
+inference happens locally. This requires machine resources depending on your
+model configuration. For the default models, the following specifications are
+recommended:
 
-- 32GB+ RAM recommended[^RAM-recommendation]
-- GPU recommended (Metal on macOS, CUDA on Linux/Windows)[^GPU-recommendation]
-- Node.js 18+
+- 32GB+ RAM[^RAM-recommendation]
+- GPU (Metal on macOS, CUDA on Linux/Windows)[^GPU-recommendation]
 
 ### 1. Install llama.cpp
 
@@ -59,13 +61,22 @@ cmake --build build --config Release
 
 ### 2. Install the plugin
 
-```bash
-git clone https://github.com/aviatesk/obsidian-sonar.git
-cd obsidian-sonar
-npm install
-npm run build
-cp main.js manifest.json styles.css /path/to/your/vault/.obsidian/plugins/obsidian-sonar/
-```
+You can install Sonar either via
+
+- **BRAT:**
+  1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) from the
+     community plugins
+  2. Open BRAT settings and select **Add Beta plugin**
+  3. Enter `https://github.com/aviatesk/obsidian-sonar` and click **Add Plugin**
+
+- **Manual installation** (requires Node.js 18+):
+  ```bash
+  git clone https://github.com/aviatesk/obsidian-sonar.git
+  cd obsidian-sonar
+  npm install
+  npm run build
+  cp main.js manifest.json styles.css /path/to/your/vault/.obsidian/plugins/obsidian-sonar/
+  ```
 
 ### 3. Enable the plugin
 
@@ -170,7 +181,7 @@ Find notes by meaning using natural language queries. Unlike keyword search,
 semantic search understands concepts and returns relevant results even when
 exact words don't match.
 
-> _Searching for "Sonar agentic RAG" with reranking enabled_
+> _Searching for input query with reranking enabled_
 >
 > <img width="600" alt="Semantic note finder for 'Sonar agentic RAG'" src="https://github.com/user-attachments/assets/da452a91-ec19-44dd-a799-177e777f03ad" />
 
