@@ -26,22 +26,17 @@ jobs:
         run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Extract release notes from CHANGELOG
-        id: notes
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           # Extract the section for this version from CHANGELOG.md
           # Starts after "## X.Y.Z" line, ends before next "## " line
-          NOTES=$(awk -v ver="## $VERSION" '
+          # Join "Diff:" with the following line to prevent broken markdown
+          awk -v ver="## $VERSION" '
             $0 == ver { found=1; next }
             found && /^## / { exit }
+            found && /^Diff:$/ { printf "Diff: "; next }
             found { print }
-          ' CHANGELOG.md)
-          # Use heredoc for multiline content
-          {
-            echo 'content<<EOF'
-            echo "$NOTES"
-            echo 'EOF'
-          } >> $GITHUB_OUTPUT
+          ' CHANGELOG.md > release-notes.md
 
       - name: Create GitHub Release
         env:
@@ -50,5 +45,5 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           gh release create "$VERSION" \
             --title "$VERSION" \
-            --notes "${{ steps.notes.outputs.content }}" \
+            --notes-file release-notes.md \
             main.js manifest.json styles.css
