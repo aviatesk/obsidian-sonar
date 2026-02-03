@@ -129,7 +129,7 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   indexPath: '',
   excludedPaths: [],
   indexingBatchSize: 32,
-  autoIndex: false,
+  autoIndex: true,
 
   // UI preferences
   // ==============

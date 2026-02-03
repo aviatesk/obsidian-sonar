@@ -2,6 +2,14 @@ import { writable, derived, get, type Readable } from 'svelte/store';
 
 export type ModelStatus = 'uninitialized' | 'initializing' | 'ready' | 'failed';
 
+export interface StatusBarClickAction {
+  action: () => void;
+  actionName: string;
+  confirmTitle: string;
+  confirmMessage: string;
+  confirmButton: string;
+}
+
 export interface SonarModelState {
   embedder: ModelStatus;
   reranker: ModelStatus;
@@ -9,6 +17,7 @@ export interface SonarModelState {
   bm25Store: ModelStatus;
   statusBarText: string;
   statusBarTooltip?: string;
+  onStatusBarClick?: StatusBarClickAction;
 }
 
 const initialState: SonarModelState = {
@@ -47,6 +56,10 @@ function createSonarState() {
         statusBarText: text,
         statusBarTooltip: tooltip,
       }));
+    },
+
+    setOnStatusBarClick(clickAction?: StatusBarClickAction) {
+      update(state => ({ ...state, onStatusBarClick: clickAction }));
     },
 
     reset() {

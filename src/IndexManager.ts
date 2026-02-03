@@ -71,6 +71,7 @@ interface SyncStats {
   errored: number;
   skipped: number;
   skippedFilePaths: string[];
+  cancelled: boolean;
 }
 
 export type IndexUpdateListener = () => void;
@@ -86,6 +87,8 @@ export class IndexManager extends WithLogging {
   private debouncedProcess: () => void;
   private pdfjsLib: PdfjsLib | null = null;
   private indexUpdateListeners: Set<IndexUpdateListener> = new Set();
+  private isCancelled: boolean = false;
+  private isIndexingInProgress: boolean = false;
 
   constructor(
     private metadataStore: MetadataStore,
@@ -141,6 +144,9 @@ export class IndexManager extends WithLogging {
         if (value) {
           this.registerEventHandlers();
           this.log('Auto-indexing enabled');
+          this.syncIndex().catch(error =>
+            this.error(`Failed to sync after enabling auto-index: ${error}`)
+          );
         } else {
           this.unregisterEventHandlers();
           this.log('Auto-indexing disabled');
@@ -222,6 +228,33 @@ export class IndexManager extends WithLogging {
       filePath: string
     ) => void | Promise<void>
   ): Promise<SyncStats> {
+    this.isCancelled = false;
+    this.isIndexingInProgress = true;
+    sonarState.setOnStatusBarClick({
+      action: () => this.cancelIndexing(),
+      actionName: 'cancel',
+      confirmTitle: 'Cancel indexing?',
+      confirmMessage:
+        'This will stop the current indexing operation. ' +
+        'Already indexed files will be kept.',
+      confirmButton: 'Cancel indexing',
+    });
+
+    try {
+      return await this._performSync(progressCallback);
+    } finally {
+      this.isIndexingInProgress = false;
+      sonarState.setOnStatusBarClick(undefined);
+    }
+  }
+
+  private async _performSync(
+    progressCallback?: (
+      current: number,
+      total: number,
+      filePath: string
+    ) => void | Promise<void>
+  ): Promise<SyncStats> {
     const dbFileMap = await this.metadataStore.getFileMetadataMap();
     const vaultFiles = getFilesToIndex(this.vault, this.configManager);
     const vaultFileMap = new Map(vaultFiles.map(f => [f.path, f]));
@@ -284,7 +317,7 @@ export class IndexManager extends WithLogging {
       `Files - New: ${newCount}, Modified: ${modifiedCount}, Deleted: ${deletedCount}, Unchanged: ${skippedCount}`
     );
 
-    const { errored, skipped, skippedFilePaths } =
+    const { errored, skipped, skippedFilePaths, cancelled } =
       await this.processBatchOperations(operations, progressCallback);
 
     return {
@@ -295,6 +328,7 @@ export class IndexManager extends WithLogging {
       errored,
       skipped,
       skippedFilePaths,
+      cancelled,
     };
   }
 
@@ -449,9 +483,14 @@ export class IndexManager extends WithLogging {
       total: number,
       filePath: string
     ) => void | Promise<void>
-  ): Promise<{ errored: number; skipped: number; skippedFilePaths: string[] }> {
+  ): Promise<{
+    errored: number;
+    skipped: number;
+    skippedFilePaths: string[];
+    cancelled: boolean;
+  }> {
     if (operations.length === 0) {
-      return { errored: 0, skipped: 0, skippedFilePaths: [] };
+      return { errored: 0, skipped: 0, skippedFilePaths: [], cancelled: false };
     }
 
     const timings = {
@@ -513,7 +552,7 @@ export class IndexManager extends WithLogging {
     );
 
     if (indexOperations.length === 0) {
-      return { errored: 0, skipped: 0, skippedFilePaths: [] };
+      return { errored: 0, skipped: 0, skippedFilePaths: [], cancelled: false };
     }
 
     // Step 1: Prepare all chunks for all files
@@ -531,6 +570,16 @@ export class IndexManager extends WithLogging {
     let errorCount = 0;
 
     for (let opIndex = 0; opIndex < indexOperations.length; opIndex++) {
+      if (this.isCancelled) {
+        this.log('Indexing cancelled during chunking phase');
+        return {
+          errored: errorCount,
+          skipped: 0,
+          skippedFilePaths: [],
+          cancelled: true,
+        };
+      }
+
       const operation = indexOperations[opIndex];
       const file = operation.file!;
 
@@ -612,8 +661,29 @@ export class IndexManager extends WithLogging {
       }>
     >();
     const filesWithNaN = new Set<number>();
+    const writtenFilePaths: string[] = [];
 
     for (let i = 0; i < allTextItems.length; i += batchSize) {
+      if (this.isCancelled) {
+        this.log('Indexing cancelled during embedding phase');
+        // Files written during embedding have metadata + embeddings but no BM25 data
+        // (BM25 indexing happens after all embeddings complete). These incomplete
+        // files would appear "up to date" on next sync and wouldn't be re-indexed.
+        // Delete them so next sync will fully re-index them.
+        if (writtenFilePaths.length > 0) {
+          this.log(
+            `Cleaning up ${writtenFilePaths.length} partially indexed files...`
+          );
+          await this.deleteFilesData(writtenFilePaths);
+        }
+        return {
+          errored: errorCount,
+          skipped: 0,
+          skippedFilePaths: [],
+          cancelled: true,
+        };
+      }
+
       const batchItems = allTextItems.slice(
         i,
         Math.min(i + batchSize, allTextItems.length)
@@ -724,6 +794,10 @@ export class IndexManager extends WithLogging {
             this.embeddingStore.addEmbeddings(batchEmbeddingData),
           ]);
           timings.dbWrite += Date.now() - writeStart;
+
+          for (const fileIndex of completedFileIndices) {
+            writtenFilePaths.push(fileChunkDataList[fileIndex].file.path);
+          }
         }
       }
 
@@ -819,7 +893,31 @@ export class IndexManager extends WithLogging {
       errored: errorCount,
       skipped: skippedFiles.length,
       skippedFilePaths: skippedFiles,
+      cancelled: false,
     };
+  }
+
+  private async deleteFilesData(filePaths: string[]): Promise<void> {
+    if (filePaths.length === 0) return;
+
+    const chunkArrays = await Promise.all(
+      filePaths.map(filePath => this.metadataStore.getChunksByFile(filePath))
+    );
+    const allChunkIds: string[] = [];
+    for (const chunks of chunkArrays) {
+      allChunkIds.push(...chunks.map(c => c.id));
+    }
+
+    if (allChunkIds.length > 0) {
+      await Promise.all([
+        this.metadataStore.deleteChunks(allChunkIds),
+        this.embeddingStore.deleteEmbeddings(allChunkIds),
+        this.bm25Store.deleteChunks(allChunkIds),
+      ]);
+      this.log(
+        `Deleted ${allChunkIds.length} chunks for ${filePaths.length} files`
+      );
+    }
   }
 
   private prepareFileIndexData(
@@ -1057,13 +1155,22 @@ export class IndexManager extends WithLogging {
     const stats = await this.performSync(progressCallback);
 
     const duration = formatDuration(Date.now() - startTime);
-    const message = this.buildIndexingCompleteMessage(
-      `Rebuild complete: ${stats.newCount} files indexed in ${duration}`,
-      stats.errored,
-      stats.skipped
-    );
-    new Notice(message, 0);
-    this.log(message);
+
+    if (stats.cancelled) {
+      const message =
+        'Indexing cancelled. Some files may need re-indexing - run "Sync search index with vault" to complete.';
+      new Notice(message, 0);
+      this.log(message);
+    } else {
+      const message = this.buildIndexingCompleteMessage(
+        `Rebuild complete: ${stats.newCount} files indexed in ${duration}`,
+        stats.errored,
+        stats.skipped
+      );
+      new Notice(message, 0);
+      this.log(message);
+    }
+
     await this.updateStatus();
     this.notifyIndexUpdated();
   }
@@ -1090,13 +1197,22 @@ export class IndexManager extends WithLogging {
     const stats = await this.performSync();
 
     const duration = formatDuration(Date.now() - startTime);
-    const message = this.buildIndexingCompleteMessage(
-      `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted in ${duration}`,
-      stats.errored,
-      stats.skipped
-    );
-    new Notice(message, onload ? 10000 : 0);
-    this.log(message);
+
+    if (stats.cancelled) {
+      const message =
+        'Indexing cancelled. Some files may need re-indexing - run "Sync search index with vault" to complete.';
+      new Notice(message, 0);
+      this.log(message);
+    } else {
+      const message = this.buildIndexingCompleteMessage(
+        `Sync complete: ${stats.newCount} new, ${stats.modifiedCount} modified, ${stats.deletedCount} deleted in ${duration}`,
+        stats.errored,
+        stats.skipped
+      );
+      new Notice(message, onload ? 10000 : 0);
+      this.log(message);
+    }
+
     await this.updateStatus();
     this.notifyIndexUpdated();
     return stats;
@@ -1127,6 +1243,19 @@ export class IndexManager extends WithLogging {
     }
     this.configSubscribers = [];
     this.indexUpdateListeners.clear();
+  }
+
+  /**
+   * Cancel any ongoing indexing operation.
+   * Returns true if an operation was cancelled, false if nothing was running.
+   */
+  cancelIndexing(): boolean {
+    if (!this.isIndexingInProgress) {
+      return false;
+    }
+    this.log('Cancellation requested');
+    this.isCancelled = true;
+    return true;
   }
 
   onIndexUpdated(listener: IndexUpdateListener): () => void {

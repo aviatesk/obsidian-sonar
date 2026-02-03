@@ -205,6 +205,20 @@ export default class SonarPlugin extends Plugin {
 
     // UI elements - needed immediately
     this.statusBarItem = this.addStatusBarItem();
+    this.statusBarItem.addClass('mod-clickable');
+    this.statusBarItem.onClickEvent(async () => {
+      const clickAction = getState().onStatusBarClick;
+      if (!clickAction) return;
+      const confirmed = await confirmAction(
+        this.app,
+        clickAction.confirmTitle,
+        clickAction.confirmMessage,
+        clickAction.confirmButton
+      );
+      if (confirmed) {
+        clickAction.action();
+      }
+    });
 
     // Subscribe to state changes for reactive status bar updates
     const unsubscribe = sonarState.subscribe(state => {
@@ -217,8 +231,12 @@ export default class SonarPlugin extends Plugin {
         // Once ready, IndexManager takes over status bar updates
         // via statusBarText for showing index progress
       }
-      // Show progress text from components
-      this.updateStatusBar(state.statusBarText, state.statusBarTooltip);
+      let tooltip = state.statusBarTooltip;
+      if (state.onStatusBarClick) {
+        const base = tooltip ?? state.statusBarText;
+        tooltip = `${base} (click to ${state.onStatusBarClick.actionName})`;
+      }
+      this.updateStatusBar(state.statusBarText, tooltip);
     });
     this.register(() => unsubscribe());
 
@@ -548,6 +566,27 @@ export default class SonarPlugin extends Plugin {
           return;
         }
         await this.indexManager!.indexFile(activeFile);
+      },
+    });
+
+    this.addCommand({
+      id: 'cancel-indexing',
+      name: 'Cancel indexing',
+      callback: async () => {
+        const clickAction = getState().onStatusBarClick;
+        if (!clickAction) {
+          new Notice('No indexing operation in progress');
+          return;
+        }
+        const confirmed = await confirmAction(
+          this.app,
+          clickAction.confirmTitle,
+          clickAction.confirmMessage,
+          clickAction.confirmButton
+        );
+        if (confirmed) {
+          clickAction.action();
+        }
       },
     });
 
