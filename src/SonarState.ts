@@ -18,6 +18,7 @@ export interface SonarModelState {
   statusBarText: string;
   statusBarTooltip?: string;
   onStatusBarClick?: StatusBarClickAction;
+  onStatusBarModifierClick?: StatusBarClickAction;
 }
 
 const initialState: SonarModelState = {
@@ -60,6 +61,10 @@ function createSonarState() {
 
     setOnStatusBarClick(clickAction?: StatusBarClickAction) {
       update(state => ({ ...state, onStatusBarClick: clickAction }));
+    },
+
+    setOnStatusBarModifierClick(clickAction?: StatusBarClickAction) {
+      update(state => ({ ...state, onStatusBarModifierClick: clickAction }));
     },
 
     reset() {

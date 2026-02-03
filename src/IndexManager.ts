@@ -123,6 +123,7 @@ export class IndexManager extends WithLogging {
     } else {
       this.log('Auto-indexing disabled');
       await this.updateStatus();
+      this.setIdleStatusBarAction();
     }
   }
 
@@ -239,13 +240,39 @@ export class IndexManager extends WithLogging {
         'Already indexed files will be kept.',
       confirmButton: 'Cancel indexing',
     });
+    sonarState.setOnStatusBarModifierClick(undefined);
 
     try {
       return await this._performSync(progressCallback);
     } finally {
       this.isIndexingInProgress = false;
-      sonarState.setOnStatusBarClick(undefined);
+      this.setIdleStatusBarAction();
     }
+  }
+
+  private setIdleStatusBarAction(): void {
+    sonarState.setOnStatusBarClick({
+      action: () => {
+        this.syncIndex().catch(error => this.error(`Failed to sync: ${error}`));
+      },
+      actionName: 'sync',
+      confirmTitle: 'Sync search index?',
+      confirmMessage: 'This will sync the search index with your vault.',
+      confirmButton: 'Sync',
+    });
+    sonarState.setOnStatusBarModifierClick({
+      action: () => {
+        this.clearCurrentIndex()
+          .then(() => new Notice('Current index cleared'))
+          .catch(error => this.error(`Failed to clear index: ${error}`));
+      },
+      actionName: 'clear index',
+      confirmTitle: 'Clear current search index?',
+      confirmMessage:
+        'This will clear the search index for the current configuration. ' +
+        'This cannot be undone.',
+      confirmButton: 'Clear',
+    });
   }
 
   private async _performSync(

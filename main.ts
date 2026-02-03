@@ -206,8 +206,26 @@ export default class SonarPlugin extends Plugin {
     // UI elements - needed immediately
     this.statusBarItem = this.addStatusBarItem();
     this.statusBarItem.addClass('mod-clickable');
-    this.statusBarItem.onClickEvent(async () => {
-      const clickAction = getState().onStatusBarClick;
+    this.statusBarItem.onClickEvent(async (evt: MouseEvent) => {
+      const state = getState();
+
+      // Cmd+click (Mac) or Ctrl+click (Windows/Linux)
+      if (evt.metaKey || evt.ctrlKey) {
+        const modifierAction = state.onStatusBarModifierClick;
+        if (!modifierAction) return;
+        const confirmed = await confirmAction(
+          this.app,
+          modifierAction.confirmTitle,
+          modifierAction.confirmMessage,
+          modifierAction.confirmButton
+        );
+        if (confirmed) {
+          modifierAction.action();
+        }
+        return;
+      }
+
+      const clickAction = state.onStatusBarClick;
       if (!clickAction) return;
       const confirmed = await confirmAction(
         this.app,
@@ -234,7 +252,11 @@ export default class SonarPlugin extends Plugin {
       let tooltip = state.statusBarTooltip;
       if (state.onStatusBarClick) {
         const base = tooltip ?? state.statusBarText;
-        tooltip = `${base} (click to ${state.onStatusBarClick.actionName})`;
+        const clickHint = `click to ${state.onStatusBarClick.actionName}`;
+        const modifierHint = state.onStatusBarModifierClick
+          ? `, cmd/ctrl+click to ${state.onStatusBarModifierClick.actionName}`
+          : '';
+        tooltip = `${base} (${clickHint}${modifierHint})`;
       }
       this.updateStatusBar(state.statusBarText, tooltip);
     });
