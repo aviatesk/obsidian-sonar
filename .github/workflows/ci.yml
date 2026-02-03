@@ -38,7 +38,7 @@ jobs:
 
       - name: Cache llama.cpp
         id: cache-llama
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/llama-cpp
           key: llama-cpp-${{ env.LLAMA_CPP_VERSION }}-ubuntu-x64
@@ -56,7 +56,7 @@ jobs:
           echo "LD_LIBRARY_PATH=$HOME/.local/llama-cpp:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Cache embedding models
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/llama.cpp
           key:
