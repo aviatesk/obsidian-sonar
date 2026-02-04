@@ -61,3 +61,37 @@ export interface TextStyle {
   descent: number;
   vertical?: boolean;
 }
+
+// Obsidian's internal PDF viewer types (not part of public API)
+// These may break with Obsidian updates.
+
+import type { View, TFile } from 'obsidian';
+
+export interface PdfEventBus {
+  on(eventName: string, listener: (data: unknown) => void): void;
+  off(eventName: string, listener: (data: unknown) => void): void;
+}
+
+export interface ObsidianPdfViewer {
+  eventBus: PdfEventBus;
+  page: number;
+  pdfDocument: PDFDocumentProxy | null;
+}
+
+export interface PdfViewerChild {
+  pdfViewer: ObsidianPdfViewer;
+}
+
+export interface PdfViewerComponent {
+  child: PdfViewerChild | null;
+  loadFile: (file: TFile, subpath?: string) => Promise<void>;
+}
+
+export interface PdfView extends View {
+  viewer: PdfViewerComponent;
+  file: TFile | null;
+}
+
+export interface PageChangingEvent {
+  pageNumber: number;
+}

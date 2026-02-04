@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Diff:
 [`0.1.3...HEAD`](https://github.com/aviatesk/obsidian-sonar/compare/0.1.3...HEAD)
 
+### Added
+
+- Related Notes View now follows the current page when viewing PDFs. Scrolling
+  to a different page automatically updates the related notes view based on that
+  page's content.
+
 ## 0.1.3
 
 Diff:

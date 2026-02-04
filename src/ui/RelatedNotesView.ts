@@ -8,6 +8,8 @@ import {
   debounce,
 } from 'obsidian';
 import type { MarkdownPostProcessorContext } from 'obsidian';
+import type { PdfView, TextItem } from '../pdfjs';
+import { normalizeText } from '../pdfExtractor';
 import { EditorView } from '@codemirror/view';
 import { mount, unmount } from 'svelte';
 import { writable, get } from 'svelte/store';
@@ -84,7 +86,7 @@ export class RelatedNotesView extends ItemView {
   private debouncedCursorRefresh: () => void;
   private debouncedScrollRefresh: () => void;
   private svelteComponent: any;
-  private scrollUnsubscribe: (() => void) | null = null;
+  private viewUnsubscribe: (() => void) | null = null;
   private sonarStateUnsubscribe: (() => void) | null = null;
   private relatedNotesStore = writable<RelatedNotesState>({
     ...EMPTY_STATE_BASE,
@@ -289,32 +291,44 @@ export class RelatedNotesView extends ItemView {
   private async onActiveLeafChange(): Promise<void> {
     const activeFile = this.app.workspace.getActiveFile();
 
-    if (this.scrollUnsubscribe) {
-      this.scrollUnsubscribe();
-      this.scrollUnsubscribe = null;
-    }
+    if (activeFile && activeFile instanceof TFile) {
+      const fileChanged = activeFile !== this.lastActiveFile;
 
-    if (
-      activeFile &&
-      activeFile instanceof TFile &&
-      activeFile !== this.lastActiveFile
-    ) {
-      this.lastActiveFile = activeFile;
-      this.lastQuery = '';
-
-      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (activeView) {
-        this.setupScrollListener(activeView);
+      if (fileChanged) {
+        this.clearViewListener();
+        this.lastActiveFile = activeFile;
+        this.lastQuery = '';
       }
 
-      await this.refresh(true);
+      // For PDF: always re-register listener as the view container may be recreated
+      if (activeFile.extension === 'pdf') {
+        this.clearViewListener();
+        this.setupPdfPageListener();
+      } else if (fileChanged) {
+        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (activeView) {
+          this.setupScrollListener(activeView);
+        }
+      }
+
+      if (fileChanged) {
+        await this.refresh(true);
+      }
     } else if (!activeFile) {
+      this.clearViewListener();
       this.lastActiveFile = null;
       this.lastQuery = '';
       this.updateStore({
         ...EMPTY_STATE_BASE,
         status: 'no-active-note',
       });
+    }
+  }
+
+  private clearViewListener(): void {
+    if (this.viewUnsubscribe) {
+      this.viewUnsubscribe();
+      this.viewUnsubscribe = null;
     }
   }
 
@@ -332,10 +346,62 @@ export class RelatedNotesView extends ItemView {
 
     if (readingEl) readingEl.addEventListener('scroll', handler);
     if (editingEl) editingEl.addEventListener('scroll', handler);
-    this.scrollUnsubscribe = () => {
+    this.viewUnsubscribe = () => {
       if (readingEl) readingEl.removeEventListener('scroll', handler);
       if (editingEl) editingEl.removeEventListener('scroll', handler);
     };
+  }
+
+  private getActivePdfView(): PdfView | null {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile || activeFile.extension !== 'pdf') return null;
+
+    const leaves = this.app.workspace.getLeavesOfType('pdf');
+    for (const leaf of leaves) {
+      const view = leaf.view as PdfView;
+      if (view.file?.path === activeFile.path) {
+        return view;
+      }
+    }
+    return null;
+  }
+
+  private setupPdfPageListener(): void {
+    const trySetup = (attempt: number = 0): void => {
+      const pdfView = this.getActivePdfView();
+      const pdfDocument = pdfView?.viewer?.child?.pdfViewer?.pdfDocument;
+      const viewerContainer = pdfView?.containerEl.querySelector(
+        '.pdf-viewer-container'
+      ) as HTMLElement | null;
+
+      // Wait for PDF view and document to be fully loaded
+      if (!pdfView || !viewerContainer || !pdfDocument) {
+        if (attempt < 20) {
+          setTimeout(() => trySetup(attempt + 1), 500);
+        } else {
+          this.logger.warn('PDF viewer not fully loaded after retries');
+        }
+        return;
+      }
+
+      let lastPage = this.detectPdfCurrentPage();
+
+      const handler = () => {
+        const currentPage = this.detectPdfCurrentPage();
+        if (currentPage !== null && currentPage !== lastPage) {
+          lastPage = currentPage;
+          this.lastQuery = '';
+          this.debouncedScrollRefresh();
+        }
+      };
+      viewerContainer.addEventListener('scroll', handler);
+      this.viewUnsubscribe = () => {
+        viewerContainer.removeEventListener('scroll', handler);
+      };
+      this.logger.log('PDF scroll listener registered');
+    };
+
+    trySetup();
   }
 
   private async refresh(preferCursor: boolean = false): Promise<void> {
@@ -538,21 +604,16 @@ export class RelatedNotesView extends ItemView {
     // Sort chunks by id to get proper order
     chunks.sort((a, b) => a.id.localeCompare(b.id));
 
-    let query: string;
+    let query: string | null = null;
 
     try {
       if (file.extension === 'pdf') {
-        // For PDF: try to detect current page from viewer
         const currentPage = this.detectPdfCurrentPage();
         if (currentPage !== null) {
-          // Find chunks for current page
-          const pageChunks = chunks.filter(c => c.pageNumber === currentPage);
-          query =
-            pageChunks.length > 0
-              ? pageChunks.map(c => c.content).join('\n')
-              : chunks[0].content;
-        } else {
-          // Fallback to first chunk
+          query = await this.getPdfPageText(currentPage);
+        }
+        if (!query) {
+          // Fallback to first chunk from metadata
           query = chunks[0].content;
         }
       } else {
@@ -663,14 +724,17 @@ export class RelatedNotesView extends ItemView {
   }
 
   private detectPdfCurrentPage(): number | null {
-    // Try to detect current page from Obsidian's PDF viewer
-    // Look for the page indicator in the PDF viewer toolbar
-    const activeLeaf = this.app.workspace.activeLeaf;
-    if (!activeLeaf) return null;
+    const pdfView = this.getActivePdfView();
+    if (!pdfView) return null;
 
-    const viewEl = activeLeaf.view.containerEl;
+    // Try internal API first (more reliable)
+    const child = pdfView.viewer?.child;
+    if (child?.pdfViewer?.page) {
+      return child.pdfViewer.page;
+    }
 
-    // Obsidian's PDF viewer has a page input showing current page
+    // Fallback to DOM inspection
+    const viewEl = pdfView.containerEl;
     const pageInput = viewEl.querySelector(
       '.pdf-toolbar input[type="number"]'
     ) as HTMLInputElement;
@@ -680,12 +744,9 @@ export class RelatedNotesView extends ItemView {
         return page;
       }
     }
-
-    // Alternative: look for visible page in the viewer
-    const pdfViewer = viewEl.querySelector('.pdf-viewer');
-    if (pdfViewer) {
-      // pdf.js typically marks the current page with data attributes
-      const visiblePage = pdfViewer.querySelector(
+    const pdfViewerEl = viewEl.querySelector('.pdf-viewer');
+    if (pdfViewerEl) {
+      const visiblePage = pdfViewerEl.querySelector(
         '.page[data-page-number]:not([hidden])'
       ) as HTMLElement;
       if (visiblePage?.dataset.pageNumber) {
@@ -697,6 +758,27 @@ export class RelatedNotesView extends ItemView {
     }
 
     return null;
+  }
+
+  private async getPdfPageText(pageNumber: number): Promise<string | null> {
+    const pdfView = this.getActivePdfView();
+    if (!pdfView) return null;
+    const pdfDocument = pdfView.viewer?.child?.pdfViewer?.pdfDocument;
+    if (!pdfDocument) return null;
+
+    const page = await pdfDocument.getPage(pageNumber);
+    const textContent = await page.getTextContent();
+    const textParts: string[] = [];
+    for (const item of textContent.items) {
+      const textItem = item as TextItem;
+      if (textItem.str) {
+        textParts.push(textItem.str);
+        if (textItem.hasEOL) {
+          textParts.push('\n');
+        }
+      }
+    }
+    return normalizeText(textParts.join(''));
   }
 
   private manualRefresh(): void {
@@ -830,10 +912,7 @@ export class RelatedNotesView extends ItemView {
       this.sonarStateUnsubscribe();
       this.sonarStateUnsubscribe = null;
     }
-    if (this.scrollUnsubscribe) {
-      this.scrollUnsubscribe();
-      this.scrollUnsubscribe = null;
-    }
+    this.clearViewListener();
     if (this.svelteComponent) {
       unmount(this.svelteComponent);
     }
