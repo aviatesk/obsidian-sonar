@@ -32,12 +32,13 @@ body.sonar-modal-open .hover-popover {
   padding: 0px !important;
 }
 
-/* RAG View */
+/* Chat View */
 .rag-view-container {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 0 !important;
+  padding-right: 0 !important;
+  padding-left: 0 !important;
   position: relative;
 }
 

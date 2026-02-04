@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Diff:
 [`0.1.1...HEAD`](https://github.com/aviatesk/obsidian-sonar/compare/0.1.1...HEAD)
 
+### Fixed
+
+- Fix chat view input box being hidden behind status bar in default theme
+  ([#45](https://github.com/aviatesk/obsidian-sonar/issues/45))
+
 ## 0.1.1
 
 Diff:
