@@ -310,6 +310,18 @@ export class ChatView extends ItemView {
       toolRegistry,
       this.configManager
     );
+
+    // Check if model supports tool calling
+    if (!this.chatModel.supportsTools()) {
+      this.logger.warn(
+        'Model does not support tool calling, disabling all tools'
+      );
+      toolRegistry.disableAll();
+      new Notice(
+        'Current chat model does not support tool calling. Tools have been disabled.'
+      );
+    }
+
     this.logger.log(
       `ChatManager initialized with ${toolRegistry.getAll().length} tools (${extensionCount} extensions)`
     );

@@ -14,6 +14,7 @@ import {
   waitForServerReady,
   llamaServerChatCompletionStream,
   llamaServerTokenize,
+  llamaServerGetChatTemplateCaps,
   type ChatMessage,
   type ChatMessageExtended,
   type ToolCall,
@@ -22,6 +23,7 @@ import {
   type ChatStreamDelta,
   type ChatStreamUsage,
   type ChatStreamWithToolsResult,
+  type ChatTemplateCaps,
 } from './llamaCppUtils';
 
 export type {
@@ -46,6 +48,7 @@ export class LlamaCppChat extends WithLogging {
   private port: number | null = null;
   private exitHandlerBound: (() => void) | null = null;
   private _status: ModelStatus = 'uninitialized';
+  private _chatTemplateCaps: ChatTemplateCaps | null = null;
 
   constructor(
     private serverPath: string,
@@ -162,12 +165,34 @@ export class LlamaCppChat extends WithLogging {
 
   private async waitForReady(): Promise<void> {
     await waitForServerReady(this.serverUrl, this.configManager.getLogger());
+    this._chatTemplateCaps = await llamaServerGetChatTemplateCaps(
+      this.serverUrl
+    );
+    if (this._chatTemplateCaps) {
+      this.log(
+        `Chat template caps: supportsTools=${this._chatTemplateCaps.supportsTools}`
+      );
+    }
     this.setStatus('ready');
     this.updateStatusBar('Chat: Ready');
   }
 
   isReady(): boolean {
     return this._status === 'ready';
+  }
+
+  /**
+   * Check if the loaded model supports tool calling
+   * Returns true if capabilities couldn't be determined (assume support)
+   */
+  supportsTools(): boolean {
+    if (!this._chatTemplateCaps) {
+      return true; // Assume support if we couldn't get caps
+    }
+    // Check supports_tool_calls (ability to generate tool calls)
+    // supports_tools indicates whether template accepts tool definitions,
+    // but supports_tool_calls is what matters for actual tool use
+    return this._chatTemplateCaps.supportsToolCalls;
   }
 
   /**

@@ -333,6 +333,52 @@ export async function llamaServerHealthCheck(
 }
 
 /**
+ * Chat template capabilities returned by /props endpoint
+ */
+export interface ChatTemplateCaps {
+  supportsTools: boolean;
+  supportsToolCalls: boolean;
+}
+
+/**
+ * Get chat template capabilities from llama-server
+ *
+ * @param serverUrl - Base URL of llama-server
+ * @returns Promise that resolves to capabilities, or null if unavailable
+ */
+export async function llamaServerGetChatTemplateCaps(
+  serverUrl: string
+): Promise<ChatTemplateCaps | null> {
+  try {
+    const response = await fetch(`${serverUrl}/props`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as {
+      chat_template_caps?: {
+        supports_tools?: boolean;
+        supports_tool_calls?: boolean;
+      };
+    };
+
+    if (!data.chat_template_caps) {
+      return null;
+    }
+
+    return {
+      supportsTools: data.chat_template_caps.supports_tools ?? false,
+      supportsToolCalls: data.chat_template_caps.supports_tool_calls ?? false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolve a server path to an absolute path
  * If the path is relative (e.g., "llama-server"), resolves it via login shell
  *

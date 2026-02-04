@@ -58,6 +58,13 @@ export class ToolRegistry {
   }
 
   /**
+   * Disable all tools
+   */
+  disableAll(): void {
+    this.enabledTools.clear();
+  }
+
+  /**
    * Toggle a tool's enabled state
    */
   toggle(name: string): boolean {

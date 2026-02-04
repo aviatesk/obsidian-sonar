@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Diff:
 [`0.1.2...HEAD`](https://github.com/aviatesk/obsidian-sonar/compare/0.1.2...HEAD)
 
+### Changed
+
+- Sonar now auto-disables tools when chat model doesn't support tool calling.
+  The model's capabilities are detected via llama.cpp's `/props` endpoint at
+  initialization. (Fixed https://github.com/aviatesk/obsidian-sonar/issues/44)
+
 ## 0.1.2
 
 Diff:
@@ -16,8 +22,8 @@ Diff:
 
 ### Fixed
 
-- Fix chat view input box being hidden behind status bar in default theme
-  ([#45](https://github.com/aviatesk/obsidian-sonar/issues/45))
+- Fixed chat view input box being hidden behind status bar in default theme
+  (Fixed https://github.com/aviatesk/obsidian-sonar/issues/45)
 
 ## 0.1.1
 

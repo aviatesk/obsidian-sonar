@@ -265,6 +265,13 @@ Tools allow the assistant to take actions beyond generating text — such as
 searching your vault, reading files, or making web requests. The assistant
 decides when to use tools based on your request.
 
+> [!WARNING] Some models don't support tool calling. Sonar automatically detects
+> this via llama.cpp's `/props` endpoint and disables tools when unsupported. To
+> manually check, run
+> `curl http://localhost:<port>/props | jq '.chat_template_caps'` and look for
+> `"supports_tool_calls": true`. Models like Gemma typically lack tool support,
+> while Qwen and Llama models generally support it.
+
 **Built-in tools**:
 
 | Tool           | Description                                                  |
