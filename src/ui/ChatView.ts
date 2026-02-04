@@ -118,7 +118,9 @@ export class ChatView extends ItemView {
    * e.g., 'qwen3-8b-q8_0.gguf' -> 'Qwen3-8B'
    */
   private getShortModelName(): string {
-    const modelFile = this.configManager.get('llamaChatModelFile');
+    const modelFile =
+      this.configManager.get('llamaChatModelFile') ||
+      DEFAULT_SETTINGS.llamaChatModelFile;
     // Remove .gguf extension and quantization suffix (e.g., -q8_0, -Q4_K_M)
     const baseName = modelFile
       .replace(/\.gguf$/i, '')
