@@ -288,6 +288,36 @@ provided, including web search via SearXNG and calendar integrations. See
 [extension-tools/README.md](./extension-tools/README.md) for the API and setup
 instructions.
 
+#### Vault context
+
+You can provide custom context about your vault to help the assistant understand
+your vault structure and preferences. Create a markdown file anywhere in your
+vault and specify its path in **Settings → Sonar → Chat configuration → Vault
+context file**.
+
+Example vault context file:
+
+```markdown
+## About this vault
+
+This vault contains my research notes on machine learning and software
+engineering.
+
+## Folder structure
+
+- `research/`: Academic papers and reading notes
+- `projects/`: Active project documentation
+- `journal/`: Daily notes and reflections
+
+## Preferences
+
+- I prefer concise, technical responses
+- When searching for ML topics, prioritize the `research/` folder
+```
+
+The content is included in the system prompt, so the assistant can use this
+information when searching your vault or answering questions.
+
 ---
 
 ## Development

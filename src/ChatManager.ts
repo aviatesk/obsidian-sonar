@@ -1,3 +1,4 @@
+import { TFile, type App } from 'obsidian';
 import type {
   LlamaCppChat,
   ChatMessageExtended,
@@ -10,7 +11,7 @@ import { WithLogging } from './WithLogging';
 
 // TODO: Consider replacing static date injection with a self-reflection tool
 // that allows the model to query current date/time and other context as needed.
-function getSystemPrompt(tools: Tool[]): string {
+function getSystemPrompt(tools: Tool[], vaultContext?: string): string {
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -18,10 +19,17 @@ function getSystemPrompt(tools: Tool[]): string {
     day: 'numeric',
   });
 
+  const separator = '=========================================================';
+  const vaultContextSection = vaultContext
+    ? `\n${separator}\nVault context (provided by the user):\n${vaultContext}`
+    : '';
+
   if (tools.length === 0) {
     return `You are a helpful assistant.
 Today is ${today}.
-Always respond in the same language as the user's question.`;
+
+Always respond in the same language as the user's question.
+${vaultContextSection}`;
   }
 
   // Build tool descriptions dynamically
@@ -50,7 +58,9 @@ Guidelines:
 - Do NOT retry the same tool with the same arguments.
 - If context budget is exhausted, answer with the information you have.
 - Do NOT answer with incomplete information. If you cannot find what you need after multiple attempts, say so honestly.
-- Always respond in the same language as the user's question.`;
+- Always respond in the same language as the user's question.
+
+${vaultContextSection}`;
 }
 
 /**
@@ -73,6 +83,7 @@ export class ChatManager extends WithLogging {
   private readonly maxContextTokens = 28000;
 
   constructor(
+    private app: App,
     private chatModel: LlamaCppChat,
     private toolRegistry: ToolRegistry,
     protected configManager: ConfigManager,
@@ -80,6 +91,33 @@ export class ChatManager extends WithLogging {
   ) {
     super();
     this.slotId = slotId;
+  }
+
+  /**
+   * Read vault context file content if configured
+   */
+  private async readVaultContext(): Promise<string | undefined> {
+    const filePath = this.configManager.get('vaultContextFilePath');
+    if (!filePath) {
+      return undefined;
+    }
+
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!(file instanceof TFile)) {
+      this.warn(`Vault context file not found: ${filePath}`);
+      return undefined;
+    }
+
+    try {
+      const content = await this.app.vault.cachedRead(file);
+      this.log(
+        `Loaded vault context from ${filePath} (${content.length} chars)`
+      );
+      return content;
+    } catch (error) {
+      this.warn(`Failed to read vault context file: ${error}`);
+      return undefined;
+    }
   }
 
   /**
@@ -96,7 +134,8 @@ export class ChatManager extends WithLogging {
     currentUserMessage: string,
     enabledTools: Tool[]
   ): Promise<ChatMessageExtended[]> {
-    const systemPrompt = getSystemPrompt(enabledTools);
+    const vaultContext = await this.readVaultContext();
+    const systemPrompt = getSystemPrompt(enabledTools, vaultContext);
     const systemPromptTokens = await this.chatModel.countTokens(systemPrompt);
     const currentMsgTokens =
       await this.chatModel.countTokens(currentUserMessage);

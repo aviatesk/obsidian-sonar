@@ -78,6 +78,10 @@ export interface SonarSettings {
   // ---------------
   extensionToolsPath: string; // Vault folder containing extension tool scripts (.js files)
 
+  // Vault context
+  // -------------
+  vaultContextFilePath: string; // Path to markdown file containing vault context for chat
+
   // Search parameters
   // =================
   bm25AggMethod: AggregationMethod; // BM25 aggregation method (default: 'max_p')
@@ -185,6 +189,8 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   fetchUrlEnabled: false,
   // Extension tools
   extensionToolsPath: '',
+  // Vault context
+  vaultContextFilePath: '',
 
   // Search parameters
   // =================

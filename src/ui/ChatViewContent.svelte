@@ -248,6 +248,13 @@
   function getExtensionTools(): ToolConfig[] {
     return $store.tools.filter(t => !t.isBuiltin);
   }
+
+  function getVaultContextLabel(): string | null {
+    const path = configManager.get('vaultContextFilePath');
+    if (!path) return null;
+    const basename = path.split('/').pop() ?? path;
+    return basename.replace(/\.md$/, '');
+  }
 </script>
 
 <div class="rag-view">
@@ -263,6 +270,12 @@
           <span class="tools-count">{getEnabledToolCount()}/{$store.tools.length}</span>
           <span class="tools-chevron" class:expanded={toolsExpanded}>▸</span>
         </button>
+      {/if}
+      {#if getVaultContextLabel()}
+        <span class="vault-context-badge" title="Vault context: {configManager.get('vaultContextFilePath')}">
+          <span class="vault-context-icon" use:setupIcon={'file-text'}></span>
+          <span class="vault-context-label">{getVaultContextLabel()}</span>
+        </span>
       {/if}
     </div>
     <div class="header-controls">
@@ -572,6 +585,30 @@
 
   .tools-chevron.expanded {
     transform: rotate(90deg);
+  }
+
+  .vault-context-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .vault-context-icon {
+    display: flex;
+    align-items: center;
+  }
+
+  .vault-context-icon :global(svg) {
+    width: 12px;
+    height: 12px;
+  }
+
+  .vault-context-label {
+    font-size: 11px;
   }
 
   .tools-bar {

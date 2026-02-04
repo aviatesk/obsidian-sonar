@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Diff:
 [`0.1.5...HEAD`](https://github.com/aviatesk/obsidian-sonar/compare/0.1.5...HEAD)
 
+### Added
+
+- Vault context file support: specify a markdown file in settings to provide
+  context about your vault (structure, conventions, preferences) to the chat
+  assistant via the system prompt.
+
 ## 0.1.5
 
 Diff:
