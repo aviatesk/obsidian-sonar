@@ -1,6 +1,6 @@
 {
   "name": "obsidian-sonar",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Deep knowledge retrieval for Obsidian, completely offline",
   "main": "main.js",
   "type": "module",

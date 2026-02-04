@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 Diff:
-[`0.1.2...HEAD`](https://github.com/aviatesk/obsidian-sonar/compare/0.1.2...HEAD)
+[`0.1.3...HEAD`](https://github.com/aviatesk/obsidian-sonar/compare/0.1.3...HEAD)
+
+## 0.1.3
+
+Diff:
+[`0.1.2...0.1.3`](https://github.com/aviatesk/obsidian-sonar/compare/0.1.2...0.1.3)
 
 ### Changed
 

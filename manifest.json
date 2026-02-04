@@ -1,7 +1,7 @@
 {
   "id": "obsidian-sonar",
   "name": "Sonar",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "minAppVersion": "1.9.0",
   "description": "Deep knowledge retrieval for Obsidian, completely offline",
   "author": "Shuhei Kadowaki",
