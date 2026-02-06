@@ -1,9 +1,12 @@
 import {
+  AbstractInputSuggest,
   App,
   Component,
   MarkdownRenderer,
   MarkdownView,
   Modal,
+  TFile,
+  TFolder,
 } from 'obsidian';
 
 interface DocumentContext {
@@ -139,6 +142,42 @@ export function getCurrentContext(
   return mode === 'source'
     ? getEditModeContext(view, preferCursor)
     : getReadingModeContext(view);
+}
+
+export class FolderSuggestInput extends AbstractInputSuggest<TFolder> {
+  getSuggestions(query: string): TFolder[] {
+    const lowerQuery = query.toLowerCase();
+    return this.app.vault
+      .getAllFolders()
+      .filter(folder => folder.path.toLowerCase().includes(lowerQuery));
+  }
+
+  renderSuggestion(folder: TFolder, el: HTMLElement): void {
+    el.setText(folder.path);
+  }
+
+  selectSuggestion(folder: TFolder, _evt: MouseEvent | KeyboardEvent): void {
+    this.setValue(folder.path);
+    this.close();
+  }
+}
+
+export class FileSuggestInput extends AbstractInputSuggest<TFile> {
+  getSuggestions(query: string): TFile[] {
+    const lowerQuery = query.toLowerCase();
+    return this.app.vault
+      .getMarkdownFiles()
+      .filter(file => file.path.toLowerCase().includes(lowerQuery));
+  }
+
+  renderSuggestion(file: TFile, el: HTMLElement): void {
+    el.setText(file.path.replace(/\.md$/, ''));
+  }
+
+  selectSuggestion(file: TFile, _evt: MouseEvent | KeyboardEvent): void {
+    this.setValue(file.path);
+    this.close();
+  }
 }
 
 export function confirmAction(

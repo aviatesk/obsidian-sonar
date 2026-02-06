@@ -10,6 +10,7 @@ import { ConfigManager } from '../ConfigManager';
 import type SonarPlugin from '../../main';
 import { getIndexableFilesCount } from 'src/fileFilters';
 import type { AggregationMethod, LogLevel } from '../config';
+import { FolderSuggestInput } from '../obsidian-utils';
 
 export class SettingTab extends PluginSettingTab {
   plugin: SonarPlugin;
@@ -795,15 +796,16 @@ When enabled, the assistant can retrieve web page content when you provide a URL
 Extension tools are loaded from JavaScript files in this folder.
 See the plugin documentation for script format and examples.`
     );
-    extensionToolsPathSetting.addText(text =>
-      text
+    extensionToolsPathSetting.addSearch(search => {
+      search
         .setPlaceholder('scripts/tools')
         .setValue(this.configManager.get('extensionToolsPath'))
         .onChange(async value => {
           const normalized = value ? normalizePath(value) : '';
           await this.configManager.set('extensionToolsPath', normalized);
-        })
-    );
+        });
+      new FolderSuggestInput(this.app, search.inputEl);
+    });
 
     extensionToolsContainer.createEl('p', {
       text: 'Extension tools are loaded when Chat view opens. Use the reload button in Chat view toolbar to reload after modifying scripts.',
