@@ -296,27 +296,16 @@ export class SettingTab extends PluginSettingTab {
     );
     this.renderMarkdownDesc(
       excludedPathsSetting.descEl,
-      `Paths to ignore during indexing (one per line).
+      `Paths to ignore during indexing.
 Supports:
 - Folder names (e.g., \`Archive\`)
 - Relative paths (e.g., \`Daily Notes/2023\`)
 - Glob patterns (e.g., \`**/*.tmp\`, \`**/test/**\`)`
     );
-    excludedPathsSetting.addTextArea(text => {
-      text
-        .setPlaceholder('Archive\nDaily Notes\n**/*.tmp\n**/test/**')
-        .setValue((this.configManager.get('excludedPaths') || []).join('\n'))
-        .onChange(async value => {
-          const paths = value
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0)
-            .map(path => normalizePath(path));
-          await this.configManager.set('excludedPaths', paths);
-        });
-      text.inputEl.rows = 5;
-      text.inputEl.cols = 50;
+    const excludedPathsContainer = indexConfigContainer.createDiv({
+      cls: 'sonar-excluded-paths-list',
     });
+    this.renderExcludedPaths(excludedPathsContainer);
 
     const indexingBatchSetting = new Setting(indexConfigContainer).setName(
       'Indexing batch size'
@@ -1193,6 +1182,45 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
             await this.configManager.set('audioTranscriptionLanguage', value)
         )
     );
+  }
+
+  private renderExcludedPaths(container: HTMLElement): void {
+    container.empty();
+    const paths = this.configManager.get('excludedPaths') || [];
+
+    for (const path of paths) {
+      new Setting(container)
+        .setName(path)
+        .setClass('sonar-excluded-path-item')
+        .addExtraButton(btn =>
+          btn.setIcon('x').onClick(async () => {
+            const updated = paths.filter(p => p !== path);
+            await this.configManager.set('excludedPaths', updated);
+            this.renderExcludedPaths(container);
+          })
+        );
+    }
+
+    let pendingValue = '';
+    new Setting(container)
+      .setClass('sonar-excluded-path-item')
+      .addSearch(search => {
+        search.setPlaceholder('Archive, **/*.tmp, ...').onChange(value => {
+          pendingValue = value;
+        });
+        new FolderSuggestInput(this.app, search.inputEl);
+      })
+      .addExtraButton(btn =>
+        btn.setIcon('plus').onClick(async () => {
+          const trimmed = pendingValue.trim();
+          if (!trimmed) return;
+          const normalized = normalizePath(trimmed);
+          if (paths.includes(normalized)) return;
+          paths.push(normalized);
+          await this.configManager.set('excludedPaths', paths);
+          this.renderExcludedPaths(container);
+        })
+      );
   }
 
   async updateStats() {

@@ -332,6 +332,16 @@ body.sonar-modal-open .hover-popover {
   }
 }
 
+/* Excluded paths list in settings */
+.sonar-excluded-paths-list {
+  margin-bottom: 12px;
+}
+
+.sonar-excluded-path-item .setting-item-name {
+  font-family: var(--font-monospace);
+  font-size: 13px;
+}
+
 /* Extension tools list in settings */
 .sonar-loaded-tools {
   margin-top: 8px;
