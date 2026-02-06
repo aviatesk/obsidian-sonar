@@ -1216,8 +1216,7 @@ Larger values increase recall but may add noise; smaller values focus on high-qu
           if (!trimmed) return;
           const normalized = normalizePath(trimmed);
           if (paths.includes(normalized)) return;
-          paths.push(normalized);
-          await this.configManager.set('excludedPaths', paths);
+          await this.configManager.set('excludedPaths', [...paths, normalized]);
           this.renderExcludedPaths(container);
         })
       );
