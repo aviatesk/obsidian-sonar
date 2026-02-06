@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Diff:
 [`0.1.4...HEAD`](https://github.com/aviatesk/obsidian-sonar/compare/0.1.4...HEAD)
 
+### Changed
+
+- Added folder auto-suggest to the "Extension tools folder" path setting.
+- Replaced the "Excluded paths" textarea with a list UI where each entry has a
+  remove button and new paths can be added via folder auto-suggest input.
+
 ## 0.1.4
 
 Diff:
