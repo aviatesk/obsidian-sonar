@@ -283,6 +283,10 @@ body.sonar-modal-open .hover-popover {
   padding-bottom: 8px;
 }
 
+.sonar-settings-section .setting-item-description {
+  user-select: text;
+}
+
 .sonar-stats-in-settings {
   padding: 10px;
   background: var(--background-secondary);
