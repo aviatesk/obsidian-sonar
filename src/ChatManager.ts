@@ -271,7 +271,7 @@ export class ChatManager extends WithLogging {
         const toolName = toolCall.function.name;
         const tool = this.toolRegistry.get(toolName);
         this.log(
-          `Executing tool: ${toolName}, args: ${toolCall.function.arguments}`
+          `Executing tool: ${toolName}, args: ${JSON.stringify(JSON.parse(toolCall.function.arguments))}`
         );
         onToolCall?.(toolName, 'calling');
 
