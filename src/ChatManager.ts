@@ -26,7 +26,13 @@ Always respond in the same language as the user's question.`;
 
   // Build tool descriptions dynamically
   const toolDescriptions = tools
-    .map(t => `- ${t.definition.name}: ${t.definition.description}`)
+    .map(t => {
+      const [firstLine, ...rest] = t.definition.description.split('\n');
+      const indented = rest.map(line => `  ${line}`).join('\n');
+      return rest.length > 0
+        ? `- ${t.definition.name}: ${firstLine}\n${indented}`
+        : `- ${t.definition.name}: ${firstLine}`;
+    })
     .join('\n');
 
   return `You are an assistant that helps users with their notes and tasks.
