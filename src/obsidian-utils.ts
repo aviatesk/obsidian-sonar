@@ -145,6 +145,13 @@ export function getCurrentContext(
 }
 
 export class FolderSuggestInput extends AbstractInputSuggest<TFolder> {
+  private inputEl: HTMLInputElement;
+
+  constructor(app: App, inputEl: HTMLInputElement) {
+    super(app, inputEl);
+    this.inputEl = inputEl;
+  }
+
   getSuggestions(query: string): TFolder[] {
     const lowerQuery = query.toLowerCase();
     return this.app.vault
@@ -158,11 +165,19 @@ export class FolderSuggestInput extends AbstractInputSuggest<TFolder> {
 
   selectSuggestion(folder: TFolder, _evt: MouseEvent | KeyboardEvent): void {
     this.setValue(folder.path);
+    this.inputEl.dispatchEvent(new Event('input'));
     this.close();
   }
 }
 
 export class FileSuggestInput extends AbstractInputSuggest<TFile> {
+  private inputEl: HTMLInputElement;
+
+  constructor(app: App, inputEl: HTMLInputElement) {
+    super(app, inputEl);
+    this.inputEl = inputEl;
+  }
+
   getSuggestions(query: string): TFile[] {
     const lowerQuery = query.toLowerCase();
     return this.app.vault
@@ -176,6 +191,7 @@ export class FileSuggestInput extends AbstractInputSuggest<TFile> {
 
   selectSuggestion(file: TFile, _evt: MouseEvent | KeyboardEvent): void {
     this.setValue(file.path);
+    this.inputEl.dispatchEvent(new Event('input'));
     this.close();
   }
 }
