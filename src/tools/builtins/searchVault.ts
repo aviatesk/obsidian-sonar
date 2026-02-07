@@ -1,3 +1,4 @@
+import { normalizePath } from 'obsidian';
 import { z } from 'zod';
 import type { Tool } from '../Tool';
 import type { SearchManager } from '../../SearchManager';
@@ -10,6 +11,7 @@ export interface SearchVaultDependencies {
 const argsSchema = z.object({
   query: z.string(),
   max_results: z.number().optional().default(5),
+  exclude_folder: z.string().optional(),
 });
 
 export async function executeSearchVault(
@@ -25,9 +27,21 @@ export async function executeSearchVault(
   if (!parsed.success) {
     return `Error: Invalid arguments: ${parsed.error.issues.map(i => i.message).join(', ')}`;
   }
-  const { query, max_results: maxResults } = parsed.data;
+  const {
+    query,
+    max_results: maxResults,
+    exclude_folder: excludeFolder,
+  } = parsed.data;
 
-  const chunks = await searchManager.getRerankedChunksForRAG(query, maxResults);
+  const normalizedExclude = excludeFolder
+    ? normalizePath(excludeFolder)
+    : undefined;
+
+  const chunks = await searchManager.getRerankedChunksForRAG(
+    query,
+    maxResults,
+    normalizedExclude
+  );
 
   if (chunks === null || chunks.length === 0) {
     return 'No relevant information found in the vault.';
@@ -85,6 +99,12 @@ export function createSearchVaultTool(deps: SearchVaultDependencies): Tool {
             type: 'number',
             description: 'Maximum number of results to return (default: 5)',
             default: 5,
+          },
+          exclude_folder: {
+            type: 'string',
+            description:
+              'Exclude this vault folder from results (exclude filter). ' +
+              'Use when the user says to ignore/skip a specific folder.',
           },
         },
         required: ['query'],

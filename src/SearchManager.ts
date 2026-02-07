@@ -77,10 +77,30 @@ interface QueuedRerankRequest {
  */
 export interface SearchOptions {
   excludeFilePath?: string;
+  excludeFolderPath?: string;
+  folderPath?: string; // Limit search to files within this folder
   titleWeight?: number;
   contentWeight?: number;
   embeddingWeight?: number;
   bm25Weight?: number;
+}
+
+function toFolderPrefix(path: string): string {
+  return path.endsWith('/') ? path : path + '/';
+}
+
+export function matchesFolderFilters(
+  filePath: string,
+  options?: Pick<SearchOptions, 'folderPath' | 'excludeFolderPath'>
+): boolean {
+  if (options?.folderPath) {
+    if (!filePath.startsWith(toFolderPrefix(options.folderPath))) return false;
+  }
+  if (options?.excludeFolderPath) {
+    if (filePath.startsWith(toFolderPrefix(options.excludeFolderPath)))
+      return false;
+  }
+  return true;
 }
 
 export interface SearchOptionsWithTopK extends SearchOptions {
@@ -570,11 +590,13 @@ export class SearchManager extends WithLogging {
    *
    * @param query Search query
    * @param maxChunks Maximum number of chunks to return
+   * @param excludeFolderPath Optional folder path to exclude from results
    * @returns Reranked chunks, or null if reranker is not ready
    */
   async getRerankedChunksForRAG(
     query: string,
-    maxChunks: number
+    maxChunks: number,
+    excludeFolderPath?: string
   ): Promise<ChunkResult[] | null> {
     if (!this.reranker.isReady()) {
       return null;
@@ -587,26 +609,24 @@ export class SearchManager extends WithLogging {
     const embeddingLimit = Math.ceil(retrievalLimit * 0.6);
     const bm25Limit = Math.ceil(retrievalLimit * 0.4);
 
-    // Get chunks from both sources
     const [embeddingChunks, bm25Chunks] = await Promise.all([
       this.embeddingSearch.searchContent(query, {
         topK: maxChunks,
         retrievalLimit: embeddingLimit,
+        excludeFolderPath,
       }),
       this.bm25Search.searchContent(query, {
         topK: maxChunks,
         retrievalLimit: bm25Limit,
+        excludeFolderPath,
       }),
     ]);
 
-    // Merge and deduplicate
     const mergedChunks = mergeAndDeduplicateChunks(embeddingChunks, bm25Chunks);
-
     if (mergedChunks.length === 0) {
       return [];
     }
 
-    // Rerank with title prepended
     const documents = mergedChunks.map(c => {
       const title = c.metadata.title || '';
       return title ? `${title}\n\n${c.content}` : c.content;
@@ -618,7 +638,6 @@ export class SearchManager extends WithLogging {
       maxChunks
     );
 
-    // Return reranked chunks
     return rerankResults.map(r => ({
       ...mergedChunks[r.index],
       score: r.relevanceScore,
