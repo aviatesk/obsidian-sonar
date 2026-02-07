@@ -14,6 +14,7 @@ Diff:
 - Added folder auto-suggest to the "Extension tools folder" path setting.
 - Replaced the "Excluded paths" textarea with a list UI where each entry has a
   remove button and new paths can be added via folder auto-suggest input.
+- Setting UI text is now copyable.
 
 ## 0.1.4
 
