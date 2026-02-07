@@ -240,7 +240,7 @@ module.exports = function (ctx) {
       name: 'get_google_calendar',
       description:
         'Get events from Google Calendar for a specified date range. ' +
-        'Dates should be in YYYY-MM-DD format.',
+        "Dates should be in YYYY-MM-DD format (see today's date in system prompt).",
       parameters: {
         type: 'object',
         properties: {

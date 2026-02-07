@@ -56,10 +56,7 @@ export async function executeReadFile(
     return (
       `[File name: ${resolvedFile.path}]\n` +
       `[[${wikilink}]]\n` +
-      `[The complete file content is provided below. ` +
-      `If this contains the information needed to answer the user's question, ` +
-      `respond immediately without calling any more tools. ` +
-      `Do NOT use search_vault to find sections within this file.]\n\n` +
+      `[Full content below. Respond directly if this content is enough to answer the question.]\n\n` +
       content
     );
   }
@@ -92,10 +89,7 @@ export async function executeReadFile(
         return (
           `[File name: ${path}]\n` +
           `(Extracted text from indexed ${fileType} file)\n` +
-          `[The complete file content is provided below. ` +
-          `If this contains the information needed to answer the user's question, ` +
-          `respond immediately without calling any more tools. ` +
-          `Do NOT use search_vault to find sections within this file.]\n\n` +
+          `[Full content below. Respond directly if this content is enough to answer the question.]\n\n` +
           content
         );
       }

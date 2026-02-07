@@ -355,7 +355,7 @@ module.exports = function (ctx) {
       name: 'get_tasks',
       description:
         'Get tasks from the vault for a specified date range. ' +
-        'Dates should be in YYYY-MM-DD format.',
+        "Dates should be in YYYY-MM-DD format (see today's date in system prompt).",
       parameters: {
         type: 'object',
         properties: {

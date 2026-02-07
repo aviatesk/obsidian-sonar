@@ -18,6 +18,7 @@ function getSystemPrompt(tools: Tool[], vaultContext?: string): string {
     month: 'long',
     day: 'numeric',
   });
+  const todayISO = new Date().toISOString().split('T')[0];
 
   const separator = '=========================================================';
   const vaultContextSection = vaultContext
@@ -26,8 +27,7 @@ function getSystemPrompt(tools: Tool[], vaultContext?: string): string {
 
   if (tools.length === 0) {
     return `You are a helpful assistant.
-Today is ${today}.
-
+Today is ${today} (${todayISO}).
 Always respond in the same language as the user's question.
 ${vaultContextSection}`;
   }
@@ -43,8 +43,8 @@ ${vaultContextSection}`;
     })
     .join('\n');
 
-  return `You are an assistant that helps users with their notes and tasks.
-Today is ${today}.
+  return `You are a helpful assistant with access to the user's Obsidian vault.
+Today is ${today} (${todayISO}).
 
 You have access to the following tools:
 ${toolDescriptions}
@@ -53,11 +53,10 @@ Guidelines:
 - Use tools to gather information before answering questions.
 - If tool call results are insufficient, try different tools or different parameters.
 - You can call the same tool multiple times or combine multiple tools, but only call the same tool when there's a clear purpose and with different parameters.
-- Before editing a note, ALWAYS use read_file first to check if it exists and understand its current content. This helps you choose the correct operation (create/overwrite/append/prepend).
-- Tool results include status info (e.g., [Iteration 2/5, context budget: 4000/8192 tokens remaining]). Once you have enough information, stop calling tools and respond immediately.
 - Do NOT retry the same tool with the same arguments.
-- If context budget is exhausted, answer with the information you have.
-- Do NOT answer with incomplete information. If you cannot find what you need after multiple attempts, say so honestly.
+- Tool results include status info (e.g., [Iteration: 2/5, context budget: 4000/8192 tokens remaining]). Once you have enough information, stop calling tools and respond immediately.
+- If context budget is low or exhausted, answer with the information you have and clearly state what you could not find.
+- When referencing notes in your response, use wikilinks: [[Note name]].
 - Always respond in the same language as the user's question.
 
 ${vaultContextSection}`;

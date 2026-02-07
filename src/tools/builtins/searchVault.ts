@@ -85,9 +85,10 @@ export function createSearchVaultTool(deps: SearchVaultDependencies): Tool {
     definition: {
       name: 'search_vault',
       description:
-        "Search the user's personal knowledge base (Obsidian vault) for relevant notes and information. " +
-        'This should be your primary tool for answering questions about topics the user has written about. ' +
-        'Use this first before resorting to web search.',
+        "Search the user's personal knowledge base (Obsidian vault) for relevant notes and information.\n" +
+        'IMPORTANT: This should be your primary tool for answering questions about topics the user has written about.\n' +
+        'For broader coverage, call this multiple times with different query angles ' +
+        '(e.g., different keywords, synonyms, or related terms)',
       parameters: {
         type: 'object',
         properties: {

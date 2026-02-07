@@ -171,7 +171,7 @@ export function createEditNoteTool(deps: EditNoteDependencies): Tool {
     definition: {
       name: 'edit_note',
       description:
-        'Edit a note in the vault. Only use this when the user explicitly requests editing/saving. ' +
+        'Edit a note in the vault. Only use this when the user **explicitly** requests editing/saving. ' +
         'If the user asks to "translate", "summarize", etc. without mentioning editing, return the result in your response instead.\n' +
         'IMPORTANT: Always use read_file first to check if the note exists.\n' +
         'Choose operation based on read_file result:\n' +
