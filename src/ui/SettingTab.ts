@@ -10,7 +10,7 @@ import { ConfigManager } from '../ConfigManager';
 import type SonarPlugin from '../../main';
 import { getIndexableFilesCount } from 'src/fileFilters';
 import type { AggregationMethod, LogLevel } from '../config';
-import { FolderSuggestInput } from '../obsidian-utils';
+import { FileSuggestInput, FolderSuggestInput } from '../obsidian-utils';
 
 export class SettingTab extends PluginSettingTab {
   plugin: SonarPlugin;
@@ -700,6 +700,28 @@ Higher values allow more thorough research but may increase response time.`
             await this.configManager.set('agentMaxIterations', value)
         )
     );
+
+    // Vault context subsection
+    chatContainer.createEl('h4', { text: 'Vault context' });
+
+    const vaultContextSetting = new Setting(chatContainer).setName(
+      'Vault context file'
+    );
+    this.renderMarkdownDesc(
+      vaultContextSetting.descEl,
+      `Path to a markdown file containing context about your vault.
+This content is included in the system prompt to help the assistant understand your vault structure and preferences.`
+    );
+    vaultContextSetting.addSearch(search => {
+      search
+        .setPlaceholder('vault-context.md')
+        .setValue(this.configManager.get('vaultContextFilePath'))
+        .onChange(async value => {
+          const normalized = value ? normalizePath(value) : '';
+          await this.configManager.set('vaultContextFilePath', normalized);
+        });
+      new FileSuggestInput(this.app, search.inputEl);
+    });
 
     // Context settings subsection
     chatContainer.createEl('h4', { text: 'Context settings' });

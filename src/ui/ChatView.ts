@@ -308,6 +308,7 @@ export class ChatView extends ItemView {
     const extensionCount = await this.loadExtensionTools(toolRegistry);
 
     this.chatManager = new ChatManager(
+      this.app,
       this.chatModel,
       toolRegistry,
       this.configManager
