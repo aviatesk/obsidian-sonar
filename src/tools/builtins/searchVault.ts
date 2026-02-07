@@ -49,11 +49,21 @@ export async function executeSearchVault(
     results.push(`${wikilink}\n${chunk.content}`);
   }
 
-  return (
-    '[Vault Search Results]\n' +
-    '(Reference notes using wikilinks: [[Note name]])\n\n' +
-    results.join('\n\n')
-  );
+  const separator1 =
+    '=========================================================';
+  const separator2 =
+    '---------------------------------------------------------';
+  return `
+[Vault Search Results]
+
+${separator1}
+
+${results.join(`\n\n${separator2}\n\n`)}
+
+${separator1}
+
+IMPORTANT: ALWAYS include wikilinks \`[[Note name]]\` when using these information for the answer.
+`;
 }
 
 export function createSearchVaultTool(deps: SearchVaultDependencies): Tool {

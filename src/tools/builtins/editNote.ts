@@ -159,7 +159,8 @@ export async function executeEditNote(
       const wikilink = existingFile.path.replace(/\.md$/, '');
       return (
         `[Content Prepended]\nPrepended to [[${wikilink}]]\n` +
-        `Do not output full content - user can view the note directly. Just briefly confirm what was done.`
+        `Do not output full content - user can view the note directly. Just briefly confirm what was done.\n` +
+        `IMPORTANT: ALWAYS include wikilinks \`[[${wikilink}]]\` in the final answer.`
       );
     }
   }
