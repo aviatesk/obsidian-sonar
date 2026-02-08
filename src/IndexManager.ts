@@ -37,7 +37,9 @@ import type { PdfjsLib } from './pdfjs.d';
 import {
   isAudioExtension,
   transcribeAudio,
+  findSegmentForOffset,
   type AudioTranscriptionConfig,
+  type AudioSegment,
 } from './audio';
 
 /**
@@ -60,7 +62,8 @@ interface FileOperation {
 
 interface FileContent {
   text: string;
-  pdfPages?: PdfPage[]; // Only set for PDF files
+  pdfPages?: PdfPage[];
+  audioSegments?: AudioSegment[];
 }
 
 interface SyncStats {
@@ -214,7 +217,7 @@ export class IndexManager extends WithLogging {
         config: audioConfig,
         logger,
       });
-      return { text: result.text };
+      return { text: result.text, audioSegments: result.segments };
     }
 
     // Default: markdown or other text files
@@ -591,6 +594,7 @@ export class IndexManager extends WithLogging {
       chunks: Chunk[];
       indexedAt: number;
       pdfPages?: PdfPage[];
+      audioSegments?: AudioSegment[];
     }
 
     const fileChunkDataList: FileChunkData[] = [];
@@ -636,6 +640,7 @@ export class IndexManager extends WithLogging {
         chunks,
         indexedAt: Date.now(),
         pdfPages: fileContent.pdfPages,
+        audioSegments: fileContent.audioSegments,
       });
 
       if (opIndex % 10 === 0 || opIndex === indexOperations.length - 1) {
@@ -774,8 +779,14 @@ export class IndexManager extends WithLogging {
           [];
 
         for (const fileIndex of completedFileIndices) {
-          const { operation, file, chunks, indexedAt, pdfPages } =
-            fileChunkDataList[fileIndex];
+          const {
+            operation,
+            file,
+            chunks,
+            indexedAt,
+            pdfPages,
+            audioSegments,
+          } = fileChunkDataList[fileIndex];
           const fileEmbeddings = fileEmbeddingsMap.get(fileIndex)!;
 
           const indexData = this.prepareFileIndexData(
@@ -783,7 +794,8 @@ export class IndexManager extends WithLogging {
             chunks,
             fileEmbeddings,
             indexedAt,
-            pdfPages
+            pdfPages,
+            audioSegments
           );
 
           batchMetadata.push(...indexData.metadata);
@@ -956,7 +968,8 @@ export class IndexManager extends WithLogging {
       embedding: number[];
     }>,
     indexedAt: number,
-    pdfPages?: PdfPage[]
+    pdfPages?: PdfPage[],
+    audioSegments?: AudioSegment[]
   ): {
     metadata: ChunkMetadata[];
     embeddingData: Array<{ id: string; embedding: number[] }>;
@@ -995,10 +1008,17 @@ export class IndexManager extends WithLogging {
 
     // Add metadata for each chunk
     for (let i = 0; i < chunks.length; i++) {
-      // Calculate page number for PDF files using chunk's startOffset
       let pageNumber: number | undefined;
       if (pdfPages) {
         pageNumber = findPageForOffset(pdfPages, chunks[i].startOffset);
+      }
+
+      let audioStartTime: number | undefined;
+      if (audioSegments) {
+        audioStartTime = findSegmentForOffset(
+          audioSegments,
+          chunks[i].startOffset
+        );
       }
 
       metadata.push({
@@ -1011,6 +1031,7 @@ export class IndexManager extends WithLogging {
         size: file.stat.size,
         indexedAt,
         pageNumber,
+        audioStartTime,
       });
     }
 

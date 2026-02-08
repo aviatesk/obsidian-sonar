@@ -300,10 +300,13 @@ export class RelatedNotesView extends ItemView {
         this.lastQuery = '';
       }
 
-      // For PDF: always re-register listener as the view container may be recreated
+      // For PDF/Audio: always re-register listener as the view container may be recreated
       if (activeFile.extension === 'pdf') {
         this.clearViewListener();
         this.setupPdfPageListener();
+      } else if (isAudioExtension(activeFile.extension)) {
+        this.clearViewListener();
+        this.setupAudioPlaybackListener();
       } else if (fileChanged) {
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (activeView) {
@@ -352,10 +355,18 @@ export class RelatedNotesView extends ItemView {
     };
   }
 
+  private getActiveAudioViewContainer(): HTMLElement | null {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile || !isAudioExtension(activeFile.extension)) return null;
+    const leaf = this.app.workspace
+      .getLeavesOfType('audio')
+      .find(l => (l.view as any).file?.path === activeFile.path);
+    return leaf?.view.containerEl ?? null;
+  }
+
   private getActivePdfView(): PdfView | null {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile || activeFile.extension !== 'pdf') return null;
-
     const leaves = this.app.workspace.getLeavesOfType('pdf');
     for (const leaf of leaves) {
       const view = leaf.view as PdfView;
@@ -402,6 +413,59 @@ export class RelatedNotesView extends ItemView {
     };
 
     trySetup();
+  }
+
+  private setupAudioPlaybackListener(): void {
+    const trySetup = (attempt: number = 0): void => {
+      const container = this.getActiveAudioViewContainer();
+      if (!container) {
+        if (attempt < 20) {
+          setTimeout(() => trySetup(attempt + 1), 500);
+        }
+        return;
+      }
+
+      const audioEl = container.querySelector(
+        'audio'
+      ) as HTMLAudioElement | null;
+
+      if (!audioEl) {
+        if (attempt < 20) {
+          setTimeout(() => trySetup(attempt + 1), 500);
+        } else {
+          this.logger.warn('Audio element not found after retries');
+        }
+        return;
+      }
+
+      let lastTime = Math.floor(audioEl.currentTime);
+      const handler = () => {
+        const currentTime = Math.floor(audioEl.currentTime);
+        if (currentTime !== lastTime) {
+          lastTime = currentTime;
+          this.lastQuery = '';
+          this.debouncedScrollRefresh();
+        }
+      };
+
+      audioEl.addEventListener('timeupdate', handler);
+      audioEl.addEventListener('seeked', handler);
+      this.viewUnsubscribe = () => {
+        audioEl.removeEventListener('timeupdate', handler);
+        audioEl.removeEventListener('seeked', handler);
+      };
+      this.logger.log('Audio playback listener registered');
+    };
+
+    trySetup();
+  }
+
+  private detectAudioCurrentTime(): number | null {
+    const container = this.getActiveAudioViewContainer();
+    if (!container) return null;
+    const audioEl = container.querySelector('audio') as HTMLAudioElement | null;
+    if (!audioEl) return null;
+    return audioEl.currentTime;
   }
 
   private async refresh(preferCursor: boolean = false): Promise<void> {
@@ -617,9 +681,29 @@ export class RelatedNotesView extends ItemView {
           query = chunks[0].content;
         }
       } else {
-        // For Audio: use first chunk (beginning of transcription)
-        // TODO Use chunk corresponding to current timestamp
-        query = chunks[0].content;
+        // For Audio: use chunk closest to current playback position
+        const currentTime = this.detectAudioCurrentTime();
+        if (currentTime !== null) {
+          const hasTimestamps = chunks.some(
+            c => c.audioStartTime !== undefined
+          );
+          if (hasTimestamps) {
+            let bestChunk = chunks[0];
+            for (const chunk of chunks) {
+              if (
+                chunk.audioStartTime !== undefined &&
+                chunk.audioStartTime <= currentTime
+              ) {
+                bestChunk = chunk;
+              }
+            }
+            query = bestChunk.content;
+          } else {
+            query = chunks[0].content;
+          }
+        } else {
+          query = chunks[0].content;
+        }
       }
 
       // Truncate query if too long

@@ -43,8 +43,16 @@ interface TranscribeOptions {
   logger?: AudioLogger;
 }
 
+export interface AudioSegment {
+  startTime: number; // seconds
+  endTime: number; // seconds
+  text: string;
+  startOffset: number; // char offset in concatenated full text
+}
+
 export interface TranscribeResult {
   text: string;
+  segments: AudioSegment[];
 }
 
 async function getMetalResourcePath(): Promise<string | undefined> {
@@ -128,10 +136,61 @@ async function convertToWav(
   });
 }
 
+function parseTimestamp(ts: string): number {
+  const [h, m, rest] = ts.split(':');
+  const [s, ms] = rest.split('.');
+  return (
+    parseInt(h, 10) * 3600 +
+    parseInt(m, 10) * 60 +
+    parseInt(s, 10) +
+    parseInt(ms, 10) / 1000
+  );
+}
+
+const WHISPER_LINE_RE =
+  /^\[(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})\]\s*(.*)/;
+
+export function parseWhisperOutput(stdout: string): AudioSegment[] {
+  const segments: AudioSegment[] = [];
+  let currentOffset = 0;
+
+  for (const line of stdout.split('\n')) {
+    const match = WHISPER_LINE_RE.exec(line);
+    if (!match) continue;
+
+    const text = match[3].trim();
+    if (text.length === 0) continue;
+
+    segments.push({
+      startTime: parseTimestamp(match[1]),
+      endTime: parseTimestamp(match[2]),
+      text,
+      startOffset: currentOffset,
+    });
+
+    // +1 for the newline joining segments in the full text
+    currentOffset += text.length + 1;
+  }
+
+  return segments;
+}
+
+export function findSegmentForOffset(
+  segments: AudioSegment[],
+  offset: number
+): number | undefined {
+  for (let i = segments.length - 1; i >= 0; i--) {
+    if (offset >= segments[i].startOffset) {
+      return segments[i].startTime;
+    }
+  }
+  return undefined;
+}
+
 async function runWhisper(
   wavPath: string,
   options: TranscribeOptions
-): Promise<string> {
+): Promise<TranscribeResult> {
   const { config, logger } = options;
   const resolvedWhisper = await resolveServerPath(config.whisperCliPath);
   const resolvedModelPath = expandHomePath(config.whisperModelPath);
@@ -184,17 +243,13 @@ async function runWhisper(
 
     whisper.on('close', code => {
       if (code === 0) {
-        // Strip timestamps from each line: [00:00:00.000 --> 00:00:02.000]  text
-        const text = stdout
-          .split('\n')
-          .map(line => line.replace(/^\[[\d:.,\s\->]+\]\s*/, '').trim())
-          .filter(line => line.length > 0)
-          .join('\n');
+        const segments = parseWhisperOutput(stdout);
+        const text = segments.map(s => s.text).join('\n');
         const duration = formatDuration(Date.now() - startTime);
         logger?.log(
-          `${LOG_PREFIX} Transcribed ${text.length} characters in ${duration}`
+          `${LOG_PREFIX} Transcribed ${text.length} characters (${segments.length} segments) in ${duration}`
         );
-        resolve(text);
+        resolve({ text, segments });
       } else {
         reject(new Error(`whisper-cli failed with code ${code}: ${stderr}`));
       }
@@ -216,8 +271,7 @@ export async function transcribeAudio(
 
   try {
     await convertToWav(audioPath, tempWavPath, config.ffmpegPath, logger);
-    const text = await runWhisper(tempWavPath, options);
-    return { text };
+    return await runWhisper(tempWavPath, options);
   } finally {
     if (fs.existsSync(tempWavPath)) {
       fs.unlinkSync(tempWavPath);

@@ -14,6 +14,9 @@ Diff:
 - Vault context file support: specify a markdown file in settings to provide
   context about your vault (structure, conventions, preferences) to the chat
   assistant via the system prompt.
+- Related Notes View now follows audio playback position. As audio plays, the
+  view automatically updates based on the transcription segment at the current
+  timestamp, similar to how PDF page following works.
 
 ## 0.1.5
 

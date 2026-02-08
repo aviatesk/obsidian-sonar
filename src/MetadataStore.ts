@@ -16,6 +16,7 @@ export interface ChunkMetadata {
   size: number;
   indexedAt: number;
   pageNumber?: number; // PDF page number (1-indexed)
+  audioStartTime?: number; // seconds from start of audio
 }
 
 /**
