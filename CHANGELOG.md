@@ -17,6 +17,8 @@ Diff:
 - Related Notes View now follows audio playback position. As audio plays, the
   view automatically updates based on the transcription segment at the current
   timestamp, similar to how PDF page following works.
+- The chat `search_vault` tool exposes `exclude_folder` so the model can exclude
+  specific folders from results.
 
 ## 0.1.5
 
