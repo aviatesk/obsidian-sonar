@@ -2,10 +2,11 @@ import { EmbeddingStore } from './EmbeddingStore';
 import { MetadataStore, type ChunkMetadata } from './MetadataStore';
 import type { LlamaCppEmbedder } from './LlamaCppEmbedder';
 import { ConfigManager } from './ConfigManager';
-import type {
-  ChunkResult,
-  SearchResult,
-  FullSearchOptions,
+import {
+  matchesFolderFilters,
+  type ChunkResult,
+  type SearchResult,
+  type FullSearchOptions,
 } from './SearchManager';
 import { WithLogging } from './WithLogging';
 import { hasNaNEmbedding, countNaNValues } from './utils';
@@ -182,10 +183,13 @@ export class EmbeddingSearch extends WithLogging {
 
     let filteredChunks = chunks;
     if (options?.excludeFilePath) {
-      filteredChunks = chunks.filter(
+      filteredChunks = filteredChunks.filter(
         chunk => chunk.metadata.filePath !== options.excludeFilePath
       );
     }
+    filteredChunks = filteredChunks.filter(chunk =>
+      matchesFolderFilters(chunk.metadata.filePath, options)
+    );
 
     const results = filteredChunks.map(chunk => ({
       chunk,

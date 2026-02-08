@@ -1,9 +1,10 @@
 import { BM25Store } from './BM25Store';
 import { MetadataStore } from './MetadataStore';
-import type {
-  ChunkResult,
-  SearchResult,
-  FullSearchOptions,
+import {
+  matchesFolderFilters,
+  type ChunkResult,
+  type SearchResult,
+  type FullSearchOptions,
 } from './SearchManager';
 import type { ConfigManager } from './ConfigManager';
 import { WithLogging } from './WithLogging';
@@ -114,11 +115,11 @@ export class BM25Search extends WithLogging {
 
     const contentChunks = bm25Results.filter(result => {
       if (ChunkId.isTitle(result.docId)) return false;
-      if (options?.excludeFilePath) {
-        const filePath = ChunkId.getFilePath(result.docId);
-        if (filePath === options.excludeFilePath) return false;
+      const filePath = ChunkId.getFilePath(result.docId);
+      if (options?.excludeFilePath && filePath === options.excludeFilePath) {
+        return false;
       }
-      return true;
+      return matchesFolderFilters(filePath, options);
     });
 
     // Apply chunk-level limit
