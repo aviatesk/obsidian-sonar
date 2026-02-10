@@ -19,7 +19,6 @@ function getSystemPrompt(tools: Tool[], vaultContext?: string): string {
     day: 'numeric',
   });
   const todayISO = new Date().toISOString().split('T')[0];
-
   const separator = '=========================================================';
   const vaultContextSection = vaultContext
     ? `\n${separator}\nVault context (provided by the user):\n${vaultContext}`
@@ -32,7 +31,6 @@ Always respond in the same language as the user's question.
 ${vaultContextSection}`;
   }
 
-  // Build tool descriptions dynamically
   const toolDescriptions = tools
     .map(t => {
       const [firstLine, ...rest] = t.definition.description.split('\n');
@@ -42,7 +40,6 @@ ${vaultContextSection}`;
         : `- ${t.definition.name}: ${firstLine}`;
     })
     .join('\n');
-
   return `You are a helpful assistant with access to the user's Obsidian vault.
 Today is ${today} (${todayISO}).
 
