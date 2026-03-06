@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Diff:
 [`0.1.6...HEAD`](https://github.com/aviatesk/obsidian-sonar/compare/0.1.6...HEAD)
 
+### Changed
+
+- Default chat model updated from Qwen3-8B to Qwen3.5-9B
+  (`unsloth/Qwen3.5-9B-GGUF`). Users may need to upgrade llama.cpp to the latest
+  version for Qwen3.5 support.
+
 ## 0.1.6
 
 Diff:

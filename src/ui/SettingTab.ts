@@ -609,11 +609,11 @@ This is the final number after chunk aggregation:
     );
     this.renderMarkdownDesc(
       chatModelRepoSetting.descEl,
-      'HuggingFace repository for chat model (e.g., `Qwen/Qwen3-8B-GGUF`).'
+      'HuggingFace repository for chat model (e.g., `unsloth/Qwen3.5-9B-GGUF`).'
     );
     chatModelRepoSetting.addText(text =>
       text
-        .setPlaceholder('Qwen/Qwen3-8B-GGUF')
+        .setPlaceholder('unsloth/Qwen3.5-9B-GGUF')
         .setValue(this.configManager.get('llamaChatModelRepo'))
         .onChange(
           async value =>
@@ -626,11 +626,11 @@ This is the final number after chunk aggregation:
     );
     this.renderMarkdownDesc(
       chatModelFileSetting.descEl,
-      'GGUF filename for chat model (e.g., `qwen3-8b-q8_0.gguf`).'
+      'GGUF filename for chat model (e.g., `Qwen3.5-9B-Q8_0.gguf`).'
     );
     chatModelFileSetting.addText(text =>
       text
-        .setPlaceholder('qwen3-8b-q8_0.gguf')
+        .setPlaceholder('Qwen3.5-9B-Q8_0.gguf')
         .setValue(this.configManager.get('llamaChatModelFile'))
         .onChange(
           async value =>

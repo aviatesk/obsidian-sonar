@@ -115,7 +115,7 @@ export class ChatView extends ItemView {
 
   /**
    * Extract a short model name from the config
-   * e.g., 'qwen3-8b-q8_0.gguf' -> 'Qwen3-8B'
+   * e.g., 'Qwen3.5-9B-Q8_0.gguf' -> 'Qwen3.5-9B'
    */
   private getShortModelName(): string {
     const modelFile =

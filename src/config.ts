@@ -47,8 +47,8 @@ export interface SonarSettings {
   llamaEmbedderModelFile: string; // GGUF filename in the repository (e.g., 'bge-m3-q8_0.gguf')
   llamaRerankerModelRepo: string; // HuggingFace repository for reranker (e.g., 'gpustack/bge-reranker-v2-m3-GGUF')
   llamaRerankerModelFile: string; // GGUF filename for reranker (e.g., 'bge-reranker-v2-m3-Q8_0.gguf')
-  llamaChatModelRepo: string; // HuggingFace repository for chat model (e.g., 'Qwen/Qwen3-8B-GGUF')
-  llamaChatModelFile: string; // GGUF filename for chat model (e.g., 'qwen3-8b-q8_0.gguf')
+  llamaChatModelRepo: string; // HuggingFace repository for chat model (e.g., 'unsloth/Qwen3.5-9B-GGUF')
+  llamaChatModelFile: string; // GGUF filename for chat model (e.g., 'Qwen3.5-9B-Q8_0.gguf')
 
   // Chat generation parameters
   // ==========================
@@ -161,8 +161,8 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   llamaEmbedderModelFile: 'bge-m3-q8_0.gguf',
   llamaRerankerModelRepo: 'gpustack/bge-reranker-v2-m3-GGUF',
   llamaRerankerModelFile: 'bge-reranker-v2-m3-Q8_0.gguf',
-  llamaChatModelRepo: 'Qwen/Qwen3-8B-GGUF',
-  llamaChatModelFile: 'qwen3-8b-q8_0.gguf',
+  llamaChatModelRepo: 'unsloth/Qwen3.5-9B-GGUF',
+  llamaChatModelFile: 'Qwen3.5-9B-Q8_0.gguf',
 
   // Chat generation parameters
   // ==========================
