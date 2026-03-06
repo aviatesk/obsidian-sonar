@@ -60,7 +60,7 @@ export interface SonarSettings {
   // Chat configuration
   // ==================
   chatMaxTokens: number; // Maximum tokens for response generation
-  chatEnableThinking: boolean; // Enable thinking mode for Qwen3 (default: false)
+  chatEnableThinking: boolean; // Enable thinking mode via chat_template_kwargs (default: false)
   agentMaxIterations: number; // Maximum iterations for agent loop (default: 5)
 
   // Context settings

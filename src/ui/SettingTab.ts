@@ -669,7 +669,7 @@ This is the final number after chunk aggregation:
     );
     this.renderMarkdownDesc(
       thinkingSetting.descEl,
-      `Enable thinking mode for Qwen3 (default: disabled).
+      `Enable thinking mode (default: disabled).
 When enabled, the model will show its reasoning process before answering.`
     );
     thinkingSetting.addToggle(toggle =>
