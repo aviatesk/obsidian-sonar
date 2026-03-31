@@ -59,7 +59,7 @@
     "@types/d3": "^7.4.3",
     "@types/node": "^25.5.0",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
-    "@typescript-eslint/parser": "^8.57.2",
+    "@typescript-eslint/parser": "^8.58.0",
     "@vitest/ui": "^4.1.1",
     "@webgpu/types": "^0.1.66",
     "builtin-modules": "^5.0.0",
