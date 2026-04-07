@@ -33,6 +33,7 @@
   const activeFile = $derived(storeState.activeFile);
   const isReranking = $derived(storeState.isReranking);
   const queryMode = $derived(storeState.queryMode as QueryMode);
+  const fromSelection = $derived(storeState.fromSelection as boolean);
   const hasQuery = $derived(query && query.trim().length > 0);
 
   // Derive effective status: sonarState takes precedence over store status
@@ -249,7 +250,13 @@
     {#if (hasQuery || queryMode !== 'default') && showQuery}
       <div class="current-query" class:editing={queryMode === 'editing'}>
         <div class="query-header">
-          <h4>Search Query <span class="query-length">({tokenCount} tokens)</span></h4>
+          <h4>
+            Search Query
+            <span class="query-length">({tokenCount} tokens)</span>
+            {#if fromSelection && queryMode === 'default'}
+              <span class="query-source-badge" title="Query is driven by your current text selection">from selection</span>
+            {/if}
+          </h4>
           <div class="query-header-right">
             <button
               class="query-mode-button"
@@ -449,6 +456,20 @@
     color: var(--text-muted);
     text-transform: none;
     letter-spacing: normal;
+  }
+
+  .query-source-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--text-on-accent);
+    background: var(--interactive-accent);
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
   }
 
   .query-mode-button {

@@ -14,6 +14,11 @@ interface DocumentContext {
   lineEnd: number;
   mode: 'source' | 'preview';
   hasSelection: boolean;
+  selectedText?: string;
+}
+
+function isUsableSelectionText(text: string): boolean {
+  return text.trim().length > 0;
 }
 
 function getEditModeContext(
@@ -23,7 +28,7 @@ function getEditModeContext(
   if (!view.editor) return null;
 
   const selection = view.editor.getSelection();
-  if (selection) {
+  if (selection && isUsableSelectionText(selection)) {
     const from = view.editor.getCursor('from');
     const to = view.editor.getCursor('to');
     return {
@@ -31,6 +36,7 @@ function getEditModeContext(
       lineEnd: to.line,
       mode: 'source',
       hasSelection: true,
+      selectedText: selection,
     };
   }
 
@@ -94,11 +100,38 @@ function getFullDocumentContextFallback(
   };
 }
 
+function getReadingModeSelectedText(previewEl: HTMLElement): string | null {
+  const selection = previewEl.win.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return null;
+  }
+  const range = selection.getRangeAt(0);
+  if (!previewEl.contains(range.commonAncestorContainer)) {
+    return null;
+  }
+  const text = selection.toString();
+  if (!isUsableSelectionText(text)) {
+    return null;
+  }
+  return text;
+}
+
 function getReadingModeContext(view: MarkdownView): DocumentContext | null {
   const previewEl = view.containerEl.querySelector(
     '.markdown-preview-view'
   ) as HTMLElement;
   if (!previewEl) return null;
+
+  const selectedText = getReadingModeSelectedText(previewEl);
+  if (selectedText) {
+    return {
+      lineStart: 0,
+      lineEnd: 0,
+      mode: 'preview',
+      hasSelection: true,
+      selectedText,
+    };
+  }
 
   const visibleBlocks = Array.from(
     previewEl.querySelectorAll('[data-line-start][data-line-end]')

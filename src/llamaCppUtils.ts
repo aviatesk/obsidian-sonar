@@ -379,6 +379,28 @@ export async function llamaServerGetChatTemplateCaps(
 }
 
 /**
+ * Get the allocated context window size (`n_ctx`) from llama-server
+ *
+ * @param serverUrl - Base URL of llama-server
+ * @returns Promise that resolves to the context size, or null if unavailable
+ */
+export async function llamaServerGetContextSize(
+  serverUrl: string
+): Promise<number | null> {
+  try {
+    const response = await fetch(`${serverUrl}/props`, { method: 'GET' });
+    if (!response.ok) return null;
+    const data = (await response.json()) as {
+      n_ctx?: number;
+      default_generation_settings?: { n_ctx?: number };
+    };
+    return data.default_generation_settings?.n_ctx ?? data.n_ctx ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolve a server path to an absolute path
  * If the path is relative (e.g., "llama-server"), resolves it via login shell
  *

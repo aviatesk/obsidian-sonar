@@ -100,4 +100,19 @@ describe('LlamaCppReranker', () => {
     expect(results[0].index).toBe(0);
     expect(typeof results[0].relevanceScore).toBe('number');
   });
+
+  it('exposes context size detected from llama-server /props', () => {
+    const contextSize = reranker!.contextSize;
+    expect(contextSize).not.toBeNull();
+    expect(typeof contextSize).toBe('number');
+    expect(Number.isInteger(contextSize)).toBe(true);
+    expect(contextSize as number).toBeGreaterThan(0);
+  });
+
+  it('can count tokens via llama-server /tokenize', async () => {
+    const count = await reranker!.countTokens('hello world');
+    expect(typeof count).toBe('number');
+    expect(Number.isInteger(count)).toBe(true);
+    expect(count).toBeGreaterThan(0);
+  });
 });

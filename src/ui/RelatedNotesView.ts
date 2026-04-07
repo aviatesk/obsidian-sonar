@@ -62,6 +62,7 @@ interface RelatedNotesState {
   activeFile: string | null;
   isReranking: boolean;
   queryMode: QueryMode;
+  fromSelection: boolean;
 }
 
 const EMPTY_STATE_BASE: Omit<RelatedNotesState, 'status' | 'queryMode'> = {
@@ -70,6 +71,7 @@ const EMPTY_STATE_BASE: Omit<RelatedNotesState, 'status' | 'queryMode'> = {
   tokenCount: 0,
   activeFile: null,
   isReranking: false,
+  fromSelection: false,
 };
 
 const COMPONENT_ID = 'RelatedNotesView';
@@ -92,6 +94,7 @@ export class RelatedNotesView extends ItemView {
     ...EMPTY_STATE_BASE,
     status: 'no-active-note',
     queryMode: 'default',
+    fromSelection: false,
   });
 
   constructor(
@@ -227,6 +230,14 @@ export class RelatedNotesView extends ItemView {
         this.debouncedCursorRefresh();
       })
     );
+
+    this.registerDomEvent(document, 'selectionchange', () => {
+      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (!activeView || activeView.getMode() !== 'preview') {
+        return;
+      }
+      this.debouncedCursorRefresh();
+    });
 
     await this.onActiveLeafChange();
   }
@@ -499,6 +510,7 @@ export class RelatedNotesView extends ItemView {
 
     this.updateStore({
       status: 'processing',
+      fromSelection: false,
     });
 
     // Handle PDF and Audio files differently
@@ -534,6 +546,7 @@ export class RelatedNotesView extends ItemView {
       lineStart: context.lineStart,
       lineEnd: context.lineEnd,
       hasSelection: context.hasSelection,
+      selectedText: context.selectedText,
       maxTokens: this.configManager.get('maxQueryTokens'),
       embedder: this.plugin.embedder,
     };
@@ -588,6 +601,7 @@ export class RelatedNotesView extends ItemView {
             status: 'ready',
             activeFile: activeFile.path,
             isReranking: true,
+            fromSelection: context.hasSelection,
           });
 
           const rerankStart = performance.now();
@@ -623,6 +637,7 @@ export class RelatedNotesView extends ItemView {
             tokenCount: tokenCount,
             status: 'ready',
             activeFile: activeFile.path,
+            fromSelection: context.hasSelection,
           });
         }
       } else {

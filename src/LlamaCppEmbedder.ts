@@ -12,6 +12,7 @@ import {
   llamaServerDetokenize,
   llamaServerGetEmbeddings,
   llamaServerHealthCheck,
+  llamaServerGetContextSize,
   killServerProcess,
   startLlamaServer,
 } from './llamaCppUtils';
@@ -28,6 +29,7 @@ export class LlamaCppEmbedder extends WithLogging {
   private port: number | null = null;
   private exitHandlerBound: (() => void) | null = null;
   private healthCheckInterval: NodeJS.Timeout | null = null;
+  private _contextSize: number | null = null;
 
   constructor(
     private serverPath: string,
@@ -43,6 +45,10 @@ export class LlamaCppEmbedder extends WithLogging {
 
   get status(): ModelStatus {
     return this._status;
+  }
+
+  get contextSize(): number | null {
+    return this._contextSize;
   }
 
   private setStatus(status: ModelStatus): void {
@@ -64,6 +70,12 @@ export class LlamaCppEmbedder extends WithLogging {
         checkReady: async () => {
           if (await this.checkReady()) {
             this.startHealthCheck();
+            this._contextSize = await llamaServerGetContextSize(this.serverUrl);
+            if (this._contextSize !== null) {
+              this.log(`Detected context size: ${this._contextSize}`);
+            } else {
+              this.warn('Failed to detect context size from /props');
+            }
             this.log(`Initialized on port ${this.port}`);
             this.setStatus('ready');
             this.updateStatusBar('Ready');

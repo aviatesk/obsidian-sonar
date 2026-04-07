@@ -68,4 +68,12 @@ describe('LlamaCppEmbedder', () => {
     expect(embeddings.length).toBe(2);
     embeddings.forEach(emb => expect(emb.length).toBeGreaterThan(1));
   });
+
+  it('exposes context size detected from llama-server /props', () => {
+    const contextSize = embedder.contextSize;
+    expect(contextSize).not.toBeNull();
+    expect(typeof contextSize).toBe('number');
+    expect(Number.isInteger(contextSize)).toBe(true);
+    expect(contextSize as number).toBeGreaterThan(0);
+  });
 });

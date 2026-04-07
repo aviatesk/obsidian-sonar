@@ -5,6 +5,7 @@ export interface QueryOptions {
   lineStart: number;
   lineEnd: number;
   hasSelection: boolean;
+  selectedText?: string;
   maxTokens: number;
   embedder: LlamaCppEmbedder;
 }
@@ -16,20 +17,49 @@ export async function processQuery(
   const fileNameTokens = await options.embedder.countTokens(options.fileName);
   const remainingTokens = Math.max(10, options.maxTokens - fileNameTokens);
 
-  const extractedContent = options.hasSelection
-    ? await extractTokenBasedContent(
-        content,
-        options.lineStart,
-        options.lineEnd,
-        remainingTokens,
-        options.embedder
-      )
-    : await extractAroundCenter(
-        content,
-        options.lineStart,
-        remainingTokens,
+  let extractedContent: string;
+  if (options.selectedText) {
+    const SAFETY_MARGIN = 16;
+    const hardLimit = options.embedder.contextSize;
+    const selectionMax =
+      hardLimit !== null
+        ? Math.max(remainingTokens, hardLimit - fileNameTokens - SAFETY_MARGIN)
+        : remainingTokens;
+    const selectionTokens = await options.embedder.countTokens(
+      options.selectedText
+    );
+    if (selectionTokens <= selectionMax) {
+      extractedContent = options.selectedText;
+    } else {
+      const wordTruncated = await truncateToTokens(
+        options.selectedText,
+        selectionMax,
         options.embedder
       );
+      extractedContent = wordTruncated
+        ? wordTruncated
+        : await truncateToTokensByChars(
+            options.selectedText,
+            selectionMax,
+            options.embedder
+          );
+    }
+  } else if (options.hasSelection) {
+    extractedContent = await extractTokenBasedContent(
+      content,
+      options.lineStart,
+      options.lineEnd,
+      remainingTokens,
+      options.embedder
+    );
+  } else {
+    extractedContent = await extractAroundCenter(
+      content,
+      options.lineStart,
+      remainingTokens,
+      options.embedder
+    );
+  }
 
   return `${options.fileName}\n\n${extractedContent}`;
 }
@@ -149,4 +179,38 @@ async function truncateToTokens(
   }
 
   return result.join(' ');
+}
+
+export interface TokenCounter {
+  countTokens(text: string): Promise<number>;
+}
+
+export async function truncateTextToTokens(
+  text: string,
+  maxTokens: number,
+  counter: TokenCounter
+): Promise<string> {
+  let lo = 0;
+  let hi = text.length;
+  let best = '';
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const candidate = text.slice(0, mid);
+    const tokens = await counter.countTokens(candidate);
+    if (tokens <= maxTokens) {
+      best = candidate;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return best;
+}
+
+async function truncateToTokensByChars(
+  text: string,
+  maxTokens: number,
+  embedder: LlamaCppEmbedder
+): Promise<string> {
+  return truncateTextToTokens(text, maxTokens, embedder);
 }

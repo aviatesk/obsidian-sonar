@@ -9,6 +9,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Diff:
 [`0.1.6...HEAD`](https://github.com/aviatesk/obsidian-sonar/compare/0.1.6...HEAD)
 
+### Added
+
+- Related Notes View now uses the editor's text selection as the search query
+  when in auto-follow mode. Works in both editing and reading modes; clearing
+  the selection returns to the existing context-following behavior. A small
+  "from selection" badge is shown next to the query header while a selection
+  drives the query. For selection-driven queries the token budget is widened
+  from `maxQueryTokens` to the embedder's actual context window (`n_ctx`
+  reported by llama-server's `/props` endpoint), so an explicit selection can
+  use the full model context.
+
 ### Changed
 
 - Default chat model updated from Qwen3-8B to Qwen3.5-9B

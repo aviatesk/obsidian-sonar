@@ -9,6 +9,8 @@ import {
   killServerProcess,
   startLlamaServer,
   waitForServerReady,
+  llamaServerTokenize,
+  llamaServerGetContextSize,
 } from './llamaCppUtils';
 import type { ModelStatus } from './SonarState';
 
@@ -28,6 +30,7 @@ export class LlamaCppReranker extends WithLogging {
   private port: number | null = null;
   private exitHandlerBound: (() => void) | null = null;
   private _status: ModelStatus = 'uninitialized';
+  private _contextSize: number | null = null;
 
   constructor(
     private serverPath: string,
@@ -43,6 +46,18 @@ export class LlamaCppReranker extends WithLogging {
 
   get status(): ModelStatus {
     return this._status;
+  }
+
+  get contextSize(): number | null {
+    return this._contextSize;
+  }
+
+  async countTokens(text: string): Promise<number> {
+    if (this._status !== 'ready' || !this.port) {
+      throw new Error('Reranker not initialized. Call initialize() first.');
+    }
+    const tokens = await llamaServerTokenize(this.serverUrl, text);
+    return tokens.length;
   }
 
   private setStatus(status: ModelStatus): void {
@@ -86,6 +101,12 @@ export class LlamaCppReranker extends WithLogging {
 
       await this.startServer();
       await this.waitForReady();
+      this._contextSize = await llamaServerGetContextSize(this.serverUrl);
+      if (this._contextSize !== null) {
+        this.log(`Detected context size: ${this._contextSize}`);
+      } else {
+        this.warn('Failed to detect context size from /props');
+      }
       this.log(`Initialized on port ${this.port}`);
     } catch (error) {
       this.setStatus('failed');

@@ -10,6 +10,7 @@ import {
   mergeAndDeduplicateChunks,
 } from './SearchResultFusion';
 import type { LlamaCppReranker } from './LlamaCppReranker';
+import { truncateTextToTokens } from './QueryProcessor';
 
 /**
  * Chunk-level search result returned by BM25Search/EmbeddingSearch
@@ -361,7 +362,12 @@ export class SearchManager extends WithLogging {
     topK: number
   ): Promise<SearchResult[]> {
     const documents = results.map(r => r.topChunk.content);
-    const rerankResults = await this.reranker.rerank(query, documents, topK);
+    const fittedQuery = await this.fitQueryToRerankerContext(query, documents);
+    const rerankResults = await this.reranker.rerank(
+      fittedQuery,
+      documents,
+      topK
+    );
 
     // Normalize scores to [0, 1]
     const maxScore = Math.max(...rerankResults.map(r => r.relevanceScore));
@@ -372,6 +378,38 @@ export class SearchManager extends WithLogging {
       ...results[r.index],
       score: scoreRange > 0 ? (r.relevanceScore - minScore) / scoreRange : 1,
     }));
+  }
+
+  private async fitQueryToRerankerContext(
+    query: string,
+    documents: string[]
+  ): Promise<string> {
+    const contextSize = this.reranker.contextSize;
+    if (contextSize === null || documents.length === 0) {
+      return query;
+    }
+    const SAFETY_MARGIN = 32;
+    const docTokenCounts = await Promise.all(
+      documents.map(d => this.reranker.countTokens(d))
+    );
+    const maxDocTokens = Math.max(...docTokenCounts);
+    const queryBudget = contextSize - maxDocTokens - SAFETY_MARGIN;
+    if (queryBudget <= 0) {
+      this.warn(
+        `Reranker context (${contextSize}) too small for documents ` +
+          `(max ${maxDocTokens} tokens). Passing query through untruncated.`
+      );
+      return query;
+    }
+    const queryTokens = await this.reranker.countTokens(query);
+    if (queryTokens <= queryBudget) {
+      return query;
+    }
+    this.log(
+      `Truncating query for reranker: ${queryTokens} -> ${queryBudget} tokens ` +
+        `(context=${contextSize}, max doc=${maxDocTokens})`
+    );
+    return truncateTextToTokens(query, queryBudget, this.reranker);
   }
 
   /**
@@ -457,7 +495,8 @@ export class SearchManager extends WithLogging {
       const title = c.metadata.title || '';
       return title ? `${title}\n\n${c.content}` : c.content;
     });
-    const rerankResults = await this.reranker.rerank(query, documents);
+    const fittedQuery = await this.fitQueryToRerankerContext(query, documents);
+    const rerankResults = await this.reranker.rerank(fittedQuery, documents);
     const rerankTimeMs = performance.now() - rerankStart;
 
     // Update chunk scores with rerank scores
@@ -632,8 +671,9 @@ export class SearchManager extends WithLogging {
       return title ? `${title}\n\n${c.content}` : c.content;
     });
 
+    const fittedQuery = await this.fitQueryToRerankerContext(query, documents);
     const rerankResults = await this.reranker.rerank(
-      query,
+      fittedQuery,
       documents,
       maxChunks
     );
