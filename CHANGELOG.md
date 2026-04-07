@@ -19,8 +19,16 @@ Diff:
   from `maxQueryTokens` to the embedder's actual context window (`n_ctx`
   reported by llama-server's `/props` endpoint), so an explicit selection can
   use the full model context.
+- Related Notes View toggle button (and matching `Include title in query`
+  setting) for prepending the active note's title to the search query. The title
+  is included by default, matching previous behavior.
 
 ### Changed
+
+- Frontmatter is now always stripped from the active note before building the
+  related notes search query, so YAML fields no longer leak into the query when
+  the cursor or viewport is near the top of a note. To include frontmatter
+  content in the query, select it explicitly.
 
 - Default chat model updated from Qwen3-8B to Qwen3.5-9B
   (`unsloth/Qwen3.5-9B-GGUF`). Users may need to upgrade llama.cpp to the latest

@@ -62,6 +62,7 @@
     return '';
   });
   let showQuery = $state(untrack(() => configManager.get('showRelatedNotesQuery')));
+  let includeTitle = $state(untrack(() => configManager.get('includeTitleInQuery')));
   let showExcerpts = $state(untrack(() => configManager.get('showRelatedNotesExcerpts')));
   let showKnowledgeGraph = $state(untrack(() => configManager.get('showKnowledgeGraph')));
   let enableReranking = $state(untrack(() => configManager.get('enableRelatedNotesReranking')));
@@ -71,6 +72,7 @@
   let excerptIcon: HTMLElement;
   let graphIcon: HTMLElement;
   let rerankIcon: HTMLElement;
+  let titleIcon: HTMLElement;
   let editIcon = $state<HTMLElement | undefined>(undefined);
   let unsubscribers: (() => void)[] = [];
 
@@ -116,6 +118,10 @@
       setIcon(rerankIcon, 'sparkles');
     }
 
+    if (titleIcon) {
+      setIcon(titleIcon, 'heading');
+    }
+
     // Subscribe to config changes from Settings UI
     unsubscribers.push(
       configManager.subscribe('showRelatedNotesQuery', (_, value) => {
@@ -135,6 +141,11 @@
     unsubscribers.push(
       configManager.subscribe('enableRelatedNotesReranking', (_, value) => {
         enableReranking = value as boolean;
+      })
+    );
+    unsubscribers.push(
+      configManager.subscribe('includeTitleInQuery', (_, value) => {
+        includeTitle = value as boolean;
       })
     );
   });
@@ -172,6 +183,11 @@
     onRerankingToggle(enableReranking);
   }
 
+  function handleToggleTitle() {
+    includeTitle = !includeTitle;
+    configManager.set('includeTitleInQuery', includeTitle);
+  }
+
   function handleToggleEdit() {
     if (queryMode === 'editing') {
       onSetQueryMode('default');
@@ -204,6 +220,15 @@
           onclick={handleToggleQuery}
         >
           <span bind:this={eyeIcon}></span>
+        </button>
+
+        <button
+          class="icon-button toggle-title-btn"
+          class:active={includeTitle}
+          aria-label="Include note title in search query"
+          onclick={handleToggleTitle}
+        >
+          <span bind:this={titleIcon}></span>
         </button>
 
         <button

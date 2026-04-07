@@ -152,6 +152,11 @@ export class RelatedNotesView extends ItemView {
       this.lastQuery = '';
       this.debouncedRefresh();
     });
+
+    this.configManager.subscribe('includeTitleInQuery', () => {
+      this.lastQuery = '';
+      this.debouncedRefresh();
+    });
   }
 
   private setupSonarStateSubscription(): void {
@@ -479,6 +484,17 @@ export class RelatedNotesView extends ItemView {
     return audioEl.currentTime;
   }
 
+  private stripFrontmatter(content: string, file: TFile): string {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const pos = cache?.frontmatterPosition;
+    if (!pos) return content;
+    const lines = content.split('\n');
+    for (let i = pos.start.line; i <= pos.end.line && i < lines.length; i++) {
+      lines[i] = '';
+    }
+    return lines.join('\n');
+  }
+
   private async refresh(preferCursor: boolean = false): Promise<void> {
     // Skip auto-refresh when in editing mode (user controls the query)
     const currentState = get(this.relatedNotesStore);
@@ -541,8 +557,9 @@ export class RelatedNotesView extends ItemView {
       return;
     }
 
+    const includeTitle = this.configManager.get('includeTitleInQuery');
     const options: QueryOptions = {
-      fileName: activeFile.basename,
+      title: includeTitle ? activeFile.basename : undefined,
       lineStart: context.lineStart,
       lineEnd: context.lineEnd,
       hasSelection: context.hasSelection,
@@ -552,7 +569,8 @@ export class RelatedNotesView extends ItemView {
     };
 
     try {
-      const content = await this.app.vault.cachedRead(activeFile);
+      const rawContent = await this.app.vault.cachedRead(activeFile);
+      const content = this.stripFrontmatter(rawContent, activeFile);
       const query = await processQuery(content, options);
 
       if (query === this.lastQuery) {

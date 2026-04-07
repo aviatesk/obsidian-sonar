@@ -29,6 +29,7 @@ export interface SonarSettings {
   showRelatedNotesExcerpts: boolean; // Show text excerpts in related notes view
   showKnowledgeGraph: boolean; // Show knowledge graph visualization
   enableRelatedNotesReranking: boolean; // Enable reranking in RelatedNotesView
+  includeTitleInQuery: boolean; // Prepend the active note's title to the related notes search query
   enableSearchReranking: boolean; // Enable reranking in SemanticNoteFinder
   showIntermediateResults: boolean; // Show initial results while reranking (only when reranking enabled)
   searchResultsCount: number; // Number of final documents to return to user
@@ -143,6 +144,7 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   showRelatedNotesExcerpts: false,
   showKnowledgeGraph: false,
   enableRelatedNotesReranking: false,
+  includeTitleInQuery: true,
   enableSearchReranking: false,
   showIntermediateResults: false,
   searchResultsCount: 10,

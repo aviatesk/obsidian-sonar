@@ -414,6 +414,22 @@ Supports:
         )
     );
 
+    const includeTitleSetting = new Setting(uiPreferencesContainer).setName(
+      'Include title in query'
+    );
+    this.renderMarkdownDesc(
+      includeTitleSetting.descEl,
+      "Prepend the active note's title (filename) to the related notes search query."
+    );
+    includeTitleSetting.addToggle(toggle =>
+      toggle
+        .setValue(this.configManager.get('includeTitleInQuery'))
+        .onChange(
+          async value =>
+            await this.configManager.set('includeTitleInQuery', value)
+        )
+    );
+
     const searchResultsSetting = new Setting(uiPreferencesContainer).setName(
       'Search results count'
     );

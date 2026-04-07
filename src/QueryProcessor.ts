@@ -1,7 +1,7 @@
 import type { LlamaCppEmbedder } from './LlamaCppEmbedder';
 
 export interface QueryOptions {
-  fileName: string;
+  title?: string;
   lineStart: number;
   lineEnd: number;
   hasSelection: boolean;
@@ -14,8 +14,10 @@ export async function processQuery(
   content: string,
   options: QueryOptions
 ): Promise<string> {
-  const fileNameTokens = await options.embedder.countTokens(options.fileName);
-  const remainingTokens = Math.max(10, options.maxTokens - fileNameTokens);
+  const titleTokens = options.title
+    ? await options.embedder.countTokens(options.title)
+    : 0;
+  const remainingTokens = Math.max(10, options.maxTokens - titleTokens);
 
   let extractedContent: string;
   if (options.selectedText) {
@@ -23,7 +25,7 @@ export async function processQuery(
     const hardLimit = options.embedder.contextSize;
     const selectionMax =
       hardLimit !== null
-        ? Math.max(remainingTokens, hardLimit - fileNameTokens - SAFETY_MARGIN)
+        ? Math.max(remainingTokens, hardLimit - titleTokens - SAFETY_MARGIN)
         : remainingTokens;
     const selectionTokens = await options.embedder.countTokens(
       options.selectedText
@@ -61,7 +63,9 @@ export async function processQuery(
     );
   }
 
-  return `${options.fileName}\n\n${extractedContent}`;
+  return options.title
+    ? `${options.title}\n\n${extractedContent}`
+    : extractedContent;
 }
 
 async function extractTokenBasedContent(
