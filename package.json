@@ -70,7 +70,7 @@
     "lint-staged": "^16.4.0",
     "obsidian": "^1.12.3",
     "pdfjs-dist": "^5.6.205",
-    "prettier": "^3.6.2",
+    "prettier": "^3.8.3",
     "svelte": "^5.55.4",
     "svelte-check": "^4.4.6",
     "svelte-eslint-parser": "^1.6.0",
