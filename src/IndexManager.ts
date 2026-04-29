@@ -1360,6 +1360,10 @@ And then reinitialize Sonar via "Reinitialize Sonar" action/command`,
     this.notifyIndexUpdated();
   }
 
+  async refreshStatusBar(): Promise<void> {
+    await this.updateStatus();
+  }
+
   private async updateStatus(text?: string, tooltip?: string): Promise<void> {
     if (!text) {
       const indexableCount = getIndexableFilesCount(

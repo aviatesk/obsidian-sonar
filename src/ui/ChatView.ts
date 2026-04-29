@@ -361,6 +361,7 @@ export class ChatView extends ItemView {
       this.logger.log('Cleaning up chat model...');
       await modelToCleanup.cleanup();
       this.logger.log('Chat model cleaned up');
+      await this.plugin.indexManager?.refreshStatusBar();
     }
   }
 
