@@ -63,7 +63,7 @@
     "@vitest/ui": "^4.1.6",
     "@webgpu/types": "^0.1.66",
     "builtin-modules": "^5.1.0",
-    "esbuild-svelte": "^0.9.3",
+    "esbuild-svelte": "^0.9.5",
     "eslint-plugin-svelte": "^3.17.1",
     "eslint-plugin-unused-imports": "^4.4.1",
     "husky": "^9.1.7",
