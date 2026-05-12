@@ -60,7 +60,7 @@
     "@types/node": "^25.6.0",
     "@typescript-eslint/eslint-plugin": "^8.59.2",
     "@typescript-eslint/parser": "^8.59.1",
-    "@vitest/ui": "^4.1.5",
+    "@vitest/ui": "^4.1.6",
     "@webgpu/types": "^0.1.66",
     "builtin-modules": "^5.1.0",
     "esbuild-svelte": "^0.9.3",
