@@ -61,7 +61,7 @@
     "@typescript-eslint/eslint-plugin": "^8.60.1",
     "@typescript-eslint/parser": "^8.60.0",
     "@vitest/ui": "^4.1.8",
-    "@webgpu/types": "^0.1.66",
+    "@webgpu/types": "^0.1.70",
     "builtin-modules": "^5.2.0",
     "esbuild-svelte": "^0.9.5",
     "eslint-plugin-svelte": "^3.19.0",
