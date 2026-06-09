@@ -76,7 +76,7 @@
     "svelte-eslint-parser": "^1.6.1",
     "svelte-preprocess": "^6.0.5",
     "tslib": "^2.8.1",
-    "tsx": "^4.22.3",
+    "tsx": "^4.22.4",
     "typescript": "^5.9.2",
     "vitest": "^4.0.18"
   }
