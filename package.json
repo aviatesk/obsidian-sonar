@@ -68,7 +68,7 @@
     "eslint-plugin-unused-imports": "^4.4.1",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",
-    "obsidian": "^1.12.3",
+    "obsidian": "^1.13.1",
     "pdfjs-dist": "^5.7.284",
     "prettier": "^3.8.4",
     "svelte": "^5.56.3",
