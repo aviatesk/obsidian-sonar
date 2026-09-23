@@ -101,9 +101,7 @@ JavaScript. You can reference types using JSDoc comments:
 module.exports = function (ctx) {
   /** @type {import('./types').ExtensionTool} */
   const tool = {
-    definition: {
-      /* ... */
-    },
+    definition: {/* ... */},
     displayName: 'My Tool',
     execute: async args => {
       /* ... */

@@ -28,8 +28,7 @@ export class SemanticNoteFinder extends Modal {
   private logger: ComponentLogger;
   hoverPopover: HoverPopover | null = null; // HoverParent interface
   private svelteComponent:
-    | ReturnType<typeof SemanticNoteFinderComponent>
-    | undefined;
+    ReturnType<typeof SemanticNoteFinderComponent> | undefined;
   private debouncedSearch: (query: string) => void;
   private searchStore = writable<SemanticSearchState>({
     query: '',

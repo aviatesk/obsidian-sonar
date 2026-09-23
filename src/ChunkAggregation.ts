@@ -6,11 +6,7 @@
  */
 
 export type AggregationMethod =
-  | 'max_p'
-  | 'top_m_sum'
-  | 'top_m_avg'
-  | 'rrf_per_doc'
-  | 'weighted_top_l_sum';
+  'max_p' | 'top_m_sum' | 'top_m_avg' | 'rrf_per_doc' | 'weighted_top_l_sum';
 
 export interface AggregationParams {
   method: AggregationMethod;

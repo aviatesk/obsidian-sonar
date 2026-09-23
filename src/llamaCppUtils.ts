@@ -648,9 +648,7 @@ export interface AssistantMessageWithToolCalls {
  * Extended ChatMessage to support tool calling
  */
 export type ChatMessageExtended =
-  | ChatMessage
-  | ToolMessage
-  | AssistantMessageWithToolCalls;
+  ChatMessage | ToolMessage | AssistantMessageWithToolCalls;
 
 /**
  * Tool definition for OpenAI-compatible function calling
