@@ -46,7 +46,7 @@
   },
   "dependencies": {
     "d3": "^7.9.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
