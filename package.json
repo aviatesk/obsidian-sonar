@@ -62,7 +62,7 @@
     "eslint-plugin-unused-imports": "^4.4.1",
     "husky": "^9.1.7",
     "obsidian": "^1.14.4",
-    "pdfjs-dist": "^5.7.284",
+    "pdfjs-dist": "^6.4.299",
     "prettier": "^3.9.10",
     "svelte": "^5.57.2",
     "svelte-check": "^4.7.6",
