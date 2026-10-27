@@ -65,7 +65,7 @@
     "pdfjs-dist": "^5.7.284",
     "prettier": "^3.9.10",
     "svelte": "^5.57.2",
-    "svelte-check": "^4.7.6",
+    "svelte-check": "^4.7.7",
     "svelte-eslint-parser": "^1.9.0",
     "svelte-preprocess": "^6.0.5",
     "tsx": "^4.23.15",
