@@ -53,7 +53,7 @@
     "@types/d3": "^7.4.3",
     "@types/node": "^26.6.6",
     "@typescript-eslint/eslint-plugin": "^8.72.0",
-    "@typescript-eslint/parser": "^8.71.1",
+    "@typescript-eslint/parser": "^8.72.1",
     "@vitest/ui": "^5.0.5",
     "builtin-modules": "^5.4.0",
     "esbuild": "^0.28.2",
