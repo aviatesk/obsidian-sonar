@@ -45,7 +45,7 @@
     "url": "https://github.com/aviatesk/obsidian-sonar"
   },
   "dependencies": {
-    "d3": "^7.9.0",
+    "d3": "^7.9.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {
