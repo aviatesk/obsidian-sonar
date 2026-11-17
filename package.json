@@ -55,7 +55,7 @@
     "@typescript-eslint/eslint-plugin": "^8.72.0",
     "@typescript-eslint/parser": "^8.72.2",
     "@vitest/ui": "^5.1.0",
-    "builtin-modules": "^5.4.0",
+    "builtin-modules": "^5.5.0",
     "esbuild": "^0.28.2",
     "esbuild-svelte": "^0.9.5",
     "eslint-plugin-svelte": "^3.24.1",
